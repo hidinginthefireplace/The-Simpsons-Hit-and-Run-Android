@@ -346,10 +346,9 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
         return;
     }
 
-    if ( magnitude < 0.0f )
-    {
-        magnitude = -magnitude;
-    }
+    const float magnitude = value < 0.0f ? -value : value;
+
+    /* magnitude is kept for physical-controller confirmation below. */
 
     TouchInputModeManager& inputMode =
         TouchInputModeManager::GetInstance();
