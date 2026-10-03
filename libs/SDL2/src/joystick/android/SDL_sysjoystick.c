@@ -522,6 +522,14 @@ static SDL_joylist_item *JoystickByDeviceId(int device_id)
     /* Joystick not found, try adding it */
     ANDROID_JoystickDetect();
 
+    /*
+     * ANDROID_JoystickDetect() may append the requested device to the
+     * joystick list.  Restart from the head before searching again;
+     * otherwise this second search keeps a NULL/old iterator and can never
+     * discover the newly-added device.
+     */
+    item = SDL_joylist;
+
     while (item) {
         if (item->device_id == device_id) {
             return item;
