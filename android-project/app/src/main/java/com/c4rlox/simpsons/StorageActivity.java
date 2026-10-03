@@ -28,6 +28,18 @@ public class StorageActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        String saved = SimpsonsActivity.getSavedGameDataPath();
+        if (saved != null && new File(saved).isDirectory()) {
+            if (hasBroadStorageAccess()) {
+                launchGame();
+                return;
+            }
+            pendingPath = saved;
+            requestBroadStorageAccess();
+            return;
+        }
+
         showStorageScreen();
     }
 
@@ -70,12 +82,12 @@ public class StorageActivity extends Activity {
             return;
         }
 
-        SimpsonsActivity.setGameDataPath(gameDir.getAbsolutePath());
+        SimpsonsActivity.setGameDataPath(this, gameDir.getAbsolutePath());
         launchGame();
     }
 
     private void useInternalStorage() {
-        SimpsonsActivity.setGameDataPath(null);
+        SimpsonsActivity.setGameDataPath(this, null);
         launchGame();
     }
 
