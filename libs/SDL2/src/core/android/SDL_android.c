@@ -2496,16 +2496,37 @@ const char *SDL_AndroidGetGameDataPath(void)
             return NULL;
         }
 
-        jmethodID mid = (*env)->GetStaticMethodID(env, mActivityClass,
-                                                  "getGameDataPath", "()Ljava/lang/String;");
-        if (!mid) {
+        /*
+         * mActivityClass is the SDLActivity base class. The actual running
+         * activity is SimpsonsActivity, which owns getGameDataPath().
+         * Get the concrete activity class from the current SDL context.
+         */
+        jobject context = (*env)->CallStaticObjectMethod(env, mActivityClass, midGetContext);
+        if ((*env)->ExceptionCheck(env) || !context) {
             (*env)->ExceptionClear(env);
             return NULL;
         }
 
-        jstring pathString = (jstring)(*env)->CallStaticObjectMethod(env, mActivityClass, mid);
+        jclass activityClass = (*env)->GetObjectClass(env, context);
+        if (!activityClass) {
+            (*env)->DeleteLocalRef(env, context);
+            return NULL;
+        }
+
+        jmethodID mid = (*env)->GetStaticMethodID(env, activityClass,
+                                                  "getGameDataPath", "()Ljava/lang/String;");
+        if (!mid) {
+            (*env)->ExceptionClear(env);
+            (*env)->DeleteLocalRef(env, activityClass);
+            (*env)->DeleteLocalRef(env, context);
+            return NULL;
+        }
+
+        jstring pathString = (jstring)(*env)->CallStaticObjectMethod(env, activityClass, mid);
         if ((*env)->ExceptionCheck(env) || !pathString) {
             (*env)->ExceptionClear(env);
+            (*env)->DeleteLocalRef(env, activityClass);
+            (*env)->DeleteLocalRef(env, context);
             return NULL;
         }
 
@@ -2514,7 +2535,10 @@ const char *SDL_AndroidGetGameDataPath(void)
             s_AndroidGameDataPath = SDL_strdup(path);
             (*env)->ReleaseStringUTFChars(env, pathString, path);
         }
+
         (*env)->DeleteLocalRef(env, pathString);
+        (*env)->DeleteLocalRef(env, activityClass);
+        (*env)->DeleteLocalRef(env, context);
     }
 
     return s_AndroidGameDataPath;
