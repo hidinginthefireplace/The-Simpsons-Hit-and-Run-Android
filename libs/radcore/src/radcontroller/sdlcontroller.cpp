@@ -433,6 +433,45 @@ static void AndroidJavaStopRumbleFallback()
     env->DeleteLocalRef(cls);
 }
 #endif
+
+#if defined(RAD_ANDROID) && SDL_MAJOR_VERSION < 3
+/*
+ * Some Android gamepads (notably hardware controllers exposed by older
+ * Android/Shield builds) are reported by SDL as joysticks but do not have a
+ * GameController database entry. The Android SDL joystick backend already
+ * exposes its buttons using the standard SDL controller button indices and
+ * its axes in the standard left/right stick + trigger order.
+ *
+ * Install a per-device fallback mapping before the controller system performs
+ * its initial SDL_GameController enumeration.
+ */
+static void EnsureAndroidGameControllerMapping( int joystickIndex )
+{
+    if ( SDL_IsGameController( joystickIndex ) )
+    {
+        return;
+    }
+
+    SDL_JoystickGUID guid = SDL_JoystickGetDeviceGUID( joystickIndex );
+
+    char guidString[ 33 ];
+    SDL_JoystickGetGUIDString( guid, guidString, sizeof( guidString ) );
+
+    char mapping[ 512 ];
+    snprintf(
+        mapping,
+        sizeof( mapping ),
+        "%s,Android Generic Gamepad,a:b0,b:b1,x:b2,y:b3,"
+        "back:b4,guide:b5,start:b6,leftstick:b7,rightstick:b8,"
+        "leftshoulder:b9,rightshoulder:b10,dpup:b11,dpdown:b12,"
+        "dpleft:b13,dpright:b14,leftx:a0,lefty:a1,rightx:a2,"
+        "righty:a3,lefttrigger:a4,righttrigger:a5",
+        guidString
+    );
+
+    SDL_GameControllerAddMapping( mapping );
+}
+#endif
 //============================================================================
 // Component: radControllerOutputPointSDL
 //============================================================================
@@ -2963,6 +3002,9 @@ class radControllerSystemSDL
 #endif
         for( int i = 0; i < numJoysticks; i++ )
         {
+#if defined(RAD_ANDROID) && SDL_MAJOR_VERSION < 3
+            EnsureAndroidGameControllerMapping( i );
+#endif
 #if SDL_MAJOR_VERSION < 3
             if( SDL_IsGameController( i ) )
 #else
