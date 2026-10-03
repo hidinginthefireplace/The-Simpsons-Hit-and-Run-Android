@@ -171,7 +171,7 @@ extern "C" void radControllerSDLSetAndroidRumblePolicyCallback(
 }
 
 typedef void (*AndroidGamepadCandidateConnectedCallback)(int instanceId);
-typedef void (*AndroidGamepadInputCallback)(int instanceId, float magnitude);
+typedef void (*AndroidGamepadInputCallback)(int instanceId, int inputIndex, float value);
 typedef void (*AndroidGamepadDisconnectedCallback)(int instanceId);
 
 static AndroidGamepadCandidateConnectedCallback
@@ -334,7 +334,7 @@ static void AndroidNotifyPhysicalGamepadInputFromPoint
 
     if ( magnitude > 0.0f )
     {
-        sAndroidGamepadInputCallback( instanceId, magnitude );
+        sAndroidGamepadInputCallback( instanceId, inputIndex, magnitude );
     }
 }
 
