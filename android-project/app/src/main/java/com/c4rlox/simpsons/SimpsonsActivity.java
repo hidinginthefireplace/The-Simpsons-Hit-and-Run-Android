@@ -21,14 +21,18 @@ public class SimpsonsActivity extends SDLActivity {
         setGameDataPath(context, path);
     }
 
-    public static String getSavedGameDataPath() {
-        Context context = getContext();
+    public static String getSavedGameDataPath(Context context) {
         if (context == null) {
             return null;
         }
-        String path = context.getSharedPreferences(GAME_DATA_PREFS, Context.MODE_PRIVATE)
+        String path = context.getApplicationContext()
+                .getSharedPreferences(GAME_DATA_PREFS, Context.MODE_PRIVATE)
                 .getString(GAME_DATA_PATH_KEY, "");
         return path.isEmpty() ? null : path;
+    }
+
+    public static String getSavedGameDataPath() {
+        return getSavedGameDataPath(getContext());
     }
 
     public static String getGameDataPath() {
