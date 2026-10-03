@@ -2462,6 +2462,58 @@ class radControllerSystemSDL
 
         #if defined(RAD_ANDROID)
             int androidInstanceId = -1;
+
+            /*
+             * Android's Java input layer feeds physical Shield-controller
+             * buttons/axes into SDL as raw joystick events. Some Android
+             * controllers never become SDL_GameController devices, so the
+             * normal Radical controller path never sees them.
+             *
+             * Forward raw Android joystick events directly to InputManager's
+             * virtual controller fallback. This intentionally sits here,
+             * after SDL has decoded the Android event but before Radical
+             * requires a GameController mapping.
+             */
+            if ( event->type == SDL_JOYBUTTONDOWN ||
+                 event->type == SDL_JOYBUTTONUP )
+            {
+                const int inputIndex = AndroidButtonToInputPoint(
+                    static_cast<int>( event->jbutton.button )
+                );
+
+                if ( inputIndex >= 0 )
+                {
+                    AndroidNotifyPhysicalGamepadInputPoint(
+                        static_cast<int>( event->jbutton.which ),
+                        inputIndex,
+                        event->type == SDL_JOYBUTTONDOWN ? 1.0f : 0.0f
+                    );
+                }
+            }
+            else if ( event->type == SDL_JOYAXISMOTION )
+            {
+                int inputIndex = -1;
+
+                switch ( event->jaxis.axis )
+                {
+                    case 0: inputIndex = 16; break; // Left stick X
+                    case 1: inputIndex = 17; break; // Left stick Y
+                    case 2: inputIndex = 18; break; // Right stick X
+                    case 3: inputIndex = 19; break; // Right stick Y
+                    case 4: inputIndex = 14; break; // Left trigger
+                    case 5: inputIndex = 15; break; // Right trigger
+                    default: break;
+                }
+
+                if ( inputIndex >= 0 )
+                {
+                    AndroidNotifyPhysicalGamepadInputPoint(
+                        static_cast<int>( event->jaxis.which ),
+                        inputIndex,
+                        static_cast<float>( event->jaxis.value ) / 32767.0f
+                    );
+                }
+            }
         #endif
 
     #if SDL_MAJOR_VERSION < 3
