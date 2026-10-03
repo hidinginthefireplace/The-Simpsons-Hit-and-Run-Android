@@ -2493,15 +2493,23 @@ class radControllerSystemSDL
             else if ( event->type == SDL_JOYAXISMOTION )
             {
                 int inputIndex = -1;
+                float value =
+                    static_cast<float>( event->jaxis.value ) / 32767.0f;
 
                 switch ( event->jaxis.axis )
                 {
                     case 0: inputIndex = 16; break; // Left stick X
-                    case 1: inputIndex = 17; break; // Left stick Y
+                    case 1: inputIndex = 17; value = -value; break; // Left stick Y
                     case 2: inputIndex = 18; break; // Right stick X
-                    case 3: inputIndex = 19; break; // Right stick Y
-                    case 4: inputIndex = 14; break; // Left trigger
-                    case 5: inputIndex = 15; break; // Right trigger
+                    case 3: inputIndex = 19; value = -value; break; // Right stick Y
+                    case 4:
+                        inputIndex = 14; // Left trigger
+                        value = ( value + 1.0f ) * 0.5f;
+                        break;
+                    case 5:
+                        inputIndex = 15; // Right trigger
+                        value = ( value + 1.0f ) * 0.5f;
+                        break;
                     default: break;
                 }
 
@@ -2510,9 +2518,29 @@ class radControllerSystemSDL
                     AndroidNotifyPhysicalGamepadInputPoint(
                         static_cast<int>( event->jaxis.which ),
                         inputIndex,
-                        static_cast<float>( event->jaxis.value ) / 32767.0f
+                        value
                     );
                 }
+            }
+            else if ( event->type == SDL_JOYHATMOTION )
+            {
+                /*
+                 * Android/SDL may expose the Shield D-pad as a hat rather
+                 * than four joystick buttons. Forward the four independent
+                 * directions into the same virtual input points so both
+                 * press and release are delivered.
+                 */
+                const Uint8 hat = event->jhat.value;
+                const int instanceId = static_cast<int>( event->jhat.which );
+
+                AndroidNotifyPhysicalGamepadInputPoint(
+                    instanceId, 0, ( hat & SDL_HAT_UP ) ? 1.0f : 0.0f );
+                AndroidNotifyPhysicalGamepadInputPoint(
+                    instanceId, 1, ( hat & SDL_HAT_DOWN ) ? 1.0f : 0.0f );
+                AndroidNotifyPhysicalGamepadInputPoint(
+                    instanceId, 2, ( hat & SDL_HAT_LEFT ) ? 1.0f : 0.0f );
+                AndroidNotifyPhysicalGamepadInputPoint(
+                    instanceId, 3, ( hat & SDL_HAT_RIGHT ) ? 1.0f : 0.0f );
             }
         #endif
 
