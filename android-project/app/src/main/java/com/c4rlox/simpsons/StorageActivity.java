@@ -29,7 +29,7 @@ public class StorageActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        String saved = SimpsonsActivity.getSavedGameDataPath();
+        String saved = SimpsonsActivity.getSavedGameDataPath(this);
         if (saved != null && new File(saved).isDirectory()) {
             if (hasBroadStorageAccess()) {
                 launchGame();
@@ -145,7 +145,7 @@ public class StorageActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        String saved = SimpsonsActivity.getSavedGameDataPath();
+        String saved = SimpsonsActivity.getSavedGameDataPath(this);
         if (saved != null && new File(saved).isDirectory()) {
             TextView current = new TextView(this);
             current.setText("\nCurrent: " + saved);
