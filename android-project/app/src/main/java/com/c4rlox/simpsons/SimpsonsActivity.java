@@ -1,6 +1,7 @@
 package com.c4rlox.simpsons;
 
 import org.libsdl.app.SDLActivity;
+import android.content.Context;
 
 public class SimpsonsActivity extends SDLActivity {
 
