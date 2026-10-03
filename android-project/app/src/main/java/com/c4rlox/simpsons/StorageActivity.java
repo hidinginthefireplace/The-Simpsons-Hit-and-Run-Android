@@ -57,18 +57,22 @@ public class StorageActivity extends Activity {
         return Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager();
     }
 
+    private void requestBroadStorageAccess() {
+        try {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception e) {
+            startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+        }
+    }
+
     private void selectGameDataPath(String volumePath) {
         File gameDir = new File(volumePath, "Simpsons");
 
         if (!hasBroadStorageAccess()) {
             pendingPath = gameDir.getAbsolutePath();
-            try {
-                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                intent.setData(Uri.parse("package:" + getPackageName()));
-                startActivity(intent);
-            } catch (Exception e) {
-                startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
-            }
+            requestBroadStorageAccess();
             return;
         }
 
