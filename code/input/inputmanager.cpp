@@ -404,6 +404,16 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
      */
     if ( !hadConfirmedGamepad )
     {
+        /*
+         * The SDL controller can become available after InputManager has
+         * already enumerated Port0\Slot0 and installed the Android touch
+         * fallback there.  Confirming a real button press proves that the
+         * physical controller is now usable, so force a fresh enumeration
+         * on the next InputManager::Update() before continuing with the
+         * gamepad-only input mode.
+         */
+        mConnectStateChanged = true;
+
         inputMode.NotifyGamepadConnected();
 
         TouchInputAdapter::GetInstance().ClearQueuedInputs();
