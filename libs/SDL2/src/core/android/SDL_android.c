@@ -2486,8 +2486,46 @@ int SDL_AndroidGetExternalStorageState(void)
     return stateFlags;
 }
 
+const char *SDL_AndroidGetGameDataPath(void)
+{
+    static char *s_AndroidGameDataPath = NULL;
+
+    if (!s_AndroidGameDataPath) {
+        JNIEnv *env = Android_JNI_GetEnv();
+        if (!env || !mActivityClass) {
+            return NULL;
+        }
+
+        jmethodID mid = (*env)->GetStaticMethodID(env, mActivityClass,
+                                                  "getGameDataPath", "()Ljava/lang/String;");
+        if (!mid) {
+            (*env)->ExceptionClear(env);
+            return NULL;
+        }
+
+        jstring pathString = (jstring)(*env)->CallStaticObjectMethod(env, mActivityClass, mid);
+        if ((*env)->ExceptionCheck(env) || !pathString) {
+            (*env)->ExceptionClear(env);
+            return NULL;
+        }
+
+        const char *path = (*env)->GetStringUTFChars(env, pathString, NULL);
+        if (path) {
+            s_AndroidGameDataPath = SDL_strdup(path);
+            (*env)->ReleaseStringUTFChars(env, pathString, path);
+        }
+        (*env)->DeleteLocalRef(env, pathString);
+    }
+
+    return s_AndroidGameDataPath;
+}
+
 const char *SDL_AndroidGetExternalStoragePath(void)
 {
+    const char *gameDataPath = SDL_AndroidGetGameDataPath();
+    if (gameDataPath) {
+        return gameDataPath;
+    }
     static char *s_AndroidExternalFilesPath = NULL;
 
     if (!s_AndroidExternalFilesPath) {
