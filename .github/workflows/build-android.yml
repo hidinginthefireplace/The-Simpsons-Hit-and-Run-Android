@@ -1,0 +1,40 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - android11-usb-storage
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build dependencies
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "cmake;4.1.2" "ndk;28.2.13676358"
+
+      - name: Build release APK
+        working-directory: android-project
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Simpsons-Hit-and-Run-Android11
+          path: android-project/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
