@@ -39,9 +39,14 @@ char *SDL_GetBasePath(void)
     return NULL;
 }
 
+extern const char *SDL_AndroidGetGameDataPath(void);
+
 char *SDL_GetPrefPath(const char *org, const char *app)
 {
-    const char *path = SDL_AndroidGetInternalStoragePath();
+    const char *path = SDL_AndroidGetGameDataPath();
+    if (!path) {
+        path = SDL_AndroidGetInternalStoragePath();
+    }
     if (path) {
         size_t pathlen = SDL_strlen(path) + 2;
         char *fullpath = (char *)SDL_malloc(pathlen);
