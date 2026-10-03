@@ -364,7 +364,7 @@ static void AndroidNotifyPhysicalGamepadInputFromPoint
 
     if ( magnitude > 0.0f )
     {
-        AndroidNotifyPhysicalGamepadInputPoint( instanceId, inputIndex, magnitude );
+        AndroidNotifyPhysicalGamepadInputPoint( instanceId, -1, magnitude );
     }
 }
 
