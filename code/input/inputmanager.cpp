@@ -56,7 +56,7 @@
 #include <data/config/androidconfigurationmanager.h>
 extern "C" void radControllerSDLSetAndroidRumblePolicyCallback( bool (*callback)() );
 extern "C" void radControllerSDLSetAndroidGamepadCandidateConnectedCallback(void (*callback)(int));
-extern "C" void radControllerSDLSetAndroidGamepadInputCallback( void (*callback)(int,float) );
+extern "C" void radControllerSDLSetAndroidGamepadInputCallback( void (*callback)(int,int,float) );
 extern "C" void radControllerSDLSetAndroidGamepadDisconnectedCallback(void (*callback)(int));
 #endif
 
