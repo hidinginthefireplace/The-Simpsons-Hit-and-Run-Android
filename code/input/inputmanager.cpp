@@ -102,12 +102,14 @@ static void AndroidInputManagerGamepadCandidateConnectedCallback( int instanceId
 static void AndroidInputManagerGamepadInputCallback
 (
     int instanceId,
-    float magnitude
+    int inputIndex,
+    float value
 )
 {
     InputManager::GetInstance()->NotifyAndroidPhysicalGamepadInput(
         instanceId,
-        magnitude
+        inputIndex,
+        value
     );
 }
 
@@ -335,7 +337,8 @@ static bool IsAndroidRumbleAllowed( bool rumbleEnabled )
 void InputManager::NotifyAndroidPhysicalGamepadInput
 (
     int instanceId,
-    float magnitude
+    int inputIndex,
+    float value
 )
 {
     if ( instanceId < 0 )
@@ -350,6 +353,22 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
 
     TouchInputModeManager& inputMode =
         TouchInputModeManager::GetInstance();
+
+    /*
+     * Feed the raw Android/SDL point directly into controller 0 as a
+     * fallback. This keeps the game's normal Mappable/UserController path
+     * working even if SDL's GameController wrapper is unavailable.
+     */
+    if ( inputIndex >= 0 && inputIndex < Input::MaxPhysicalButtons )
+    {
+        mControllerArray[ 0 ].SetVirtualInputValue( inputIndex, value, true );
+    }
+
+    float magnitude = value;
+    if ( magnitude < 0.0f )
+    {
+        magnitude = -magnitude;
+    }
 
     if ( magnitude < inputMode.GetGamepadInputThreshold() )
     {
