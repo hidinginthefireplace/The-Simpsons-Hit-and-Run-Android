@@ -245,6 +245,36 @@ static int AndroidGetGamepadInstanceId( SDL_Gamepad* pController )
 }
 #endif
 
+static void AndroidNotifyPhysicalGamepadInputPoint( int instanceId, int inputIndex, float value )
+{
+    if ( instanceId >= 0 && inputIndex >= 0 && sAndroidGamepadInputCallback != NULL )
+    {
+        sAndroidGamepadInputCallback( instanceId, inputIndex, value );
+    }
+}
+
+static int AndroidButtonToInputPoint( int button )
+{
+    switch ( button )
+    {
+        case SDL_CONTROLLER_BUTTON_DPAD_UP: return 0;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN: return 1;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT: return 2;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: return 3;
+        case SDL_CONTROLLER_BUTTON_START: return 4;
+        case SDL_CONTROLLER_BUTTON_BACK: return 5;
+        case SDL_CONTROLLER_BUTTON_LEFTSTICK: return 6;
+        case SDL_CONTROLLER_BUTTON_RIGHTSTICK: return 7;
+        case SDL_CONTROLLER_BUTTON_A: return 8;
+        case SDL_CONTROLLER_BUTTON_B: return 9;
+        case SDL_CONTROLLER_BUTTON_X: return 10;
+        case SDL_CONTROLLER_BUTTON_Y: return 11;
+        case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: return 12;
+        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: return 13;
+        default: return -1;
+    }
+}
+
 static void AndroidNotifyPhysicalGamepadCandidateConnected
 (
     int instanceId
@@ -334,7 +364,7 @@ static void AndroidNotifyPhysicalGamepadInputFromPoint
 
     if ( magnitude > 0.0f )
     {
-        sAndroidGamepadInputCallback( instanceId, inputIndex, magnitude );
+        AndroidNotifyPhysicalGamepadInputPoint( instanceId, inputIndex, magnitude );
     }
 }
 
