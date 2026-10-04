@@ -639,6 +639,7 @@ class radControllerInputPointSDL
 
                 newValue += 0.5f;
 
+#if !defined(RAD_ANDROID)
 #if SDL_MAJOR_VERSION < 3
                 if ( m_Identifier == SDL_CONTROLLER_AXIS_LEFTY || m_Identifier == SDL_CONTROLLER_AXIS_RIGHTY )
 #else
@@ -647,6 +648,7 @@ class radControllerInputPointSDL
                 {
                     newValue = 1.0f - newValue;
                 }
+#endif
             }
             else
             {
@@ -700,6 +702,18 @@ class radControllerInputPointSDL
             //
             // Notify callbacks
             //
+#if defined(RAD_ANDROID)
+            /*
+             * Android Shield digital buttons are mirrored directly from SDL
+             * joystick events. Do not immediately overwrite those values from
+             * the Rad polling path, which can lag behind the SDL event state.
+             * Triggers and axes continue through the normal callback path.
+             */
+            if ( m_pType == g_Sdlipt[ 0 ] )
+            {
+                return;
+            }
+#endif
 
             AddRef( ); // Don't want to self destruct while we're calling out
 
