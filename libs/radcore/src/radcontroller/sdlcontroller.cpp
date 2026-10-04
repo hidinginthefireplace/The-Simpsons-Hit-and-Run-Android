@@ -442,11 +442,13 @@ static void AndroidJavaStopRumbleFallback()
  */
 static void EnsureAndroidGameControllerMapping( int joystickIndex )
 {
-    if ( SDL_IsGameController( joystickIndex ) )
-    {
-        return;
-    }
-
+    /*
+     * Android can report a controller as already mapped even when the
+     * platform-provided mapping does not match the Android key/axis layout.
+     *
+     * Always install our Android mapping for this joystick GUID so the
+     * Shield controller uses the layout expected by the Rad input points.
+     */
     SDL_JoystickGUID guid = SDL_JoystickGetDeviceGUID( joystickIndex );
 
     char guidString[ 33 ];
