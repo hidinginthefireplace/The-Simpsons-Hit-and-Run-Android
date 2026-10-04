@@ -717,7 +717,6 @@ class radControllerInputPointSDL
             // second virtual-input writer on Android.
             //
             AddRef( ); // Don't want to self destruct while we're calling out
-            AddRef( ); // Don't want to self destruct while we're calling out
 
             IRadWeakCallbackWrapper * pIWcr;
 
@@ -732,7 +731,6 @@ class radControllerInputPointSDL
             }
 
             Release( );
-#endif
         }
         else
         {
