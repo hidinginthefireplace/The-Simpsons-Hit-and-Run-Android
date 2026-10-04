@@ -3,6 +3,7 @@ name: Build Android APK
 on:
   push:
     branches:
+      - android11-shield-port0-test
       - android11-usb-storage
   workflow_dispatch:
 
