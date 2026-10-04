@@ -415,15 +415,12 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
     if ( !hadConfirmedGamepad )
     {
         /*
-         * The SDL controller can become available after InputManager has
-         * already enumerated Port0\Slot0 and installed the Android touch
-         * fallback there.  Confirming a real button press proves that the
-         * physical controller is now usable, so force a fresh enumeration
-         * on the next InputManager::Update() before continuing with the
-         * gamepad-only input mode.
+         * Android raw SDL joystick events are injected directly into
+         * controller 0. Do not force EnumerateControllers() here: that
+         * releases/reinitializes the Rad controller and clears mButtonArray,
+         * which races the raw event stream and causes intermittent button
+         * failures.
          */
-        mConnectStateChanged = true;
-
         inputMode.NotifyGamepadConnected();
 
         TouchInputAdapter::GetInstance().ClearQueuedInputs();
@@ -499,6 +496,10 @@ void InputManager::NotifyAndroidPhysicalGamepadDisconnected
 
     TouchInputAdapter::GetInstance().ClearQueuedInputs();
     TouchInputAdapter::GetInstance().ClearActiveInputs();
+
+    // Release any raw virtual inputs so a held direction/button cannot
+    // survive a controller disconnect.
+    mControllerArray[ 0 ].ClearVirtualInputs();
 
     AndroidApplyRumbleStateToAllControllers();
 }
