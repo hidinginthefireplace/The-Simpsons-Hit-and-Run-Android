@@ -261,7 +261,7 @@ public:
     void SyncAndroidInputModeWithPhysicalGamepad();
 
     void NotifyAndroidPhysicalGamepadCandidateConnected( int instanceId );
-    void NotifyAndroidPhysicalGamepadInput( int instanceId, float magnitude );
+    void NotifyAndroidPhysicalGamepadInput( int instanceId, int inputIndex, float value );
     void NotifyAndroidPhysicalGamepadDisconnected( int instanceId );
 #endif
 
