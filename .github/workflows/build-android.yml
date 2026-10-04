@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - android11-rebuild-baseline
+      - android11-shield-button-bridge
   workflow_dispatch:
 
 jobs:
