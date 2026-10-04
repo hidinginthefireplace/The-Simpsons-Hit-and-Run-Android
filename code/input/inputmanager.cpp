@@ -326,6 +326,15 @@ static bool IsAndroidRumbleAllowed( bool rumbleEnabled )
     );
 
     /*
+     * The Shield can enumerate the physical controller after InputManager's
+     * initial controller scan.  The candidate callback already proves that
+     * SDL has seen the device, so request one fresh Rad enumeration on the
+     * next InputManager update.  This deliberately does not inject input or
+     * alter SDL's mapping.
+     */
+    mConnectStateChanged = true;
+
+    /*
      * Candidate only:
      * - Do not hide touch HUD.
      * - Do not block touch input.
