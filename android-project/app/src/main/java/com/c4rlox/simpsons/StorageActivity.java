@@ -4,6 +4,9 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -23,6 +26,9 @@ import java.util.List;
 
 public class StorageActivity extends Activity {
     private static final int REQUEST_STORAGE_PERMISSION = 42;
+    private static final int SKY_BLUE = Color.rgb(135, 206, 235);
+    private static final int DARK_BLUE = Color.rgb(23, 59, 108);
+    private static final int YELLOW = Color.rgb(212, 176, 0);
     private String pendingPath;
 
     @Override
@@ -136,12 +142,12 @@ public class StorageActivity extends Activity {
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         int pad = (int) (32 * getResources().getDisplayMetrics().density);
         root.setPadding(pad, pad, pad, pad);
-        root.setBackgroundColor(android.graphics.Color.rgb(23, 59, 108)); // deep Simpsons blue
+        root.setBackgroundColor(SKY_BLUE);
 
         TextView title = new TextView(this);
         title.setText("The Simpsons: Hit & Run\nGame Data Location");
         title.setTextSize(24);
-        title.setTextColor(android.graphics.Color.rgb(212, 176, 0)); // darker readable yellow
+        title.setTextColor(YELLOW);
         title.setGravity(Gravity.CENTER);
         root.addView(title, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -152,7 +158,7 @@ public class StorageActivity extends Activity {
                 + "/storage/<USB-ID>/Simpsons\n\n"
                 + "Your selection is remembered for future launches.");
         help.setTextSize(16);
-        help.setTextColor(android.graphics.Color.WHITE);
+        help.setTextColor(Color.WHITE);
         help.setGravity(Gravity.CENTER);
         root.addView(help, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -163,7 +169,7 @@ public class StorageActivity extends Activity {
             TextView current = new TextView(this);
             current.setText("\nCurrent: " + saved);
             current.setTextSize(16);
-            current.setTextColor(android.graphics.Color.rgb(212, 176, 0));
+            current.setTextColor(YELLOW);
             current.setGravity(Gravity.CENTER);
             root.addView(current);
         }
@@ -190,14 +196,28 @@ public class StorageActivity extends Activity {
     }
 
     private void styleButton(Button button) {
-        button.setTextColor(android.graphics.Color.rgb(23, 59, 108));
-        android.graphics.drawable.GradientDrawable background = new android.graphics.drawable.GradientDrawable();
-        background.setColor(android.graphics.Color.rgb(212, 176, 0));
-        background.setCornerRadius(12 * getResources().getDisplayMetrics().density);
-        button.setBackground(background);
+        button.setTextColor(DARK_BLUE);
         button.setAllCaps(false);
         button.setTextSize(16);
         button.setPadding(20, 16, 20, 16);
+
+        GradientDrawable normal = new GradientDrawable();
+        normal.setColor(YELLOW);
+        normal.setCornerRadius(12 * getResources().getDisplayMetrics().density);
+
+        GradientDrawable focused = new GradientDrawable();
+        focused.setColor(DARK_BLUE);
+        focused.setCornerRadius(12 * getResources().getDisplayMetrics().density);
+
+        StateListDrawable states = new StateListDrawable();
+        states.addState(new int[] { android.R.attr.state_focused }, focused);
+        states.addState(new int[] { android.R.attr.state_pressed }, focused);
+        states.addState(new int[] {}, normal);
+
+        button.setBackground(states);
+
+        button.setOnFocusChangeListener((v, hasFocus) ->
+                button.setTextColor(hasFocus ? Color.WHITE : DARK_BLUE));
     }
 
     private LinearLayout.LayoutParams buttonParams() {
