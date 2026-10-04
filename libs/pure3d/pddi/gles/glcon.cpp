@@ -187,7 +187,30 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "uniform mat4 modelview;\n"
         "uniform mat4 normalmatrix;\n"
 
-        // Lights
+        "varying vec2 tc;\n"
+        "varying vec4 cpri;\n"
+        "varying vec3 toonNormal;\n"
+        "varying vec3 toonViewPos;\n"
+
+        "void main() {\n"
+        "    vec4 V = modelview * vec4(position, 1.0);\n"
+        "    toonNormal = normalize(mat3(normalmatrix) * normal);\n"
+        "    toonViewPos = V.xyz;\n"
+        "    tc = texcoord;\n"
+        "    cpri = color;\n"
+        "    gl_Position = projection * V;\n"
+        "}\n"
+    );
+
+    // Evaluate lighting per-pixel so the toon thresholds remain crisp across
+    // each polygon instead of being interpolated from the triangle vertices.
+    const std::string toonLighting =
+        "precision mediump float;\n"
+        "varying vec2 tc;\n"
+        "varying vec4 cpri;\n"
+        "varying vec3 toonNormal;\n"
+        "varying vec3 toonViewPos;\n"
+
         "uniform struct LightParams {\n"
         "    int enabled;\n"
         "    vec4 position;\n"
@@ -195,117 +218,77 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "    vec3 attenuation;\n"
         "} lights[" PDDI_STRINGIZE(PDDI_MAX_LIGHTS) "];\n"
 
-        // Scene
         "uniform vec4 acs;\n"
-
-        // Material
         "uniform vec4 acm;\n"
         "uniform vec4 dcm;\n"
         "uniform vec4 scm;\n"
         "uniform vec4 ecm;\n"
         "uniform float srm;\n"
-
-        #ifdef RAD_ANDROID
-        // Indica si el material debe recibir iluminación.
+#ifdef RAD_ANDROID
         "uniform int lit;\n"
-        #endif
-
-        "varying vec2 tc;\n"
-        "varying vec4 cpri;\n"
-        "varying vec4 csec;\n"
+#endif
 
         "vec3 direction(vec4 p1, vec4 p2) { return normalize(p2.xyz * sign(p1.w) - p1.xyz * sign(p2.w)); }\n"
-        "float power(float x, float y) { return y != 0.0 ? pow(x,y) : 1.0; }\n"
         "float product(vec3 x, vec3 y) { return max(dot(x,y), 0.0); }\n"
+        "float power(float x, float y) { return y != 0.0 ? pow(x,y) : 1.0; }\n"
 
-                "void main() {\n"
-                "    vec4 V = modelview * vec4(position, 1.0);\n"
-                 
-
-    #ifdef RAD_ANDROID
-            "    vec3 diff;\n"
-    #else
-            "    vec3 n = normalize(mat3(normalmatrix) * normal);\n"
-            "    vec3 diff = ecm.rgb + acm.rgb * acs.rgb;\n"
-    #endif
-
-            "    vec3 spec = vec3(0.0);\n"
-
-    #ifdef RAD_ANDROID
-            // Los materiales no iluminados deben conservar directamente
-            // el color del vértice, sin luz ambiental, difusa o especular.
-            "    if (lit == 0) {\n"
-            "        diff = vec3(1.0);\n"
-            "    } else {\n"
-            "        vec3 n = normalize(mat3(normalmatrix) * normal);\n"
-            "        diff = ecm.rgb + acm.rgb * acs.rgb;\n"
-    #endif
-
-            "        for (int i = 0; i < " PDDI_STRINGIZE(PDDI_MAX_LIGHTS) "; i++) {\n"
-            "            if (lights[i].enabled == 0) continue;\n"
-
-            "            vec3 VP = direction(V, lights[i].position);\n"
-            "            float f = product(n,VP) != 0.0 ? 1.0 : 0.0;\n"
-            "            vec3 h = normalize(VP + vec3(0.0, 0.0, 1.0));\n"
-
-            "            vec3 k = lights[i].attenuation;\n"
-            "            float d = distance(V.xyz, lights[i].position.xyz);\n"
-            "            float att = lights[i].position.w != 0.0 ? 1.0 / (k[0] + k[1] * d + k[2] * d * d) : 1.0;\n"
-
-            "            diff += att * product(n,VP) * dcm.rgb * lights[i].colour.rgb;\n"
-            "            spec += att * f * power(product(n,h),srm) * scm.rgb * lights[i].colour.rgb;\n"
-            "        }\n"
-
-        #ifdef RAD_ANDROID
-                "    }\n"
-        #endif
-
-        "    tc = texcoord;\n"
-        "    cpri = color * vec4(diff, dcm.a);\n"
-        "    csec = vec4(spec, 0.0);\n"
-        "    gl_Position = projection * V;\n"
+        // Three broad lighting bands tuned toward the colourful Simpsons-cartoon
+        // look: deep shadow, a brighter middle tone, and full illumination.
+        "float toonBand(float ndotl) {\n"
+        "    if (ndotl < 0.22) return 0.0;\n"
+        "    if (ndotl < 0.52) return 0.58;\n"
+        "    return 1.0;\n"
         "}\n"
-    );
 
-    GLuint fragmentShader = pglProgram::CompileShader( GL_FRAGMENT_SHADER,
-        "precision mediump float;\n"
-        "varying vec2 tc;\n"
-        "varying vec4 cpri;\n"
-        "varying vec4 csec;\n"
+        "vec3 toonLightingColor() {\n"
+        "    vec3 diff = ecm.rgb + acm.rgb * acs.rgb;\n"
+        "    vec3 spec = vec3(0.0);\n"
+#ifdef RAD_ANDROID
+        "    if (lit == 0) return vec3(1.0);\n"
+#endif
+        "    vec3 n = normalize(toonNormal);\n"
+        "    for (int i = 0; i < " PDDI_STRINGIZE(PDDI_MAX_LIGHTS) "; i++) {\n"
+        "        if (lights[i].enabled == 0) continue;\n"
+        "        vec3 VP = direction(vec4(toonViewPos, 1.0), lights[i].position);\n"
+        "        float ndotl = product(n, VP);\n"
+        "        float band = toonBand(ndotl);\n"
+        "        vec3 h = normalize(VP + vec3(0.0, 0.0, 1.0));\n"
+        "        float specular = power(product(n, h), srm);\n"
+        "        float toonSpec = step(0.92, specular) * step(0.05, ndotl);\n"
+        "        vec3 k = lights[i].attenuation;\n"
+        "        float d = distance(toonViewPos, lights[i].position.xyz);\n"
+        "        float att = lights[i].position.w != 0.0 ? 1.0 / (k[0] + k[1] * d + k[2] * d * d) : 1.0;\n"
+        "        diff += att * band * dcm.rgb * lights[i].colour.rgb;\n"
+        "        spec += att * toonSpec * scm.rgb * lights[i].colour.rgb;\n"
+        "    }\n"
+        "    return diff + spec;\n"
+        "}\n";
 
+    GLuint fragmentShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
+        (toonLighting +
         "void main() {\n"
-        "    gl_FragColor = cpri + csec;\n"
+        "    gl_FragColor = cpri * vec4(toonLightingColor(), dcm.a);\n"
         "}\n"
-    );
+    ).c_str());
 
     GLuint textureShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
-        "precision mediump float;\n"
-        "varying vec2 tc;\n"
-        "varying vec4 cpri;\n"
-        "varying vec4 csec;\n"
-
+        (toonLighting +
         "uniform sampler2D tex;\n"
-
         "void main() {\n"
-        "    gl_FragColor = texture2D(tex, tc) * cpri + csec;\n"
+        "    gl_FragColor = texture2D(tex, tc) * cpri * vec4(toonLightingColor(), dcm.a);\n"
         "}\n"
-    );
+    ).c_str());
 
     GLuint alphaTestShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
-        "precision mediump float;\n"
-        "varying vec2 tc;\n"
-        "varying vec4 cpri;\n"
-        "varying vec4 csec;\n"
-
+        (toonLighting +
         "uniform float alpharef;\n"
         "uniform sampler2D tex;\n"
-
         "void main() {\n"
-        "    vec4 c = texture2D(tex, tc) * cpri + csec;\n"
+        "    vec4 c = texture2D(tex, tc) * cpri * vec4(toonLightingColor(), dcm.a);\n"
         "    if (c.a < alpharef) discard;\n"
         "    gl_FragColor = c;\n"
         "}\n"
-    );
+    ).c_str());
 #endif
 
     colorProgram = pglProgram::CreateProgram(vertexShader, fragmentShader);
