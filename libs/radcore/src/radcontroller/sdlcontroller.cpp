@@ -333,8 +333,20 @@ static void AndroidNotifyPhysicalGamepadInputFromPoint
         }
     }
 
-    /* Mirror the already-normalized Rad input into UserController. */
-    sAndroidGamepadInputCallback( instanceId, static_cast<int>( inputIndex ), newValue );
+    /*
+     * The Shield workaround only mirrors discrete buttons/triggers into
+     * UserController. D-pad and stick state remain owned by the normal
+     * SDL/Rad polling path; mirroring those values here can create duplicate
+     * state, stuck D-pad directions, and unstable analog input.
+     */
+    if ( inputIndex >= 4 && inputIndex <= 15 )
+    {
+        sAndroidGamepadInputCallback(
+            instanceId,
+            static_cast<int>( inputIndex ),
+            newValue
+        );
+    }
 }
 
 
@@ -3214,5 +3226,4 @@ void radControllerSystemService( void )
         s_pTheSDLControllerSystem2->Service( );
     }
 }
-
 
