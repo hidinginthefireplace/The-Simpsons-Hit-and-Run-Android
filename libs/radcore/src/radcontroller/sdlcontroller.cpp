@@ -2667,7 +2667,33 @@ class radControllerSystemSDL
         rAssert( pLocation != NULL );
 
         /*
-        * First priority: real physical SDL controller.
+        * On Android/Shield, the game expects its primary controller at
+        * Port0\\Slot0. SDL can assign the physical gamepad a different
+        * player/location, while the Android touch controller occupies the
+        * expected Port0 slot.
+        *
+        * If any real SDL controller exists, use the first physical controller
+        * for the requested Android primary slot. This keeps the normal
+        * Rad/SDL input path intact and avoids injecting a second input path.
+        */
+    #if defined(RAD_ANDROID)
+        if ( strcmp( pLocation, ANDROID_TOUCH_CONTROLLER_LOCATION ) == 0 )
+        {
+            m_xIOl_Controllers->Reset();
+            IRadController* pAndroidPhysicalController;
+            pAndroidPhysicalController =
+                reinterpret_cast<IRadController*>( m_xIOl_Controllers->GetNext() );
+
+            if ( pAndroidPhysicalController != NULL )
+            {
+                return pAndroidPhysicalController;
+            }
+        }
+    #endif
+
+        /*
+        * First priority: real physical SDL controller at the requested
+        * location.
         */
         IRadController* pPhysicalController = FindPhysicalControllerAtLocation( pLocation );
 
