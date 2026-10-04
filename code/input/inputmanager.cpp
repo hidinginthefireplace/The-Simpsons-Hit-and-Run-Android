@@ -56,7 +56,7 @@
 #include <data/config/androidconfigurationmanager.h>
 extern "C" void radControllerSDLSetAndroidRumblePolicyCallback( bool (*callback)() );
 extern "C" void radControllerSDLSetAndroidGamepadCandidateConnectedCallback(void (*callback)(int));
-extern "C" void radControllerSDLSetAndroidGamepadInputCallback( void (*callback)(int,float) );
+extern "C" void radControllerSDLSetAndroidGamepadInputCallback( void (*callback)(int,int,float) );
 extern "C" void radControllerSDLSetAndroidGamepadDisconnectedCallback(void (*callback)(int));
 #endif
 
@@ -102,12 +102,14 @@ static void AndroidInputManagerGamepadCandidateConnectedCallback( int instanceId
 static void AndroidInputManagerGamepadInputCallback
 (
     int instanceId,
-    float magnitude
+    int inputIndex,
+    float value
 )
 {
     InputManager::GetInstance()->NotifyAndroidPhysicalGamepadInput(
         instanceId,
-        magnitude
+        inputIndex,
+        value
     );
 }
 
@@ -335,7 +337,8 @@ static bool IsAndroidRumbleAllowed( bool rumbleEnabled )
 void InputManager::NotifyAndroidPhysicalGamepadInput
 (
     int instanceId,
-    float magnitude
+    int inputIndex,
+    float value
 )
 {
     if ( instanceId < 0 )
@@ -343,6 +346,21 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
         return;
     }
 
+    /*
+     * SDL/Rad has already performed the controller mapping and axis
+     * normalization. Mirror that exact value into controller 0 rather than
+     * inventing a second Android-specific button/axis mapping.
+     */
+    if ( inputIndex >= 0 && inputIndex < static_cast<int>( Input::MaxInputPoints ) )
+    {
+        mControllerArray[ 0 ].SetVirtualInputValue(
+            static_cast<unsigned int>( inputIndex ),
+            value,
+            true
+        );
+    }
+
+    float magnitude = value;
     if ( magnitude < 0.0f )
     {
         magnitude = -magnitude;
@@ -351,34 +369,27 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
     TouchInputModeManager& inputMode =
         TouchInputModeManager::GetInstance();
 
+    /* Only buttons/triggers should confirm the physical controller. */
+    if ( inputIndex < 0 || inputIndex > 15 )
+    {
+        return;
+    }
+
     if ( magnitude < inputMode.GetGamepadInputThreshold() )
     {
         return;
     }
 
-    /*
-     * If we receive real input from this ID, it is definitely at least
-     * a connected physical candidate.
-     */
     AndroidAddGamepadId(
         mAndroidConnectedGamepadIds,
         mAndroidConnectedGamepadCount,
         instanceId
     );
 
-    /*
-     * Important for multiplayer:
-     * Do not return just because some other gamepad is already confirmed.
-     * Return only if THIS instanceId is already confirmed.
-     */
-    if
-    (
-        AndroidContainsGamepadId(
+    if ( AndroidContainsGamepadId(
             mAndroidConfirmedGamepadIds,
             mAndroidConfirmedGamepadCount,
-            instanceId
-        )
-    )
+            instanceId ) )
     {
         return;
     }
@@ -398,17 +409,11 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
         return;
     }
 
-    /*
-     * Only the transition 0 -> 1 should do the strong cleanup.
-     * If this is a second/third/fourth gamepad, the HUD is already hidden.
-     */
     if ( !hadConfirmedGamepad )
     {
         inputMode.NotifyGamepadConnected();
-
         TouchInputAdapter::GetInstance().ClearQueuedInputs();
         TouchInputAdapter::GetInstance().ClearActiveInputs();
-
         AndroidApplyRumbleStateToAllControllers();
     }
 }
