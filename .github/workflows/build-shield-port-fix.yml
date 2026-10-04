@@ -1,5 +1,7 @@
 name: Build Shield Port Fix APK
 
+# Experimental Shield controller build; stable workflow is untouched.
+
 on:
   push:
     branches:
