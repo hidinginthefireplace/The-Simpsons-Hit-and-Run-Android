@@ -477,7 +477,9 @@ static void EnsureAndroidGameControllerMapping( int joystickIndex )
         guidString
     );
 
-    SDL_GameControllerAddMapping( mapping );
+    int mappingResult = SDL_GameControllerAddMapping( mapping );
+    SDL_Log("SHIELD-EXP rad mapping: index=%d guid=%s result=%d isGameController=%d",
+        joystickIndex, guidString, mappingResult, SDL_IsGameController(joystickIndex));
 }
 #endif
 //============================================================================
