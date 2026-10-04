@@ -351,7 +351,7 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
      * normalization. Mirror that exact value into controller 0 rather than
      * inventing a second Android-specific button/axis mapping.
      */
-    if ( inputIndex >= 0 && inputIndex < static_cast<int>( Input::MaxInputPoints ) )
+    if ( inputIndex >= 0 && inputIndex < static_cast<int>( Input::MaxPhysicalButtons ) )
     {
         mControllerArray[ 0 ].SetVirtualInputValue(
             static_cast<unsigned int>( inputIndex ),
