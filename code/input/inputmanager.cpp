@@ -953,6 +953,13 @@ void InputManager::EnumerateControllers( void )
 
 #ifndef RAD_PC
             xIC2 = mxIControllerSystem2->GetControllerAtLocation( szLocation );
+#if defined(RAD_ANDROID)
+            LOGI("SHIELD_ENUM location=%s controller=%p connected=%d type=%s",
+                 szLocation,
+                 (void*)xIC2.m_pInterface,
+                 (xIC2 != NULL && xIC2->IsConnected()) ? 1 : 0,
+                 (xIC2 != NULL) ? xIC2->GetType() : "NULL");
+#endif
 #else
             radController[KEYBOARD] = mxIControllerSystem2->GetControllerAtLocation( szLocation );
             radController[GAMEPAD] = mxIControllerSystem2->GetControllerAtLocation( szJoystickLoc );
