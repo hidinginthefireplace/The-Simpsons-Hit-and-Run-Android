@@ -2434,6 +2434,42 @@ class radControllerSystemSDL
             int androidInstanceId = -1;
         #endif
 
+#if defined(RAD_ANDROID) && SDL_MAJOR_VERSION < 3
+        /* Mirror Android SDL joystick button events directly into the existing
+         * UserController bridge. SDL already translates D-pad hats into these
+         * button events, including release, so no synthetic hat handling is
+         * needed here. */
+        if ( sAndroidGamepadInputCallback != NULL &&
+             ( event->type == SDL_JOYBUTTONDOWN || event->type == SDL_JOYBUTTONUP ) )
+        {
+            const int instanceId = static_cast<int>( event->jbutton.which );
+            const bool pressed = ( event->type == SDL_JOYBUTTONDOWN );
+            int inputIndex = -1;
+            switch ( event->jbutton.button )
+            {
+                case SDL_CONTROLLER_BUTTON_DPAD_UP:         inputIndex = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:       inputIndex = 1; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:       inputIndex = 2; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:      inputIndex = 3; break;
+                case SDL_CONTROLLER_BUTTON_START:           inputIndex = 4; break;
+                case SDL_CONTROLLER_BUTTON_BACK:            inputIndex = 5; break;
+                case SDL_CONTROLLER_BUTTON_LEFTSTICK:       inputIndex = 6; break;
+                case SDL_CONTROLLER_BUTTON_RIGHTSTICK:      inputIndex = 7; break;
+                case SDL_CONTROLLER_BUTTON_A:               inputIndex = 8; break;
+                case SDL_CONTROLLER_BUTTON_B:               inputIndex = 9; break;
+                case SDL_CONTROLLER_BUTTON_X:               inputIndex = 10; break;
+                case SDL_CONTROLLER_BUTTON_Y:               inputIndex = 11; break;
+                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:    inputIndex = 12; break;
+                case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:   inputIndex = 13; break;
+                default: break;
+            }
+            if ( instanceId >= 0 && inputIndex >= 0 )
+            {
+                sAndroidGamepadInputCallback( instanceId, inputIndex, pressed ? 1.0f : 0.0f );
+            }
+        }
+#endif
+
     #if SDL_MAJOR_VERSION < 3
         if( event->type == SDL_CONTROLLERDEVICEADDED )
         {
