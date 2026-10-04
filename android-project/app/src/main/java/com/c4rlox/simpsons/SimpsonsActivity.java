@@ -2,6 +2,7 @@ package com.c4rlox.simpsons;
 
 import org.libsdl.app.SDLActivity;
 import android.content.Context;
+import android.view.KeyEvent;
 
 public class SimpsonsActivity extends SDLActivity {
 
@@ -58,15 +59,22 @@ public class SimpsonsActivity extends SDLActivity {
     }
 
     @Override
-    public void onBackPressed() {
-        long now = System.currentTimeMillis();
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+            // Consume both key-down and key-up so SDL never handles Back first.
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                long now = System.currentTimeMillis();
 
-        if (now - lastBackPressTime <= DOUBLE_BACK_TIMEOUT_MS) {
-            finishAndRemoveTask();
-            return;
+                if (now - lastBackPressTime <= DOUBLE_BACK_TIMEOUT_MS) {
+                    finishAndRemoveTask();
+                }
+
+                lastBackPressTime = now;
+            }
+            return true;
         }
 
-        lastBackPressTime = now;
+        return super.dispatchKeyEvent(event);
     }
 
 }
