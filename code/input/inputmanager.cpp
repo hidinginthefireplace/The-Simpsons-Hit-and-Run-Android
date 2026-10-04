@@ -350,15 +350,10 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
         TouchInputModeManager::GetInstance();
 
     /*
-     * Feed the raw Android/SDL point directly into controller 0 as a
-     * fallback. This keeps the game's normal Mappable/UserController path
-     * working even if SDL's GameController wrapper is unavailable.
+     * SDL GameController input is delivered through the normal Radical
+     * controller callback path. This callback is only used here to confirm
+     * that a real Android gamepad is active and switch the touch HUD off.
      */
-    if ( inputIndex >= 0 && inputIndex < Input::MaxPhysicalButtons )
-    {
-        mControllerArray[ 0 ].SetVirtualInputValue( inputIndex, value, true );
-    }
-
     const float magnitude = value < 0.0f ? -value : value;
 
     if ( magnitude < inputMode.GetGamepadInputThreshold() )
@@ -496,10 +491,6 @@ void InputManager::NotifyAndroidPhysicalGamepadDisconnected
 
     TouchInputAdapter::GetInstance().ClearQueuedInputs();
     TouchInputAdapter::GetInstance().ClearActiveInputs();
-
-    // Release any raw virtual inputs so a held direction/button cannot
-    // survive a controller disconnect.
-    mControllerArray[ 0 ].ClearVirtualInputs();
 
     AndroidApplyRumbleStateToAllControllers();
 }
@@ -704,17 +695,8 @@ void InputManager::Update( unsigned int timeinms )
 
 void InputManager::OnControllerConnectionStatusChange( IRadController * pIController2 )
 {
-#if defined(RAD_ANDROID)
-    /*
-     * Android controller input is delivered through the raw SDL joystick
-     * bridge. Re-enumerating the Rad controller here would clear the virtual
-     * input array while the raw event stream is still active.
-     */
     (void)pIController2;
-    return;
-#else
     mConnectStateChanged = true;
-#endif
 }
 
 bool InputManager::IsControllerInPort( int portnum ) const
