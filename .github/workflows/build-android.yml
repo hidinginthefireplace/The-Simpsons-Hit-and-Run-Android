@@ -5,6 +5,7 @@ on:
     branches:
       - android11-rebuild-baseline
       - android11-shield-button-bridge
+      - android11-shield-button-clean
   workflow_dispatch:
 
 jobs:
