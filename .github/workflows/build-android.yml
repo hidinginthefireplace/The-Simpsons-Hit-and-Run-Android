@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - android11-usb-storage
+      - android11-shield-diagnostic
   workflow_dispatch:
 
 jobs:
