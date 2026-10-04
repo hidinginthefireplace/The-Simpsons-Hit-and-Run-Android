@@ -455,15 +455,27 @@ static void AndroidJavaStopRumbleFallback()
  */
 static void EnsureAndroidGameControllerMapping( int joystickIndex )
 {
-    if ( SDL_IsGameController( joystickIndex ) )
-    {
-        return;
-    }
-
     SDL_JoystickGUID guid = SDL_JoystickGetDeviceGUID( joystickIndex );
 
     char guidString[ 33 ];
     SDL_JoystickGetGUIDString( guid, guidString, sizeof( guidString ) );
+
+    /*
+     * The 2015 Shield controller is already recognized by SDL's built-in
+     * GameController database, so the old "already a GameController" early
+     * return prevented our Android-standard mapping from being installed.
+     * The Android backend exposes this controller using the standard button
+     * and axis indices, so override the existing mapping for this specific
+     * NVIDIA device.
+     */
+    const Uint16 vendor = SDL_JoystickGetDeviceVendor( joystickIndex );
+    const Uint16 product = SDL_JoystickGetDeviceProduct( joystickIndex );
+    const bool isShieldController = ( vendor == 0x0955 && product == 0x7210 );
+
+    if ( SDL_IsGameController( joystickIndex ) && !isShieldController )
+    {
+        return;
+    }
 
     char mapping[ 512 ];
     snprintf(
@@ -478,8 +490,8 @@ static void EnsureAndroidGameControllerMapping( int joystickIndex )
     );
 
     int mappingResult = SDL_GameControllerAddMapping( mapping );
-    SDL_Log("SHIELD-EXP rad mapping: index=%d guid=%s result=%d isGameController=%d",
-        joystickIndex, guidString, mappingResult, SDL_IsGameController(joystickIndex));
+    SDL_Log("SHIELD-EXP rad mapping: index=%d vendor=%04x product=%04x guid=%s result=%d isGameController=%d",
+        joystickIndex, vendor, product, guidString, mappingResult, SDL_IsGameController(joystickIndex));
 }
 #endif
 //============================================================================
