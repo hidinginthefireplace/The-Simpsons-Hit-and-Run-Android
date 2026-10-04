@@ -731,9 +731,16 @@ class radControllerInputPointSDL
             m_TimeInState = 0; // Just changed
 
             //
-            // Notify callbacks
+            // Notify callbacks.
             //
-
+            // Android gamepad input is forwarded directly from SDL's raw
+            // joystick events into UserController::SetVirtualInputValue().
+            // Do not also feed the SDL GameController value into the Rad
+            // controller callback here: doing both creates two competing
+            // writers for the same mButtonArray entries and can resurrect
+            // released buttons or intermittently overwrite button presses.
+            //
+#if !defined(RAD_ANDROID)
             AddRef( ); // Don't want to self destruct while we're calling out
 
             IRadWeakCallbackWrapper * pIWcr;
@@ -745,10 +752,11 @@ class radControllerInputPointSDL
                 IRadControllerInputPointCallback * pCallback = ( IRadControllerInputPointCallback* ) pIWcr->GetWeakInterface( );
                 unsigned int userData = reinterpret_cast< uintptr_t >( pIWcr->GetUserData( ) );
 
-                pCallback->OnControllerInputPointChange( userData, m_Value );           
+                pCallback->OnControllerInputPointChange( userData, m_Value );
             }
 
             Release( );
+#endif
         }
         else
         {
@@ -2499,9 +2507,9 @@ class radControllerSystemSDL
                 switch ( event->jaxis.axis )
                 {
                     case 0: inputIndex = 16; break; // Left stick X
-                    case 1: inputIndex = 17; value = -value; break; // Left stick Y
+                    case 1: inputIndex = 17; break; // Left stick Y
                     case 2: inputIndex = 18; break; // Right stick X
-                    case 3: inputIndex = 19; value = -value; break; // Right stick Y
+                    case 3: inputIndex = 19; break; // Right stick Y
                     case 4:
                         inputIndex = 14; // Left trigger
                         value = ( value + 1.0f ) * 0.5f;
