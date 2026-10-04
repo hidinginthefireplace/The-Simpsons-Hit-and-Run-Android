@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - android11-rebuild-baseline
+      - android11-shield-final-controller-fix
   workflow_dispatch:
 
 jobs:
