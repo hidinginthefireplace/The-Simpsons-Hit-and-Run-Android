@@ -2450,6 +2450,15 @@ class radControllerSystemSDL
     #if SDL_MAJOR_VERSION < 3
         if( event->type == SDL_CONTROLLERDEVICEADDED )
         {
+#if defined(RAD_ANDROID)
+            /*
+             * Android InputDevice registration can happen after the
+             * controller system has finished its initial enumeration.
+             * Install the Android fallback mapping before SDL attempts to
+             * open the newly-added joystick as a GameController.
+             */
+            EnsureAndroidGameControllerMapping( event->cdevice.which );
+#endif
             pController = SDL_GameControllerOpen( event->cdevice.which );
         }
         else if( event->type == SDL_CONTROLLERDEVICEREMOVED )
