@@ -67,8 +67,18 @@ public class StorageActivity extends Activity {
         }
     }
 
+    private File getGameDataDirectory(String volumePath) {
+        File volumeDir = new File(volumePath);
+        // Some Android devices expose a removable volume whose mount point is
+        // already named "Simpsons". Do not create /Simpsons/Simpsons in that case.
+        if ("Simpsons".equalsIgnoreCase(volumeDir.getName())) {
+            return volumeDir;
+        }
+        return new File(volumeDir, "Simpsons");
+    }
+
     private void selectGameDataPath(String volumePath) {
-        File gameDir = new File(volumePath, "Simpsons");
+        File gameDir = getGameDataDirectory(volumePath);
 
         if (!hasBroadStorageAccess()) {
             pendingPath = gameDir.getAbsolutePath();
@@ -126,10 +136,12 @@ public class StorageActivity extends Activity {
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         int pad = (int) (32 * getResources().getDisplayMetrics().density);
         root.setPadding(pad, pad, pad, pad);
+        root.setBackgroundColor(android.graphics.Color.rgb(23, 59, 108)); // deep Simpsons blue
 
         TextView title = new TextView(this);
         title.setText("The Simpsons: Hit & Run\nGame Data Location");
         title.setTextSize(24);
+        title.setTextColor(android.graphics.Color.rgb(212, 176, 0)); // darker readable yellow
         title.setGravity(Gravity.CENTER);
         root.addView(title, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -140,6 +152,7 @@ public class StorageActivity extends Activity {
                 + "/storage/<USB-ID>/Simpsons\n\n"
                 + "Your selection is remembered for future launches.");
         help.setTextSize(16);
+        help.setTextColor(android.graphics.Color.WHITE);
         help.setGravity(Gravity.CENTER);
         root.addView(help, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -150,11 +163,13 @@ public class StorageActivity extends Activity {
             TextView current = new TextView(this);
             current.setText("\nCurrent: " + saved);
             current.setTextSize(16);
+            current.setTextColor(android.graphics.Color.rgb(212, 176, 0));
             current.setGravity(Gravity.CENTER);
             root.addView(current);
         }
 
         Button internal = new Button(this);
+        styleButton(internal);
         internal.setText("Use Internal Storage");
         internal.setFocusable(true);
         internal.setOnClickListener(v -> useInternalStorage());
@@ -162,8 +177,9 @@ public class StorageActivity extends Activity {
 
         for (File volume : getUsbVolumes()) {
             Button usb = new Button(this);
+            styleButton(usb);
             usb.setText("Use USB: " + volume.getName()
-                    + "\n" + new File(volume, "Simpsons").getAbsolutePath());
+                    + "\n" + getGameDataDirectory(volume.getAbsolutePath()).getAbsolutePath());
             usb.setFocusable(true);
             usb.setOnClickListener(v -> selectGameDataPath(volume.getAbsolutePath()));
             root.addView(usb, buttonParams());
@@ -171,6 +187,17 @@ public class StorageActivity extends Activity {
 
         setContentView(root);
         internal.requestFocus();
+    }
+
+    private void styleButton(Button button) {
+        button.setTextColor(android.graphics.Color.rgb(23, 59, 108));
+        android.graphics.drawable.GradientDrawable background = new android.graphics.drawable.GradientDrawable();
+        background.setColor(android.graphics.Color.rgb(212, 176, 0));
+        background.setCornerRadius(12 * getResources().getDisplayMetrics().density);
+        button.setBackground(background);
+        button.setAllCaps(false);
+        button.setTextSize(16);
+        button.setPadding(20, 16, 20, 16);
     }
 
     private LinearLayout.LayoutParams buttonParams() {
