@@ -208,6 +208,7 @@ int Android_OnPadDown(int device_id, int keycode)
     if (button >= 0) {
         SDL_LockJoysticks();
         item = JoystickByDeviceId(device_id);
+        SDL_Log("SHIELD-EXP PadDown: device=%d keycode=%d button=%d hasJoystick=%d", device_id, keycode, button, (item && item->joystick) ? 1 : 0);
         if (item && item->joystick) {
             SDL_PrivateJoystickButton(item->joystick, button, SDL_PRESSED);
         } else {
@@ -320,6 +321,8 @@ int Android_AddJoystick(int device_id, const char *name, const char *desc, int v
         }
     }
 
+    SDL_Log("SHIELD-EXP AddJoystick: device=%d name=%s desc=%s vendor=%04x product=%04x buttons=%08x axes=%d axisMask=%08x hats=%d", device_id, name ? name : "(null)", desc ? desc : "(null)", vendor_id, product_id, (unsigned int)button_mask, naxes, (unsigned int)axis_mask, nhats);
+
     if (JoystickByDeviceId(device_id) != NULL || !name) {
         goto done;
     }
@@ -398,6 +401,8 @@ int Android_AddJoystick(int device_id, const char *name, const char *desc, int v
     ++numjoysticks;
 
     SDL_PrivateJoystickAdded(item->device_instance);
+
+    SDL_Log("SHIELD-EXP joystick added: device=%d instance=%d count=%d", device_id, (int)item->device_instance, numjoysticks);
 
     result = numjoysticks;
 
