@@ -234,9 +234,24 @@ class SDLJoystickHandler_API16 extends SDLJoystickHandler {
                     }
 
                     mJoysticks.add(joystick);
-                    SDLControllerManager.nativeAddJoystick(joystick.device_id, joystick.name, joystick.desc,
-                            getVendorId(joystickDevice), getProductId(joystickDevice), false,
-                            getButtonMask(joystickDevice), joystick.axes.size(), getAxisMask(joystick.axes), joystick.hats.size()/2, 0);
+                    int vendorId = getVendorId(joystickDevice);
+                    int productId = getProductId(joystickDevice);
+                    int buttonMask = getButtonMask(joystickDevice);
+                    int axisMask = getAxisMask(joystick.axes);
+                    Log.i(TAG, "SHIELD-EXP Android joystick: id=" + joystick.device_id
+                            + " name=" + joystick.name
+                            + " desc=" + joystick.desc
+                            + " vendor=" + vendorId
+                            + " product=" + productId
+                            + " axes=" + joystick.axes.size()
+                            + " hats=" + (joystick.hats.size()/2)
+                            + " buttonMask=0x" + Integer.toHexString(buttonMask)
+                            + " axisMask=0x" + Integer.toHexString(axisMask));
+                    int addResult = SDLControllerManager.nativeAddJoystick(joystick.device_id, joystick.name, joystick.desc,
+                            vendorId, productId, false,
+                            buttonMask, joystick.axes.size(), axisMask, joystick.hats.size()/2, 0);
+                    Log.i(TAG, "SHIELD-EXP nativeAddJoystick result=" + addResult
+                            + " id=" + joystick.device_id);
                 }
             }
         }
