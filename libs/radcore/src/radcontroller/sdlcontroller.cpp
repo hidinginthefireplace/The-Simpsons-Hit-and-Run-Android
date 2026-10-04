@@ -171,7 +171,7 @@ extern "C" void radControllerSDLSetAndroidRumblePolicyCallback(
 }
 
 typedef void (*AndroidGamepadCandidateConnectedCallback)(int instanceId);
-typedef void (*AndroidGamepadInputCallback)(int instanceId, float magnitude);
+typedef void (*AndroidGamepadInputCallback)(int instanceId, int inputIndex, float value);
 typedef void (*AndroidGamepadDisconnectedCallback)(int instanceId);
 
 static AndroidGamepadCandidateConnectedCallback
@@ -294,6 +294,7 @@ static void AndroidNotifyPhysicalGamepadInputFromPoint
     SDL_Gamepad* pController,
 #endif
     const char* pType,
+    unsigned int inputIndex,
     float oldValue,
     float newValue
 )
@@ -332,10 +333,8 @@ static void AndroidNotifyPhysicalGamepadInputFromPoint
         }
     }
 
-    if ( magnitude > 0.0f )
-    {
-        sAndroidGamepadInputCallback( instanceId, magnitude );
-    }
+    /* Mirror the already-normalized Rad input into UserController. */
+    sAndroidGamepadInputCallback( instanceId, static_cast<int>( inputIndex ), newValue );
 }
 
 
@@ -689,6 +688,7 @@ class radControllerInputPointSDL
                 AndroidNotifyPhysicalGamepadInputFromPoint(
                     m_pController,
                     m_pType,
+                    m_GameInputIndex,
                     oldValue,
                     newValue
                 );
@@ -927,12 +927,13 @@ class radControllerInputPointSDL
     // radControllerInputPointSDL::radControllerInputPointSDL
     //========================================================================
 #if SDL_MAJOR_VERSION < 3
-    radControllerInputPointSDL( SDL_GameController * pController, const char * pType, const char * pName, int id )
+    radControllerInputPointSDL( SDL_GameController * pController, const char * pType, const char * pName, int id, unsigned int inputIndex )
 #else
     radControllerInputPointSDL( SDL_Gamepad * pController, const char * pType, const char * pName, int id )
 #endif
         :
         radRefCount( 0 ),
+        m_GameInputIndex( inputIndex ),
         m_Value( 0.0f ),
         m_MinRange( 0.0f ),
         m_MaxRange( 1.0f ),
@@ -978,6 +979,7 @@ class radControllerInputPointSDL
     const char * m_pName;
 
     int m_Identifier;
+    unsigned int m_GameInputIndex;
 #if SDL_MAJOR_VERSION < 3
     SDL_GameController * m_pController;
 #else
@@ -1943,7 +1945,8 @@ else
                 m_pController,
                 g_SDLPoints[ button ].m_pType,
                 g_SDLPoints[ button ].m_pName,
-                g_SDLPoints[ button ].m_Mask
+                g_SDLPoints[ button ].m_Mask,
+                button
             );
 
             m_xIOl_InputPoints->AddObject( pInputPoint );
