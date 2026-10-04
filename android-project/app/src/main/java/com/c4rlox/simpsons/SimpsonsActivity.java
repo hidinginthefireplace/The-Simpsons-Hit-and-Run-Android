@@ -7,6 +7,8 @@ public class SimpsonsActivity extends SDLActivity {
 
     private static final String GAME_DATA_PREFS = "game_data_location";
     private static final String GAME_DATA_PATH_KEY = "path";
+    private static final long DOUBLE_BACK_TIMEOUT_MS = 1000;
+    private long lastBackPressTime = 0;
 
     public static void setGameDataPath(Context context, String path) {
         if (context == null) {
@@ -53,6 +55,18 @@ public class SimpsonsActivity extends SDLActivity {
             }
         }
         return null;
+    }
+
+    @Override
+    public void onBackPressed() {
+        long now = System.currentTimeMillis();
+
+        if (now - lastBackPressTime <= DOUBLE_BACK_TIMEOUT_MS) {
+            finishAndRemoveTask();
+            return;
+        }
+
+        lastBackPressTime = now;
     }
 
 }
