@@ -704,7 +704,17 @@ void InputManager::Update( unsigned int timeinms )
 
 void InputManager::OnControllerConnectionStatusChange( IRadController * pIController2 )
 {
+#if defined(RAD_ANDROID)
+    /*
+     * Android controller input is delivered through the raw SDL joystick
+     * bridge. Re-enumerating the Rad controller here would clear the virtual
+     * input array while the raw event stream is still active.
+     */
+    (void)pIController2;
+    return;
+#else
     mConnectStateChanged = true;
+#endif
 }
 
 bool InputManager::IsControllerInPort( int portnum ) const
