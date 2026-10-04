@@ -253,28 +253,6 @@ static void AndroidNotifyPhysicalGamepadInputPoint( int instanceId, int inputInd
     }
 }
 
-static int AndroidButtonToInputPoint( int button )
-{
-    switch ( button )
-    {
-        case SDL_CONTROLLER_BUTTON_DPAD_UP: return 0;
-        case SDL_CONTROLLER_BUTTON_DPAD_DOWN: return 1;
-        case SDL_CONTROLLER_BUTTON_DPAD_LEFT: return 2;
-        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: return 3;
-        case SDL_CONTROLLER_BUTTON_START: return 4;
-        case SDL_CONTROLLER_BUTTON_BACK: return 5;
-        case SDL_CONTROLLER_BUTTON_LEFTSTICK: return 6;
-        case SDL_CONTROLLER_BUTTON_RIGHTSTICK: return 7;
-        case SDL_CONTROLLER_BUTTON_A: return 8;
-        case SDL_CONTROLLER_BUTTON_B: return 9;
-        case SDL_CONTROLLER_BUTTON_X: return 10;
-        case SDL_CONTROLLER_BUTTON_Y: return 11;
-        case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: return 12;
-        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: return 13;
-        default: return -1;
-    }
-}
-
 static void AndroidNotifyPhysicalGamepadCandidateConnected
 (
     int instanceId
@@ -733,14 +711,12 @@ class radControllerInputPointSDL
             //
             // Notify callbacks.
             //
-            // Android gamepad input is forwarded directly from SDL's raw
-            // joystick events into UserController::SetVirtualInputValue().
-            // Do not also feed the SDL GameController value into the Rad
-            // controller callback here: doing both creates two competing
-            // writers for the same mButtonArray entries and can resurrect
-            // released buttons or intermittently overwrite button presses.
+            // SDL's GameController value is the authoritative input
+            // source. Android raw joystick events are decoded by SDL and
+            // exposed through the GameController API, so do not maintain a
+            // second virtual-input writer on Android.
             //
-#if !defined(RAD_ANDROID)
+            AddRef( ); // Don't want to self destruct while we're calling out
             AddRef( ); // Don't want to self destruct while we're calling out
 
             IRadWeakCallbackWrapper * pIWcr;
@@ -2471,85 +2447,6 @@ class radControllerSystemSDL
         #if defined(RAD_ANDROID)
             int androidInstanceId = -1;
 
-            /*
-             * Android's Java input layer feeds physical Shield-controller
-             * buttons/axes into SDL as raw joystick events. Some Android
-             * controllers never become SDL_GameController devices, so the
-             * normal Radical controller path never sees them.
-             *
-             * Forward raw Android joystick events directly to InputManager's
-             * virtual controller fallback. This intentionally sits here,
-             * after SDL has decoded the Android event but before Radical
-             * requires a GameController mapping.
-             */
-            if ( event->type == SDL_JOYBUTTONDOWN ||
-                 event->type == SDL_JOYBUTTONUP )
-            {
-                const int inputIndex = AndroidButtonToInputPoint(
-                    static_cast<int>( event->jbutton.button )
-                );
-
-                if ( inputIndex >= 0 )
-                {
-                    AndroidNotifyPhysicalGamepadInputPoint(
-                        static_cast<int>( event->jbutton.which ),
-                        inputIndex,
-                        event->type == SDL_JOYBUTTONDOWN ? 1.0f : 0.0f
-                    );
-                }
-            }
-            else if ( event->type == SDL_JOYAXISMOTION )
-            {
-                int inputIndex = -1;
-                float value =
-                    static_cast<float>( event->jaxis.value ) / 32767.0f;
-
-                switch ( event->jaxis.axis )
-                {
-                    case 0: inputIndex = 16; break; // Left stick X
-                    case 1: inputIndex = 17; break; // Left stick Y
-                    case 2: inputIndex = 18; break; // Right stick X
-                    case 3: inputIndex = 19; break; // Right stick Y
-                    case 4:
-                        inputIndex = 14; // Left trigger
-                        value = ( value + 1.0f ) * 0.5f;
-                        break;
-                    case 5:
-                        inputIndex = 15; // Right trigger
-                        value = ( value + 1.0f ) * 0.5f;
-                        break;
-                    default: break;
-                }
-
-                if ( inputIndex >= 0 )
-                {
-                    AndroidNotifyPhysicalGamepadInputPoint(
-                        static_cast<int>( event->jaxis.which ),
-                        inputIndex,
-                        value
-                    );
-                }
-            }
-            else if ( event->type == SDL_JOYHATMOTION )
-            {
-                /*
-                 * Android/SDL may expose the Shield D-pad as a hat rather
-                 * than four joystick buttons. Forward the four independent
-                 * directions into the same virtual input points so both
-                 * press and release are delivered.
-                 */
-                const Uint8 hat = event->jhat.value;
-                const int instanceId = static_cast<int>( event->jhat.which );
-
-                AndroidNotifyPhysicalGamepadInputPoint(
-                    instanceId, 0, ( hat & SDL_HAT_UP ) ? 1.0f : 0.0f );
-                AndroidNotifyPhysicalGamepadInputPoint(
-                    instanceId, 1, ( hat & SDL_HAT_DOWN ) ? 1.0f : 0.0f );
-                AndroidNotifyPhysicalGamepadInputPoint(
-                    instanceId, 2, ( hat & SDL_HAT_LEFT ) ? 1.0f : 0.0f );
-                AndroidNotifyPhysicalGamepadInputPoint(
-                    instanceId, 3, ( hat & SDL_HAT_RIGHT ) ? 1.0f : 0.0f );
-            }
         #endif
 
     #if SDL_MAJOR_VERSION < 3
