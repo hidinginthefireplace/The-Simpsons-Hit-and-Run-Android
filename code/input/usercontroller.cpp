@@ -268,6 +268,12 @@ void UserController::SetGameState( unsigned state)
 
 void UserController::OnControllerInputPointChange( unsigned int buttonId, float value )
 {
+#if defined(RAD_ANDROID)
+    if ( buttonId < 16 )
+    {
+        LOGI("SHIELD_INPUT button=%u value=%f", buttonId, value);
+    }
+#endif
     // We need to query the input point directly to get the value
     // remapped to the requested range.
 
