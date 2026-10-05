@@ -32,6 +32,9 @@
 #include <p3d/view.hpp>
 #include <p3d/effects/particlesystem.hpp>
 #include <pddi/pddi.hpp>
+#ifdef RAD_ANDROID
+#include <pddi/gles/glcon.hpp>
+#endif
 #include <p3d/utility.hpp>
 #include <typeinfo>
 #include <p3d/anim/visibilityanimation.hpp>
@@ -1078,7 +1081,23 @@ BEGIN_PROFILE("GeometryVehicle::CompDraw->Disp")
     }
     if( sbDrawVehicle )
     {
+#ifdef RAD_ANDROID
+        if (IsCelShadingEnabled())
+        {
+            SetCelShadingObjectEnabled(true);
+            SetCelShadingOutlinePass(true);
+            mCompositeDrawable->Display();
+            SetCelShadingOutlinePass(false);
+            mCompositeDrawable->Display();
+            SetCelShadingObjectEnabled(false);
+        }
+        else
+        {
+            mCompositeDrawable->Display();
+        }
+#else
         mCompositeDrawable->Display();
+#endif
     }
     if( !smokeFirst )
     {
