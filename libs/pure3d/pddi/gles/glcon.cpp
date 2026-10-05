@@ -66,7 +66,7 @@ void SetCelShadingOutlinePass(bool enabled)
                 glCullFace(mode == PDDI_CULL_INVERTED ? GL_BACK : GL_FRONT);
             }
         }
-        glDepthMask(GL_TRUE);
+        glDepthMask(gCelShadingContext ? (gCelShadingContext->GetZWrite() ? GL_TRUE : GL_FALSE) : GL_TRUE);
     }
 
     ApplyCelShadingState();
@@ -267,9 +267,11 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "void main() {\n"
         "    vec4 V = modelview * vec4(position, 1.0);\n"
         "    toonNormal = normalize(mat3(normalmatrix) * normal);\n"
+#ifdef RAD_ANDROID
         "    if (toonEnabled != 0 && toonObjectEnabled != 0 && toonOutlinePass != 0) {\n"
         "        V.xyz += toonNormal * toonOutlineWidth;\n"
         "    }\n"
+#endif
         "    toonViewPos = V.xyz;\n"
         "    tc = texcoord;\n"
         "    cpri = color;\n"
