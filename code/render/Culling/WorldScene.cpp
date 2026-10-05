@@ -31,6 +31,10 @@
 #include <worldsim/character/character.h>
 #include <pddi/pdditype.hpp>
 
+#ifdef RAD_ANDROID
+void SetCelShadingSuppressed(bool suppressed);
+#endif
+
 #ifdef DEBUGWATCH
 #include <simcollision/collisiondisplay.hpp>
 #include <simcollision/collisionmanager.hpp>
@@ -1623,6 +1627,9 @@ END_PROFILE("list construction")
 //========================================================================
 void WorldScene::RenderShadows()
 {
+#ifdef RAD_ANDROID
+    SetCelShadingSuppressed(true);
+#endif
     for( int i=mShadowCastersPass1.mUseSize-1; i>-1; i-- )
     {
         mShadowCastersPass1[i]->DisplayShadow();
@@ -1635,6 +1642,9 @@ void WorldScene::RenderShadows()
 	{
 		mpZSortsPassShadowCasters[i]->DisplayShadow();
 	}
+#ifdef RAD_ANDROID
+    SetCelShadingSuppressed(false);
+#endif
 }
 
 /*========================================================================
@@ -1643,6 +1653,9 @@ shadow generator setup since the tris won't shade properly.
 ========================================================================*/
 void WorldScene::RenderSimpleShadows( void )
 {
+#ifdef RAD_ANDROID
+    SetCelShadingSuppressed(true);
+#endif
     p3d::pddi->SetZWrite(false);
 	for( int i = 0; i < mShadowCastersPass1.mUseSize; ++i )
 	{
@@ -1657,6 +1670,9 @@ void WorldScene::RenderSimpleShadows( void )
 		mpZSortsPassShadowCasters[i]->DisplaySimpleShadow();
 	}
     p3d::pddi->SetZWrite( true );
+#ifdef RAD_ANDROID
+    SetCelShadingSuppressed(false);
+#endif
 }
 //========================================================================
 // WorldScene::
