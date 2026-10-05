@@ -9,6 +9,7 @@
 #include <p3d/view.hpp>
 #include <pddi/pddi.hpp>
 #ifdef RAD_ANDROID
+#include <pddi/gles/gl.hpp>
 #include <pddi/gles/glcon.hpp>
 #endif
 #include <camera/supercammanager.h>
