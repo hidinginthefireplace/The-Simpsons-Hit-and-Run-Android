@@ -33,6 +33,7 @@
 
 #ifdef RAD_ANDROID
 void SetCelShadingSuppressed(bool suppressed);
+void SetCelShadingWorldScope(bool scoped);
 #endif
 
 #ifdef DEBUGWATCH
@@ -1711,6 +1712,9 @@ DSG_SET_PROFILE('C')
 
 void WorldScene::RenderOpaque( void )
 {
+#ifdef RAD_ANDROID
+    SetCelShadingWorldScope(true);
+#endif
 #ifdef TEST_DISTRIBUTED_SORT
     BEGIN_PROFILE("qsort1")
 	    //qsort(mpZSorts.mpData, (size_t)mpZSorts.mUseSize, sizeof(zSortBlah), gShaderCompare);
