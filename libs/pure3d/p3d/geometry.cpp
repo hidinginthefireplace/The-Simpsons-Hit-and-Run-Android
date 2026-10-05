@@ -26,7 +26,11 @@ static bool ShouldCelShadeGeometry(tPrimGroup* group)
     if (!IsCelShadingEnabled() || IsCelShadingSuppressed() || !group)
         return false;
 
-    return group != NULL && IsCelShadingObjectEnabled();
+    if (IsCelShadingObjectEnabled())
+        return true;
+
+    tShader* shader = group->GetShader();
+    return shader != NULL && !shader->mTranslucent;
 }
 #endif
 #include <constants/chunkids.hpp>
