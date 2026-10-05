@@ -25,8 +25,7 @@ static bool ShouldCelShadeGeometry(tPrimGroup* group)
     if (!IsCelShadingEnabled() || IsCelShadingSuppressed() || !group)
         return false;
 
-    tShader* shader = group->GetShader();
-    return shader != NULL && !shader->mTranslucent;
+    return group != NULL && IsCelShadingObjectEnabled();
 }
 #endif
 #include <constants/chunkids.hpp>
@@ -114,12 +113,21 @@ void tGeometry::Display()
 #ifdef RAD_ANDROID
             if (ShouldCelShadeGeometry(primGroup[i]))
             {
-                SetCelShadingObjectEnabled(true);
+                const bool objectScopeWasEnabled = IsCelShadingObjectEnabled();
+                if (!objectScopeWasEnabled)
+                {
+                    SetCelShadingObjectEnabled(true);
+                }
+
                 SetCelShadingOutlinePass(true);
                 primGroup[i]->Display();
                 SetCelShadingOutlinePass(false);
                 primGroup[i]->Display();
-                SetCelShadingObjectEnabled(false);
+
+                if (!objectScopeWasEnabled)
+                {
+                    SetCelShadingObjectEnabled(false);
+                }
             }
             else
             {
