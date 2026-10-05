@@ -21,6 +21,7 @@
 #include <p3d/anim/instancedgeometry.hpp>
 #ifdef RAD_ANDROID
 bool IsCelShadingEnabled();
+bool IsCelShadingObjectEnabled();
 void SetCelShadingObjectEnabled(bool enabled);
 bool IsCelShadingSuppressed();
 bool IsCelShadingOutlinePass();
@@ -31,8 +32,7 @@ static bool ShouldCelShadeSkin(tPrimGroup* group)
     if (!IsCelShadingEnabled() || IsCelShadingSuppressed() || !group)
         return false;
 
-    tShader* shader = group->GetShader();
-    return shader != NULL && !shader->mTranslucent;
+    return group != NULL && IsCelShadingObjectEnabled();
 }
 #endif
 
@@ -114,12 +114,21 @@ void tPolySkin::Display(tPose* p)
 #ifdef RAD_ANDROID
         if (ShouldCelShadeSkin(primGroup[j]))
         {
-            SetCelShadingObjectEnabled(true);
+            const bool objectScopeWasEnabled = IsCelShadingObjectEnabled();
+            if (!objectScopeWasEnabled)
+            {
+                SetCelShadingObjectEnabled(true);
+            }
+
             SetCelShadingOutlinePass(true);
             primGroup[j]->Display();
             SetCelShadingOutlinePass(false);
             primGroup[j]->Display();
-            SetCelShadingObjectEnabled(false);
+
+            if (!objectScopeWasEnabled)
+            {
+                SetCelShadingObjectEnabled(false);
+            }
         }
         else
         {
@@ -157,12 +166,21 @@ void tPolySkin::DisplayInstanced(tPose* p, unsigned count)
 #ifdef RAD_ANDROID
         if (ShouldCelShadeSkin(primGroup[j]))
         {
-            SetCelShadingObjectEnabled(true);
+            const bool objectScopeWasEnabled = IsCelShadingObjectEnabled();
+            if (!objectScopeWasEnabled)
+            {
+                SetCelShadingObjectEnabled(true);
+            }
+
             SetCelShadingOutlinePass(true);
             primGroup[j]->DisplayInstanced(count);
             SetCelShadingOutlinePass(false);
             primGroup[j]->DisplayInstanced(count);
-            SetCelShadingObjectEnabled(false);
+
+            if (!objectScopeWasEnabled)
+            {
+                SetCelShadingObjectEnabled(false);
+            }
         }
         else
         {
