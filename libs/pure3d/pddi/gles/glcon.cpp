@@ -322,6 +322,7 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
 
         "vec3 toonLightingColor() {\n"
         "    vec3 n = normalize(toonNormal);\n"
+        "    if (toonEnabled == 0 || toonObjectEnabled == 0) {\n"
         "        vec3 diff = ecm.rgb + acm.rgb * acs.rgb;\n"
         "        vec3 spec = vec3(0.0);\n"
 #ifdef RAD_ANDROID
