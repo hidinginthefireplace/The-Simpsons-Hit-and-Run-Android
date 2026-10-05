@@ -24,6 +24,8 @@ bool IsCelShadingEnabled();
 void SetCelShadingEnabled(bool enabled);
 bool IsCelShadingObjectEnabled();
 void SetCelShadingObjectEnabled(bool enabled);
+bool IsCelShadingSuppressed();
+void SetCelShadingSuppressed(bool suppressed);
 bool IsCelShadingOutlinePass();
 void SetCelShadingOutlinePass(bool enabled);
 #endif
