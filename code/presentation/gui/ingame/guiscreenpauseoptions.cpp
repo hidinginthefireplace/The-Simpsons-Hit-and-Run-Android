@@ -17,8 +17,10 @@
 //===========================================================================
 #include <presentation/gui/ingame/guiscreenpauseoptions.h>
 #ifdef RAD_ANDROID
-#include <pddi/gles/gl.hpp>
-#include <pddi/gles/glcon.hpp>
+// Keep the GUI layer independent of the GLES implementation headers.  glcon.hpp
+// contains OpenGL types which are not available in this translation unit.
+bool IsCelShadingEnabled();
+void SetCelShadingEnabled(bool enabled);
 #endif
 #include <presentation/gui/guimenu.h>
 
