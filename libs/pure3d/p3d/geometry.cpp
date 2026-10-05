@@ -11,6 +11,23 @@
 #include <constants/chunks.h>
 #include <p3d/utility.hpp>
 #include <pddi/pddiext.hpp>
+#include <p3d/shader.hpp>
+
+#ifdef RAD_ANDROID
+bool IsCelShadingEnabled();
+void SetCelShadingObjectEnabled(bool enabled);
+bool IsCelShadingOutlinePass();
+void SetCelShadingOutlinePass(bool enabled);
+
+static bool ShouldCelShadeGeometry(tPrimGroup* group)
+{
+    if (!IsCelShadingEnabled() || !group)
+        return false;
+
+    tShader* shader = group->GetShader();
+    return shader != NULL && !shader->mTranslucent;
+}
+#endif
 #include <constants/chunkids.hpp>
 #include <p3d/array.hpp>
 
@@ -93,7 +110,23 @@ void tGeometry::Display()
     {
         if( primGroup[i])
         {
+#ifdef RAD_ANDROID
+            if (ShouldCelShadeGeometry(primGroup[i]))
+            {
+                SetCelShadingObjectEnabled(true);
+                SetCelShadingOutlinePass(true);
+                primGroup[i]->Display();
+                SetCelShadingOutlinePass(false);
+                primGroup[i]->Display();
+                SetCelShadingObjectEnabled(false);
+            }
+            else
+            {
+                primGroup[i]->Display();
+            }
+#else
             primGroup[i]->Display();
+#endif
         }
     }
 }
