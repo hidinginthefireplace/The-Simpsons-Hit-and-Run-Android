@@ -223,17 +223,10 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
         pGraphicsValue->SetString( 0, IsCelShadingEnabled() ? "ON" : "OFF" );
     }
 
-    // This page is the full pause-options canvas.  Center the complete three-row
-    // menu group against the page rather than relying on the old fixed +50 offset.
+    // Keep the original Scrooby menu layout, but move the complete three-row
+    // Android options group upward so it sits around the vertical centre.
     menu->ResetTransformation();
-    int menuXMin = 0, menuYMin = 0, menuXMax = 0, menuYMax = 0;
-    int pageXMin = 0, pageYMin = 0, pageXMax = 0, pageYMax = 0;
-    menu->GetBoundingBox( menuXMin, menuYMin, menuXMax, menuYMax );
-    pPage->GetBoundingBox( pageXMin, pageYMin, pageXMax, pageYMax );
-
-    const int menuCenterY = ( menuYMin + menuYMax ) / 2;
-    const int pageCenterY = ( pageYMin + pageYMax ) / 2;
-    menu->Translate( 0, pageCenterY - menuCenterY );
+    menu->Translate( 0, -70 );
 
     // Give the Cel Shading row the normal left/right value arrows.
     if( pGraphicsLArrow && pGraphicsRArrow )
