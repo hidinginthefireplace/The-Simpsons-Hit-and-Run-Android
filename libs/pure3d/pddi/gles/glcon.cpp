@@ -1215,7 +1215,6 @@ void pglContext::SetShaderProgram(pglProgram* program)
 #endif
         return;
     }
-        return;
 
     if(currentProgram)
         currentProgram->Release();
