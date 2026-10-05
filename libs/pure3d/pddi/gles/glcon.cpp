@@ -230,6 +230,12 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "varying vec4 cpri;\n"
         "varying vec3 toonNormal;\n"
         "varying vec3 toonViewPos;\n"
+#ifdef RAD_ANDROID
+        "uniform int toonEnabled;\n"
+        "uniform int toonObjectEnabled;\n"
+        "uniform int toonOutlinePass;\n"
+        "uniform float toonOutlineWidth;\n"
+#endif
         "void main() {\n"
         "    vec4 V = modelview * vec4(position, 1.0);\n"
         "    toonNormal = normalize(mat3(normalmatrix) * normal);\n"
