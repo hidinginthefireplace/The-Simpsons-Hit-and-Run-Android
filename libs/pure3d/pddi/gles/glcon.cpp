@@ -313,19 +313,9 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "float product(vec3 x, vec3 y) { return max(dot(x,y), 0.0); }\n"
         "float power(float x, float y) { return y != 0.0 ? pow(x,y) : 1.0; }\n"
 
-        // Two broad bands: a single flat lit tone and a stronger painted shadow.
-        "float toonBand(float ndotl) {\n"
-        "    return (ndotl < 0.42) ? 0.32 : 1.0;\n"
-        "}\n"
-
-        // Flatten the source texture toward one base tone while preserving hue.
-        // This intentionally removes small baked-in brightness variations that
-        // made character surfaces look dithered under the toon thresholds.
-        "vec3 flattenToonColour(vec3 colour) {\n"
-        "    float luminance = dot(colour, vec3(0.299, 0.587, 0.114));\n"
-        "    float targetLuminance = 0.72;\n"
-        "    return colour * (targetLuminance / max(luminance, 0.05));\n"
-        "}\n"
+        // One flat toon tone for enabled characters and vehicles. This removes
+        // the two-band light/shadow jump and keeps the source texture colours intact.
+        "const float toonFlatLight = 0.78;\n"
 
         // Very restrained rim light. Set to 0.0 to disable for a flatter look.
         "const float toonRimStrength = 0.0;\n"
@@ -352,31 +342,10 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "        }\n"
         "        return diff + spec;\n"
         "    }\n"
-        "    vec3 diff = ecm.rgb + acm.rgb * acs.rgb;\n"
-        "    vec3 spec = vec3(0.0);\n"
 #ifdef RAD_ANDROID
         "    if (lit == 0) return vec3(1.0);\n"
 #endif
-        "    vec3 n = normalize(toonNormal);\n"
-        "    for (int i = 0; i < " PDDI_STRINGIZE(PDDI_MAX_LIGHTS) "; i++) {\n"
-        "        if (lights[i].enabled == 0) continue;\n"
-        "        vec3 VP = direction(vec4(toonViewPos, 1.0), lights[i].position);\n"
-        "        float ndotl = product(n, VP);\n"
-        "        float band = toonBand(ndotl);\n"
-        "        vec3 h = normalize(VP + vec3(0.0, 0.0, 1.0));\n"
-        "        float specular = power(product(n, h), srm);\n"
-        "        float toonSpec = step(0.95, specular) * step(0.08, ndotl);\n"
-        "        vec3 k = lights[i].attenuation;\n"
-        "        float d = distance(toonViewPos, lights[i].position.xyz);\n"
-        "        float att = lights[i].position.w != 0.0 ? 1.0 / (k[0] + k[1] * d + k[2] * d * d) : 1.0;\n"
-        "        diff += att * band * dcm.rgb * lights[i].colour.rgb;\n"
-        "        spec += att * toonSpec * scm.rgb * lights[i].colour.rgb;\n"
-        "    }\n"
-        "    if (toonRimStrength > 0.0) {\n"
-        "        float rim = pow(1.0 - max(dot(n, normalize(-toonViewPos)), 0.0), 2.5);\n"
-        "        diff += vec3(toonRimStrength * rim);\n"
-        "    }\n"
-        "    return diff + spec;\n"
+        "    return dcm.rgb * toonFlatLight;\n"
         "}\n";
 
     GLuint fragmentShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
@@ -399,9 +368,6 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "        gl_FragColor = vec4(0.0, 0.0, 0.0, base.a);\n"
         "        return;\n"
         "    }\n"
-        "    if (toonEnabled != 0 && toonObjectEnabled != 0) {\n"
-        "        base.rgb = flattenToonColour(base.rgb);\n"
-        "    }\n"
         "    gl_FragColor = base * vec4(toonLightingColor(), dcm.a);\n"
         "}\n"
     ).c_str());
@@ -416,9 +382,6 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "        if (base.a < alpharef) discard;\n"
         "        gl_FragColor = vec4(0.0, 0.0, 0.0, base.a);\n"
         "        return;\n"
-        "    }\n"
-        "    if (toonEnabled != 0 && toonObjectEnabled != 0) {\n"
-        "        base.rgb = flattenToonColour(base.rgb);\n"
         "    }\n"
         "    vec4 c = base * vec4(toonLightingColor(), dcm.a);\n"
         "    if (c.a < alpharef) discard;\n"
