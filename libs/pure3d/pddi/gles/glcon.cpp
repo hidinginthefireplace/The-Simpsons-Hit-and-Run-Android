@@ -317,8 +317,8 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         // the two-band light/shadow jump and keeps the source texture colours intact.
         "const float toonFlatLight = 0.78;\n"
 
-        // Very restrained rim light. Set to 0.0 to disable for a flatter look.
-        "const float toonRimStrength = 0.0;\n"
+        // Subtle camera-facing rim highlight for the flat toon pass.
+        "const float toonRimStrength = 0.15;\n"
 
         "vec3 toonLightingColor() {\n"
         "    if (toonEnabled == 0 || toonObjectEnabled == 0) {\n"
@@ -345,7 +345,8 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
 #ifdef RAD_ANDROID
         "    if (lit == 0) return vec3(1.0);\n"
 #endif
-        "    return dcm.rgb * toonFlatLight;\n"
+        "    float rim = pow(1.0 - max(dot(n, normalize(-toonViewPos)), 0.0), 2.5);\n"
+        "    return dcm.rgb * (toonFlatLight + toonRimStrength * rim);\n"
         "}\n";
 
     GLuint fragmentShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
