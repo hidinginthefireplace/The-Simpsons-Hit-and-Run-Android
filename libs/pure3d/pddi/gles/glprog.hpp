@@ -75,6 +75,9 @@ protected:
     // Ubicación del uniform "lit" del vertex shader.
     GLint lit;
     GLint toonEnabled;
+    GLint toonObjectEnabled;
+    GLint toonOutlinePass;
+    GLint toonOutlineWidth;
     #endif
 #endif
 };
