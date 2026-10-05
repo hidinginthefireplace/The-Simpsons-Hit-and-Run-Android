@@ -33,6 +33,9 @@
 
 #ifdef RAD_ANDROID
 void SetCelShadingSuppressed(bool suppressed);
+bool IsCelShadingEnabled();
+bool IsCelShadingObjectEnabled();
+void SetCelShadingObjectEnabled(bool enabled);
 #endif
 
 #ifdef DEBUGWATCH
@@ -1711,6 +1714,14 @@ DSG_SET_PROFILE('C')
 
 void WorldScene::RenderOpaque( void )
 {
+#ifdef RAD_ANDROID
+    const bool celObjectScopeWasEnabled = IsCelShadingObjectEnabled();
+    if (IsCelShadingEnabled() && !celObjectScopeWasEnabled)
+    {
+        SetCelShadingObjectEnabled(true);
+    }
+#endif
+
 #ifdef TEST_DISTRIBUTED_SORT
     BEGIN_PROFILE("qsort1")
 	    //qsort(mpZSorts.mpData, (size_t)mpZSorts.mUseSize, sizeof(zSortBlah), gShaderCompare);
@@ -1729,6 +1740,13 @@ BEGIN_PROFILE("qsort display")
 //END_PROFILE("opaque inner")	
 	}
 END_PROFILE("qsort display")
+
+#ifdef RAD_ANDROID
+    if (!celObjectScopeWasEnabled)
+    {
+        SetCelShadingObjectEnabled(false);
+    }
+#endif
 }
 
 void WorldScene::RenderTranslucent( void )
