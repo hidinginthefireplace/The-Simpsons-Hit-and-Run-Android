@@ -321,7 +321,8 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "const float toonRimStrength = 0.20;\n"
 
         "vec3 toonLightingColor() {\n"
-        "    vec3 n = normalize(toonNormal);\n"
+        "    float normalLength = length(toonNormal);\n"
+        "    vec3 n = normalLength > 0.0001 ? toonNormal / normalLength : vec3(0.0, 0.0, 1.0);\n"
         "    if (toonEnabled == 0 || toonObjectEnabled == 0) {\n"
         "        vec3 diff = ecm.rgb + acm.rgb * acs.rgb;\n"
         "        vec3 spec = vec3(0.0);\n"
@@ -343,10 +344,14 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "        return diff + spec;\n"
         "    }\n"
 #ifdef RAD_ANDROID
-        "    if (lit == 0) return vec3(1.0);\n"
+        "    vec3 toonDiffuseColor = (lit != 0) ? dcm.rgb : vec3(1.0);\n"
+#else
+        "    vec3 toonDiffuseColor = dcm.rgb;\n"
 #endif
-        "    float rim = pow(1.0 - max(dot(n, normalize(-toonViewPos)), 0.0), 2.5);\n"
-        "    return dcm.rgb * (toonFlatLight + toonRimStrength * rim);\n"
+        "    float viewLength = length(toonViewPos);\n"
+        "    vec3 viewDir = viewLength > 0.0001 ? (-toonViewPos / viewLength) : vec3(0.0, 0.0, 1.0);\n"
+        "    float rim = pow(1.0 - max(dot(n, viewDir), 0.0), 2.5);\n"
+        "    return toonDiffuseColor * (toonFlatLight + toonRimStrength * rim);\n"
         "}\n";
 
     GLuint fragmentShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
@@ -697,7 +702,27 @@ void pglContext::EndPrims(pddiPrimStream* stream)
         glVertexAttrib4f( 3, 1.0f, 1.0f, 1.0f, 1.0f );
     }
 
+#ifdef RAD_ANDROID
+    // Apply the same global toon treatment to immediate/streamed primitives.
+    // This is intentionally unconditional in this experiment, including
+    // sky, shadows, effects, and UI-like primitive streams.
+    const bool autoToonScope = IsCelShadingEnabled() && !IsCelShadingObjectEnabled();
+    if (autoToonScope)
+    {
+        SetCelShadingObjectEnabled(true);
+        SetCelShadingOutlinePass(true);
+        glDrawArrays( glstream->primitive, 0, glstream->coords.size() );
+        SetCelShadingOutlinePass(false);
+        glDrawArrays( glstream->primitive, 0, glstream->coords.size() );
+        SetCelShadingObjectEnabled(false);
+    }
+    else
+    {
+        glDrawArrays( glstream->primitive, 0, glstream->coords.size() );
+    }
+#else
     glDrawArrays( glstream->primitive, 0, glstream->coords.size() );
+#endif
 
     glstream->coords.clear();
     glstream->normals.clear();
@@ -1068,7 +1093,28 @@ void pglContext::DrawPrimBuffer(pddiShader* mat, pddiPrimBuffer* buffer)
     pddiBaseShader* material = (pddiBaseShader*)mat;
     ADD_STAT(PDDI_STAT_MATERIAL_OPS, !material->IsCurrent());
     material->SetMaterial();
+
+#ifdef RAD_ANDROID
+    // This experiment deliberately applies toon shading at the lowest common
+    // buffered-draw level so it also catches world meshes that do not pass
+    // through tGeometry/tPolySkin or WorldScene-specific DSG wrappers.
+    const bool autoToonScope = IsCelShadingEnabled() && !IsCelShadingObjectEnabled();
+    if (autoToonScope)
+    {
+        SetCelShadingObjectEnabled(true);
+        SetCelShadingOutlinePass(true);
+        ((pglPrimBuffer*)buffer)->Display();
+        SetCelShadingOutlinePass(false);
+        ((pglPrimBuffer*)buffer)->Display();
+        SetCelShadingObjectEnabled(false);
+    }
+    else
+    {
+        ((pglPrimBuffer*)buffer)->Display();
+    }
+#else
     ((pglPrimBuffer*)buffer)->Display();
+#endif
 }
 
 // lighting
