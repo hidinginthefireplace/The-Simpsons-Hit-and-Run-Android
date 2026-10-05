@@ -22,6 +22,10 @@ class pglExtGamma;
 #ifdef RAD_ANDROID
 bool IsCelShadingEnabled();
 void SetCelShadingEnabled(bool enabled);
+bool IsCelShadingObjectEnabled();
+void SetCelShadingObjectEnabled(bool enabled);
+bool IsCelShadingOutlinePass();
+void SetCelShadingOutlinePass(bool enabled);
 #endif
 
 //--------------------------------------------------------------
