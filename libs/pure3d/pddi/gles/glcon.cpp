@@ -11,7 +11,7 @@
 #include <pddi/gles/glprog.hpp>
 
 #ifdef RAD_ANDROID
-static bool gCelShadingEnabled = true;
+static bool gCelShadingEnabled = false;
 bool IsCelShadingEnabled() { return gCelShadingEnabled; }
 void SetCelShadingEnabled(bool enabled) { gCelShadingEnabled = enabled; }
 #endif
