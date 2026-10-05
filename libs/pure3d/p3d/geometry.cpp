@@ -15,6 +15,7 @@
 
 #ifdef RAD_ANDROID
 bool IsCelShadingEnabled();
+bool IsCelShadingObjectEnabled();
 void SetCelShadingObjectEnabled(bool enabled);
 bool IsCelShadingSuppressed();
 bool IsCelShadingOutlinePass();
