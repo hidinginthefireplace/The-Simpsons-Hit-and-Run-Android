@@ -19,6 +19,21 @@
 #include <radmath/radmath.hpp>
 #include <pddi/pddiext.hpp>
 #include <p3d/anim/instancedgeometry.hpp>
+#ifdef RAD_ANDROID
+bool IsCelShadingEnabled();
+void SetCelShadingObjectEnabled(bool enabled);
+bool IsCelShadingOutlinePass();
+void SetCelShadingOutlinePass(bool enabled);
+
+static bool ShouldCelShadeSkin(tPrimGroup* group)
+{
+    if (!IsCelShadingEnabled() || !group)
+        return false;
+
+    tShader* shader = group->GetShader();
+    return shader != NULL && !shader->mTranslucent;
+}
+#endif
 
 #include <string.h>
 
@@ -95,7 +110,23 @@ void tPolySkin::Display(tPose* p)
 
     for(unsigned j=0; j < primGroup.Size(); j++)
     {
+#ifdef RAD_ANDROID
+        if (ShouldCelShadeSkin(primGroup[j]))
+        {
+            SetCelShadingObjectEnabled(true);
+            SetCelShadingOutlinePass(true);
+            primGroup[j]->Display();
+            SetCelShadingOutlinePass(false);
+            primGroup[j]->Display();
+            SetCelShadingObjectEnabled(false);
+        }
+        else
+        {
+            primGroup[j]->Display();
+        }
+#else
         primGroup[j]->Display();
+#endif
     }
 
     if(hwSkin)
@@ -122,7 +153,23 @@ void tPolySkin::DisplayInstanced(tPose* p, unsigned count)
 
     for(unsigned j=0; j < primGroup.Size(); j++)
     {
+#ifdef RAD_ANDROID
+        if (ShouldCelShadeSkin(primGroup[j]))
+        {
+            SetCelShadingObjectEnabled(true);
+            SetCelShadingOutlinePass(true);
+            primGroup[j]->DisplayInstanced(count);
+            SetCelShadingOutlinePass(false);
+            primGroup[j]->DisplayInstanced(count);
+            SetCelShadingObjectEnabled(false);
+        }
+        else
+        {
+            primGroup[j]->DisplayInstanced(count);
+        }
+#else
         primGroup[j]->DisplayInstanced(count);
+#endif
     }
 
     if(hwSkin)
