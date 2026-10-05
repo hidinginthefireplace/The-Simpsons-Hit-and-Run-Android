@@ -132,12 +132,12 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
             pTextValue = pPage->GetText( "Display_Value" );
             if( pLabel )
             {
-                pLabel->SetString( 0, "GRAPHICS" );
+                pLabel->SetString( 0, "CEL SHADING" );
                 pLabel->SetVisible( true );
             }
             if( pTextValue )
             {
-                pTextValue->SetString( 0, IsCelShadingEnabled() ? "CEL SHADED ON" : "CEL SHADED OFF" );
+                pTextValue->SetString( 0, IsCelShadingEnabled() ? "ON" : "OFF" );
                 pTextValue->SetVisible( true );
             }
         }
@@ -220,10 +220,22 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
 
     if( pGraphicsValue )
     {
-        pGraphicsValue->SetString( 0, IsCelShadingEnabled() ? "CEL SHADED ON" : "CEL SHADED OFF" );
+        pGraphicsValue->SetString( 0, IsCelShadingEnabled() ? "ON" : "OFF" );
     }
 
-    // Give the Graphics row the normal left/right value arrows.
+    // This page is the full pause-options canvas.  Center the complete three-row
+    // menu group against the page rather than relying on the old fixed +50 offset.
+    menu->ResetTransformation();
+    int menuXMin = 0, menuYMin = 0, menuXMax = 0, menuYMax = 0;
+    int pageXMin = 0, pageYMin = 0, pageXMax = 0, pageYMax = 0;
+    menu->GetBoundingBox( menuXMin, menuYMin, menuXMax, menuYMax );
+    pPage->GetBoundingBox( pageXMin, pageYMin, pageXMax, pageYMax );
+
+    const int menuCenterY = ( menuYMin + menuYMax ) / 2;
+    const int pageCenterY = ( pageYMin + pageYMax ) / 2;
+    menu->Translate( 0, pageCenterY - menuCenterY );
+
+    // Give the Cel Shading row the normal left/right value arrows.
     if( pGraphicsLArrow && pGraphicsRArrow )
     {
         pGraphicsLArrow->SetVisible( false );
@@ -240,10 +252,6 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
 #endif
     }
 
-    // re-center menu items
-    //
-    menu->ResetTransformation();
-    menu->Translate( 0, 50 );
 #endif
 
     // TC: [TEMP] disable controller screen for now to free up some memory for HUD map
@@ -356,7 +364,7 @@ void CGuiScreenPauseOptions::HandleMessage
                         {
                             pGraphicsValue->SetString(
                                 0,
-                                IsCelShadingEnabled() ? "CEL SHADED ON" : "CEL SHADED OFF" );
+                                IsCelShadingEnabled() ? "ON" : "OFF" );
                         }
                     }
                 }
