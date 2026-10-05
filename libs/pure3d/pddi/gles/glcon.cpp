@@ -14,11 +14,13 @@
 static bool gCelShadingEnabled = false;
 static bool gCelShadingObjectEnabled = false;
 static bool gCelShadingOutlinePass = false;
+static bool gCelShadingSuppressed = false;
 static pglContext* gCelShadingContext = nullptr;
 
 bool IsCelShadingEnabled() { return gCelShadingEnabled; }
 bool IsCelShadingObjectEnabled() { return gCelShadingObjectEnabled; }
 bool IsCelShadingOutlinePass() { return gCelShadingOutlinePass; }
+bool IsCelShadingSuppressed() { return gCelShadingSuppressed; }
 
 static void ApplyCelShadingState()
 {
@@ -36,6 +38,11 @@ void SetCelShadingObjectEnabled(bool enabled)
 {
     gCelShadingObjectEnabled = enabled;
     ApplyCelShadingState();
+}
+
+void SetCelShadingSuppressed(bool suppressed)
+{
+    gCelShadingSuppressed = suppressed;
 }
 
 void SetCelShadingOutlinePass(bool enabled)
@@ -343,16 +350,18 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "        return diff + spec;\n"
         "    }\n"
 #ifdef RAD_ANDROID
-        "    if (lit == 0) return vec3(1.0);\n"
+        "    vec3 toonDiffuseColor = (lit != 0) ? dcm.rgb : vec3(1.0);\n"
+#else
+        "    vec3 toonDiffuseColor = dcm.rgb;\n"
 #endif
         "    float rim = pow(1.0 - max(dot(n, normalize(-toonViewPos)), 0.0), 2.5);\n"
-        "    return dcm.rgb * (toonFlatLight + toonRimStrength * rim);\n"
+        "    return toonDiffuseColor * (toonFlatLight + toonRimStrength * rim);\n"
         "}\n";
 
     GLuint fragmentShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
         (toonLighting +
         "void main() {\n"
-        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0 && lit != 0) {\n"
+        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0) {\n"
         "        gl_FragColor = vec4(0.0, 0.0, 0.0, cpri.a * dcm.a);\n"
         "        return;\n"
         "    }\n"
@@ -365,7 +374,7 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "uniform sampler2D tex;\n"
         "void main() {\n"
         "    vec4 base = texture2D(tex, tc) * cpri;\n"
-        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0 && lit != 0) {\n"
+        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0) {\n"
         "        gl_FragColor = vec4(0.0, 0.0, 0.0, base.a);\n"
         "        return;\n"
         "    }\n"
@@ -379,7 +388,7 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "uniform sampler2D tex;\n"
         "void main() {\n"
         "    vec4 base = texture2D(tex, tc) * cpri;\n"
-        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0 && lit != 0) {\n"
+        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0) {\n"
         "        if (base.a < alpharef) discard;\n"
         "        gl_FragColor = vec4(0.0, 0.0, 0.0, base.a);\n"
         "        return;\n"
