@@ -12,8 +12,37 @@
 
 #ifdef RAD_ANDROID
 static bool gCelShadingEnabled = false;
+static bool gCelShadingObjectEnabled = false;
+static bool gCelShadingOutlinePass = false;
+static pglContext* gCelShadingContext = nullptr;
+
 bool IsCelShadingEnabled() { return gCelShadingEnabled; }
-void SetCelShadingEnabled(bool enabled) { gCelShadingEnabled = enabled; }
+bool IsCelShadingObjectEnabled() { return gCelShadingObjectEnabled; }
+bool IsCelShadingOutlinePass() { return gCelShadingOutlinePass; }
+
+static void ApplyCelShadingState()
+{
+    if (gCelShadingContext)
+        gCelShadingContext->ApplyCelShadingState();
+}
+
+void SetCelShadingEnabled(bool enabled)
+{
+    gCelShadingEnabled = enabled;
+    ApplyCelShadingState();
+}
+
+void SetCelShadingObjectEnabled(bool enabled)
+{
+    gCelShadingObjectEnabled = enabled;
+    ApplyCelShadingState();
+}
+
+void SetCelShadingOutlinePass(bool enabled)
+{
+    gCelShadingOutlinePass = enabled;
+    ApplyCelShadingState();
+}
 #endif
 
 #include <pddi/base/debug.hpp>
@@ -79,6 +108,10 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
     device = dev;
     display = disp;
     currentProgram = nullptr;
+
+#ifdef RAD_ANDROID
+    gCelShadingContext = this;
+#endif
 
     device->AddRef();
     display->AddRef();
@@ -200,6 +233,9 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "void main() {\n"
         "    vec4 V = modelview * vec4(position, 1.0);\n"
         "    toonNormal = normalize(mat3(normalmatrix) * normal);\n"
+        "    if (toonEnabled != 0 && toonObjectEnabled != 0 && toonOutlinePass != 0) {\n"
+        "        V.xyz += toonNormal * toonOutlineWidth;\n"
+        "    }\n"
         "    toonViewPos = V.xyz;\n"
         "    tc = texcoord;\n"
         "    cpri = color;\n"
@@ -232,22 +268,34 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
 #ifdef RAD_ANDROID
         "uniform int lit;\n"
         "uniform int toonEnabled;\n"
+        "uniform int toonObjectEnabled;\n"
+        "uniform int toonOutlinePass;\n"
+        "uniform float toonOutlineWidth;\n"
 #endif
 
         "vec3 direction(vec4 p1, vec4 p2) { return normalize(p2.xyz * sign(p1.w) - p1.xyz * sign(p2.w)); }\n"
         "float product(vec3 x, vec3 y) { return max(dot(x,y), 0.0); }\n"
         "float power(float x, float y) { return y != 0.0 ? pow(x,y) : 1.0; }\n"
 
-        // Three broad lighting bands tuned toward the colourful Simpsons-cartoon
-        // look: deep shadow, a brighter middle tone, and full illumination.
+        // Two broad bands: a single flat lit tone and a stronger painted shadow.
         "float toonBand(float ndotl) {\n"
-        "    if (ndotl < 0.22) return 0.0;\n"
-        "    if (ndotl < 0.52) return 0.58;\n"
-        "    return 1.0;\n"
+        "    return (ndotl < 0.42) ? 0.32 : 1.0;\n"
         "}\n"
 
+        // Flatten the source texture toward one base tone while preserving hue.
+        // This intentionally removes small baked-in brightness variations that
+        // made character surfaces look dithered under the toon thresholds.
+        "vec3 flattenToonColour(vec3 colour) {\n"
+        "    float luminance = dot(colour, vec3(0.299, 0.587, 0.114));\n"
+        "    float targetLuminance = 0.72;\n"
+        "    return colour * (targetLuminance / max(luminance, 0.05));\n"
+        "}\n"
+
+        // Very restrained rim light. Set to 0.0 to disable for a flatter look.
+        "const float toonRimStrength = 0.0;\n"
+
         "vec3 toonLightingColor() {\n"
-        "    if (toonEnabled == 0) {\n"
+        "    if (toonEnabled == 0 || toonObjectEnabled == 0) {\n"
         "        vec3 n = normalize(toonNormal);\n"
         "        vec3 diff = ecm.rgb + acm.rgb * acs.rgb;\n"
         "        vec3 spec = vec3(0.0);\n"
@@ -281,12 +329,16 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "        float band = toonBand(ndotl);\n"
         "        vec3 h = normalize(VP + vec3(0.0, 0.0, 1.0));\n"
         "        float specular = power(product(n, h), srm);\n"
-        "        float toonSpec = step(0.92, specular) * step(0.05, ndotl);\n"
+        "        float toonSpec = step(0.95, specular) * step(0.08, ndotl);\n"
         "        vec3 k = lights[i].attenuation;\n"
         "        float d = distance(toonViewPos, lights[i].position.xyz);\n"
         "        float att = lights[i].position.w != 0.0 ? 1.0 / (k[0] + k[1] * d + k[2] * d * d) : 1.0;\n"
         "        diff += att * band * dcm.rgb * lights[i].colour.rgb;\n"
         "        spec += att * toonSpec * scm.rgb * lights[i].colour.rgb;\n"
+        "    }\n"
+        "    if (toonRimStrength > 0.0) {\n"
+        "        float rim = pow(1.0 - max(dot(n, normalize(-toonViewPos)), 0.0), 2.5);\n"
+        "        diff += vec3(toonRimStrength * rim);\n"
         "    }\n"
         "    return diff + spec;\n"
         "}\n";
@@ -294,6 +346,10 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
     GLuint fragmentShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
         (toonLighting +
         "void main() {\n"
+        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0) {\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 0.0, cpri.a * dcm.a);\n"
+        "        return;\n"
+        "    }\n"
         "    gl_FragColor = cpri * vec4(toonLightingColor(), dcm.a);\n"
         "}\n"
     ).c_str());
@@ -302,7 +358,15 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         (toonLighting +
         "uniform sampler2D tex;\n"
         "void main() {\n"
-        "    gl_FragColor = texture2D(tex, tc) * cpri * vec4(toonLightingColor(), dcm.a);\n"
+        "    vec4 base = texture2D(tex, tc) * cpri;\n"
+        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0) {\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 0.0, base.a);\n"
+        "        return;\n"
+        "    }\n"
+        "    if (toonEnabled != 0 && toonObjectEnabled != 0) {\n"
+        "        base.rgb = flattenToonColour(base.rgb);\n"
+        "    }\n"
+        "    gl_FragColor = base * vec4(toonLightingColor(), dcm.a);\n"
         "}\n"
     ).c_str());
 
@@ -311,7 +375,16 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "uniform float alpharef;\n"
         "uniform sampler2D tex;\n"
         "void main() {\n"
-        "    vec4 c = texture2D(tex, tc) * cpri * vec4(toonLightingColor(), dcm.a);\n"
+        "    vec4 base = texture2D(tex, tc) * cpri;\n"
+        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0) {\n"
+        "        if (base.a < alpharef) discard;\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 0.0, base.a);\n"
+        "        return;\n"
+        "    }\n"
+        "    if (toonEnabled != 0 && toonObjectEnabled != 0) {\n"
+        "        base.rgb = flattenToonColour(base.rgb);\n"
+        "    }\n"
+        "    vec4 c = base * vec4(toonLightingColor(), dcm.a);\n"
         "    if (c.a < alpharef) discard;\n"
         "    gl_FragColor = c;\n"
         "}\n"
@@ -344,6 +417,11 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
 
 pglContext::~pglContext()
 {
+#ifdef RAD_ANDROID
+    if (gCelShadingContext == this)
+        gCelShadingContext = nullptr;
+#endif
+
     defaultShader->Release();
     currentProgram->Release();
     colorProgram->Release();
@@ -1210,7 +1288,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
     {
 #ifdef RAD_ANDROID
         if (currentProgram)
-            currentProgram->SetCelShadingEnabled(gCelShadingEnabled);
+            currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass);
 #endif
         return;
     }
@@ -1224,7 +1302,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
     currentProgram->AddRef();
     currentProgram->UseProgram();
 #ifdef RAD_ANDROID
-    currentProgram->SetCelShadingEnabled(gCelShadingEnabled);
+    currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass);
 #endif
     currentProgram->SetProjectionMatrix(&projection);
 
@@ -1236,6 +1314,14 @@ void pglContext::SetShaderProgram(pglProgram* program)
         SetAmbientLight(state.lightingState->ambient);
     }
 }
+
+#ifdef RAD_ANDROID
+void pglContext::ApplyCelShadingState()
+{
+    if (currentProgram)
+        currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass);
+}
+#endif
 
 void pglContext::SetTextureEnvironment(const pglTextureEnv* texEnv)
 {
