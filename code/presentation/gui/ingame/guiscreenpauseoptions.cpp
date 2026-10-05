@@ -129,10 +129,16 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
         if( i == MENU_ITEM_GRAPHICS )
         {
             pLabel = menu->GetText( "Display" );
+            pTextValue = pPage->GetText( "Display_Value" );
             if( pLabel )
             {
-                pLabel->SetString( 0, "Graphics" );
+                pLabel->SetString( 0, "GRAPHICS" );
                 pLabel->SetVisible( true );
+            }
+            if( pTextValue )
+            {
+                pTextValue->SetString( 0, IsCelShadingEnabled() ? "CEL SHADED ON" : "CEL SHADED OFF" );
+                pTextValue->SetVisible( true );
             }
         }
 #endif
@@ -151,7 +157,79 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
                               pRArrow );
     }
 
-    
+#ifdef RAD_ANDROID
+    // The Android menu has no dedicated Graphics artwork. Reuse the existing
+    // Display label/value/arrows, but place them in the same centered three-row
+    // layout as Sound and Settings.
+    Scrooby::Text* pSoundLabel = menu->GetText( "Sound" );
+    Scrooby::Text* pSettingsLabel = menu->GetText( "Settings" );
+    Scrooby::Text* pGraphicsLabel = menu->GetText( "Display" );
+    Scrooby::Text* pGraphicsValue = pPage->GetText( "Display_Value" );
+    Scrooby::Sprite* pGraphicsLArrow = pPage->GetSprite( "Display_LArrow" );
+    Scrooby::Sprite* pGraphicsRArrow = pPage->GetSprite( "Display_RArrow" );
+
+    int soundX = 0, soundY = 0;
+    int settingsX = 0, settingsY = 0;
+    int graphicsX = 0, graphicsY = 0;
+    int displayX = 0, displayY = 0;
+    int valueX = 0, valueY = 0;
+    int lArrowX = 0, lArrowY = 0;
+    int rArrowX = 0, rArrowY = 0;
+
+    if( pSoundLabel && pSettingsLabel && pGraphicsLabel )
+    {
+        pSoundLabel->GetBoundingBoxCenter( soundX, soundY );
+        pSettingsLabel->GetBoundingBoxCenter( settingsX, settingsY );
+        pGraphicsLabel->GetBoundingBoxCenter( displayX, displayY );
+
+        // Keep the existing vertical spacing and use a shared horizontal center.
+        int centeredX = ( soundX + settingsX ) / 2;
+        pSoundLabel->SetPositionOfCenter( centeredX, soundY );
+        pSettingsLabel->SetPositionOfCenter( centeredX, settingsY );
+
+        graphicsX = centeredX;
+        graphicsY = settingsY + ( settingsY - soundY );
+        pGraphicsLabel->SetPositionOfCenter( graphicsX, graphicsY );
+
+        // Reposition the reused value/arrows by preserving their original
+        // offsets from the Display label.
+        if( pGraphicsValue )
+        {
+            pGraphicsValue->GetBoundingBoxCenter( valueX, valueY );
+            pGraphicsValue->SetPositionOfCenter(
+                graphicsX + ( valueX - displayX ),
+                graphicsY + ( valueY - displayY ) );
+        }
+
+        if( pGraphicsLArrow )
+        {
+            pGraphicsLArrow->GetBoundingBoxCenter( lArrowX, lArrowY );
+            pGraphicsLArrow->SetPositionOfCenter(
+                graphicsX + ( lArrowX - displayX ),
+                graphicsY + ( lArrowY - displayY ) );
+        }
+
+        if( pGraphicsRArrow )
+        {
+            pGraphicsRArrow->GetBoundingBoxCenter( rArrowX, rArrowY );
+            pGraphicsRArrow->SetPositionOfCenter(
+                graphicsX + ( rArrowX - displayX ),
+                graphicsY + ( rArrowY - displayY ) );
+        }
+    }
+
+    if( pGraphicsValue )
+    {
+        pGraphicsValue->SetString( 0, IsCelShadingEnabled() ? "CEL SHADED ON" : "CEL SHADED OFF" );
+    }
+
+    // Give the Graphics row the normal left/right value arrows.
+    if( pGraphicsLArrow && pGraphicsRArrow )
+    {
+        pGraphicsLArrow->SetVisible( false );
+        pGraphicsRArrow->SetVisible( false );
+    }
+#endif
 
 #ifndef RAD_PC
     Scrooby::Text* pText = menu->GetText( "Display" );
@@ -269,6 +347,18 @@ void CGuiScreenPauseOptions::HandleMessage
                 else if( param1 == MENU_ITEM_GRAPHICS )
                 {
                     SetCelShadingEnabled( !IsCelShadingEnabled() );
+
+                    Scrooby::Page* pPage = m_pScroobyScreen->GetPage( "PauseOptions" );
+                    if( pPage )
+                    {
+                        Scrooby::Text* pGraphicsValue = pPage->GetText( "Display_Value" );
+                        if( pGraphicsValue )
+                        {
+                            pGraphicsValue->SetString(
+                                0,
+                                IsCelShadingEnabled() ? "CEL SHADED ON" : "CEL SHADED OFF" );
+                        }
+                    }
                 }
 #endif
             
