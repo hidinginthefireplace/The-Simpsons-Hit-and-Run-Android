@@ -19,6 +19,11 @@ class pglTextureEnv;
 class pglExtContext;
 class pglExtGamma;
 
+#ifdef RAD_ANDROID
+bool IsCelShadingEnabled();
+void SetCelShadingEnabled(bool enabled);
+#endif
+
 //--------------------------------------------------------------
 class pglContext : public pddiBaseContext
 {
