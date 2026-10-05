@@ -47,6 +47,11 @@ void SetCelShadingSuppressed(bool suppressed)
     gCelShadingSuppressed = suppressed;
 }
 
+void SetCelShadingWorldScope(bool scoped)
+{
+    gCelShadingWorldScope = scoped;
+}
+
 void SetCelShadingOutlinePass(bool enabled)
 {
     gCelShadingOutlinePass = enabled;
