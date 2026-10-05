@@ -1,4 +1,5 @@
 name: Build Shield Toon Experimental
+# Rebuild after Android GLES header correction
 
 on:
   push:
