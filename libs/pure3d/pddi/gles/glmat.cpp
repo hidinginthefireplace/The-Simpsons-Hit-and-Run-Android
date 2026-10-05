@@ -288,4 +288,15 @@ void pglMat::SetDevPass(unsigned pass)
     {
         glEnable(GL_CULL_FACE);
     }
+
+#ifdef RAD_ANDROID
+    // The outline pass renders backfaces of a slightly expanded mesh so only
+    // the silhouette remains visible around the normal draw.
+    if (IsCelShadingEnabled() && IsCelShadingObjectEnabled() &&
+        IsCelShadingOutlinePass())
+    {
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+    }
+#endif
 }
