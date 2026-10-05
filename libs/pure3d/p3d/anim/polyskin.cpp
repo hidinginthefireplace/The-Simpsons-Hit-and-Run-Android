@@ -27,7 +27,7 @@ void SetCelShadingOutlinePass(bool enabled);
 
 static bool ShouldCelShadeSkin(tPrimGroup* group)
 {
-    if (!IsCelShadingEnabled() || !group)
+    if (!IsCelShadingEnabled() || IsCelShadingSuppressed() || !group)
         return false;
 
     tShader* shader = group->GetShader();
