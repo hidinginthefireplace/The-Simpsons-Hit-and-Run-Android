@@ -23,6 +23,7 @@
 bool IsCelShadingEnabled();
 void SetCelShadingObjectEnabled(bool enabled);
 bool IsCelShadingSuppressed();
+bool IsCelShadingWorldScope();
 bool IsCelShadingOutlinePass();
 void SetCelShadingOutlinePass(bool enabled);
 
@@ -32,7 +33,7 @@ static bool ShouldCelShadeSkin(tPrimGroup* group)
         return false;
 
     tShader* shader = group->GetShader();
-    return shader != NULL && !shader->mTranslucent;
+    return shader != NULL && (!shader->mTranslucent || IsCelShadingWorldScope());
 }
 #endif
 
