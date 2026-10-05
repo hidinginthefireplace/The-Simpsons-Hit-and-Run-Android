@@ -1713,26 +1713,30 @@ DSG_SET_PROFILE('C')
 void WorldScene::RenderOpaque( void )
 {
 #ifdef RAD_ANDROID
+    // The list built by RenderScene contains the opaque 3D world pass.
+    // Keep the toon decision scoped to this pass so HUD, sky, particles and
+    // other non-world rendering remain untouched.
     SetCelShadingWorldScope(true);
 #endif
 #ifdef TEST_DISTRIBUTED_SORT
     BEGIN_PROFILE("qsort1")
-	    //qsort(mpZSorts.mpData, (size_t)mpZSorts.mUseSize, sizeof(zSortBlah), gShaderCompare);
+        //qsort(mpZSorts.mpData, (size_t)mpZSorts.mUseSize, sizeof(zSortBlah), gShaderCompare);
         std::sort( mpZSorts.begin(), mpZSorts.end(), gShaderCompare );
     END_PROFILE("qsort1")
 #endif
 DSG_SET_PROFILE('O')
-BEGIN_PROFILE("qsort display")	
- 	for(int i=mpZSorts.size() - 1; i>-1; i--)
-	{
-//BEGIN_PROFILE("opaque inner")	
-		mpZSorts[i].entityPtr->Display();
+BEGIN_PROFILE("qsort display")    
+    for(int i=mpZSorts.size() - 1; i>-1; i--)
+    {
+        mpZSorts[i].entityPtr->Display();
 #ifdef TRACK_SHADERS
-            UniqueShaders[mpZSorts[i].entityPtr->GetShaderUID()]++;
+        UniqueShaders[mpZSorts[i].entityPtr->GetShaderUID()]++;
 #endif
-//END_PROFILE("opaque inner")	
-	}
+    }
 END_PROFILE("qsort display")
+#ifdef RAD_ANDROID
+    SetCelShadingWorldScope(false);
+#endif
 }
 
 void WorldScene::RenderTranslucent( void )
@@ -1743,18 +1747,32 @@ void WorldScene::RenderTranslucent( void )
 
 #ifdef TEST_DISTRIBUTED_SORT
     BEGIN_PROFILE("qsort2")
-	    //qsort(mpZSortsPass2.mpData, (size_t)mpZSortsPass2.mUseSize, sizeof(IEntityDSG*), gZSortCompare);
+        //qsort(mpZSortsPass2.mpData, (size_t)mpZSortsPass2.mUseSize, sizeof(IEntityDSG*), gZSortCompare);
         std::sort( mpZSortsPass2.begin(), mpZSortsPass2.end(), gZSortCompare );
     END_PROFILE("qsort2")
 #endif
 DSG_SET_PROFILE('T')
 BEGIN_PROFILE("qsort2 display")
     for(int i=mpZSortsPass2.size()-1; i>-1; i--)
-	{
-//BEGIN_PROFILE("translucent inner")	
-		mpZSortsPass2[i]->Display();
-//END_PROFILE("translucent inner")	
-	}
+    {
+        // Shadow-casting opaque entities live in this pass. They still belong
+        // to the normal world render and are safe to toon; true translucent
+        // entities remain untouched.
+#ifdef RAD_ANDROID
+        if (!mpZSortsPass2[i]->mTranslucent)
+        {
+            SetCelShadingWorldScope(true);
+            mpZSortsPass2[i]->Display();
+            SetCelShadingWorldScope(false);
+        }
+        else
+        {
+            mpZSortsPass2[i]->Display();
+        }
+#else
+        mpZSortsPass2[i]->Display();
+#endif
+    }
 END_PROFILE("qsort2 display")
 }
 
