@@ -243,7 +243,7 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
     // re-center menu items
     //
     menu->ResetTransformation();
-    menu->Translate( 0, 30 );
+    menu->Translate( 0, 70 );
 #endif
 
     // TC: [TEMP] disable controller screen for now to free up some memory for HUD map
