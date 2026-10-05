@@ -24,6 +24,11 @@ bool IsCelShadingOutlinePass() { return gCelShadingOutlinePass; }
 bool IsCelShadingSuppressed() { return gCelShadingSuppressed; }
 bool IsCelShadingWorldScope() { return gCelShadingWorldScope; }
 
+static bool IsCelShadingObjectEffectivelyEnabled()
+{
+    return (gCelShadingObjectEnabled || gCelShadingWorldScope) && !gCelShadingSuppressed;
+}
+
 static void ApplyCelShadingState()
 {
     if (gCelShadingContext)
@@ -45,11 +50,13 @@ void SetCelShadingObjectEnabled(bool enabled)
 void SetCelShadingSuppressed(bool suppressed)
 {
     gCelShadingSuppressed = suppressed;
+    ApplyCelShadingState();
 }
 
 void SetCelShadingWorldScope(bool scoped)
 {
     gCelShadingWorldScope = scoped;
+    ApplyCelShadingState();
 }
 
 void SetCelShadingOutlinePass(bool enabled)
@@ -1304,7 +1311,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
     {
 #ifdef RAD_ANDROID
         if (currentProgram)
-            currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass);
+            currentProgram->SetCelShadingState(gCelShadingEnabled, IsCelShadingObjectEffectivelyEnabled(), gCelShadingOutlinePass);
 #endif
         return;
     }
@@ -1318,7 +1325,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
     currentProgram->AddRef();
     currentProgram->UseProgram();
 #ifdef RAD_ANDROID
-    currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass);
+    currentProgram->SetCelShadingState(gCelShadingEnabled, IsCelShadingObjectEffectivelyEnabled(), gCelShadingOutlinePass);
 #endif
     currentProgram->SetProjectionMatrix(&projection);
 
@@ -1335,7 +1342,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
 void pglContext::ApplyCelShadingState()
 {
     if (currentProgram)
-        currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass);
+        currentProgram->SetCelShadingState(gCelShadingEnabled, IsCelShadingObjectEffectivelyEnabled(), gCelShadingOutlinePass);
 }
 #endif
 
