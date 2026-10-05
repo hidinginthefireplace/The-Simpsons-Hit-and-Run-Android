@@ -184,11 +184,11 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
 
         // Keep the existing vertical spacing and use a shared horizontal center.
         int centeredX = ( soundX + settingsX ) / 2;
-        pSoundLabel->SetPositionOfCenter( centeredX, soundY );
-        pSettingsLabel->SetPositionOfCenter( centeredX, settingsY );
+        pSoundLabel->SetPositionOfCenter( centeredX, soundY - 30 );
+        pSettingsLabel->SetPositionOfCenter( centeredX, settingsY - 30 );
 
         graphicsX = centeredX;
-        graphicsY = settingsY + ( settingsY - soundY );
+        graphicsY = settingsY + ( settingsY - soundY ) - 30;
         pGraphicsLabel->SetPositionOfCenter( graphicsX, graphicsY );
 
         // Reposition the reused value/arrows by preserving their original
@@ -220,15 +220,10 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
 
     if( pGraphicsValue )
     {
-        pGraphicsValue->SetString( 0, IsCelShadingEnabled() ? "ON" : "OFF" );
+        pGraphicsValue->SetString( 0, IsCelShadingEnabled() ? "CEL SHADED ON" : "CEL SHADED OFF" );
     }
 
-    // Keep the original Scrooby menu layout, but move the complete three-row
-    // Android options group upward so it sits around the vertical centre.
-    menu->ResetTransformation();
-    menu->Translate( 0, -70 );
-
-    // Give the Cel Shading row the normal left/right value arrows.
+    // Give the Graphics row the normal left/right value arrows.
     if( pGraphicsLArrow && pGraphicsRArrow )
     {
         pGraphicsLArrow->SetVisible( false );
@@ -245,6 +240,10 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
 #endif
     }
 
+    // re-center menu items
+    //
+    menu->ResetTransformation();
+    menu->Translate( 0, 50 );
 #endif
 
     // TC: [TEMP] disable controller screen for now to free up some memory for HUD map
@@ -357,7 +356,7 @@ void CGuiScreenPauseOptions::HandleMessage
                         {
                             pGraphicsValue->SetString(
                                 0,
-                                IsCelShadingEnabled() ? "ON" : "OFF" );
+                                IsCelShadingEnabled() ? "CEL SHADED ON" : "CEL SHADED OFF" );
                         }
                     }
                 }
