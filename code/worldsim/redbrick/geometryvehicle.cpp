@@ -33,8 +33,11 @@
 #include <p3d/effects/particlesystem.hpp>
 #include <pddi/pddi.hpp>
 #ifdef RAD_ANDROID
-#include <pddi/gles/gl.hpp>
-#include <pddi/gles/glcon.hpp>
+bool IsCelShadingEnabled();
+bool IsCelShadingObjectEnabled();
+void SetCelShadingObjectEnabled(bool enabled);
+bool IsCelShadingOutlinePass();
+void SetCelShadingOutlinePass(bool enabled);
 #endif
 #include <p3d/utility.hpp>
 #include <typeinfo>
