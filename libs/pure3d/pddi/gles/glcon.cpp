@@ -15,12 +15,14 @@ static bool gCelShadingEnabled = false;
 static bool gCelShadingObjectEnabled = false;
 static bool gCelShadingOutlinePass = false;
 static bool gCelShadingSuppressed = false;
+static bool gCelShadingWorldScope = false;
 static pglContext* gCelShadingContext = nullptr;
 
 bool IsCelShadingEnabled() { return gCelShadingEnabled; }
 bool IsCelShadingObjectEnabled() { return gCelShadingObjectEnabled; }
 bool IsCelShadingOutlinePass() { return gCelShadingOutlinePass; }
 bool IsCelShadingSuppressed() { return gCelShadingSuppressed; }
+bool IsCelShadingWorldScope() { return gCelShadingWorldScope; }
 
 static void ApplyCelShadingState()
 {
