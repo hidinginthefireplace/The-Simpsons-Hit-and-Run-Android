@@ -16,6 +16,10 @@
 // Includes
 //===========================================================================
 #include <presentation/gui/ingame/guiscreenpauseoptions.h>
+#ifdef RAD_ANDROID
+#include <pddi/gles/gl.hpp>
+#include <pddi/gles/glcon.hpp>
+#endif
 #include <presentation/gui/guimenu.h>
 
 #include <cheats/cheatinputsystem.h>
@@ -45,6 +49,9 @@ enum ePauseMenuItem
 
 
     MENU_ITEM_SETTINGS,
+#ifdef RAD_ANDROID
+    MENU_ITEM_GRAPHICS,
+#endif
 //    MENU_ITEM_CAMERA,
 
     NUM_PAUSE_MENU_ITEMS
@@ -61,6 +68,9 @@ static const char* PAUSE_MENU_ITEMS[] =
 
 //#ifndef RAD_ANDROID // reestablecemos configuración
     "Settings",
+#ifdef RAD_ANDROID
+    "Graphics",
+#endif
 //#endif
 //    "Camera",
 
@@ -112,6 +122,18 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
     {
         sprintf( itemName, "%s_Value", PAUSE_MENU_ITEMS[ i ] );
         Scrooby::Text* pTextValue = pPage->GetText( itemName );
+        Scrooby::Text* pLabel = menu->GetText( PAUSE_MENU_ITEMS[ i ] );
+#ifdef RAD_ANDROID
+        if( i == MENU_ITEM_GRAPHICS )
+        {
+            pLabel = menu->GetText( "Display" );
+            if( pLabel )
+            {
+                pLabel->SetString( 0, "Graphics" );
+                pLabel->SetVisible( true );
+            }
+        }
+#endif
 
         sprintf( itemName, "%s_LArrow", PAUSE_MENU_ITEMS[ i ] );
         Scrooby::Sprite* pLArrow = pPage->GetSprite( itemName );
@@ -119,7 +141,7 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
         sprintf( itemName, "%s_RArrow", PAUSE_MENU_ITEMS[ i ] );
         Scrooby::Sprite* pRArrow = pPage->GetSprite( itemName );
 
-        m_pMenu->AddMenuItem( menu->GetText( PAUSE_MENU_ITEMS[ i ] ),
+        m_pMenu->AddMenuItem( pLabel,
                               pTextValue,
                               NULL,
                               NULL,
@@ -132,7 +154,11 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
 #ifndef RAD_PC
     Scrooby::Text* pText = menu->GetText( "Display" );
     if( pText )
+    {
+#ifndef RAD_ANDROID
         pText->SetVisible( false );
+#endif
+    }
 
     // re-center menu items
     //
@@ -237,6 +263,12 @@ void CGuiScreenPauseOptions::HandleMessage
                 {
                      m_pParent->HandleMessage( GUI_MSG_GOTO_SCREEN, GUI_SCREEN_ID_SETTINGS );
                 }
+#ifdef RAD_ANDROID
+                else if( param1 == MENU_ITEM_GRAPHICS )
+                {
+                    SetCelShadingEnabled( !IsCelShadingEnabled() );
+                }
+#endif
             
 #ifdef RAD_PC
                 else if( param1 == MENU_ITEM_DISPLAY )
