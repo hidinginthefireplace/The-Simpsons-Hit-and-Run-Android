@@ -184,11 +184,11 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
 
         // Keep the existing vertical spacing and use a shared horizontal center.
         int centeredX = ( soundX + settingsX ) / 2;
-        pSoundLabel->SetPositionOfCenter( centeredX, soundY - 30 );
-        pSettingsLabel->SetPositionOfCenter( centeredX, settingsY - 30 );
+        pSoundLabel->SetPositionOfCenter( centeredX, soundY - 50 );
+        pSettingsLabel->SetPositionOfCenter( centeredX, settingsY - 50 );
 
         graphicsX = centeredX;
-        graphicsY = settingsY + ( settingsY - soundY ) - 30;
+        graphicsY = settingsY + ( settingsY - soundY ) - 50;
         pGraphicsLabel->SetPositionOfCenter( graphicsX, graphicsY );
 
         // Reposition the reused value/arrows by preserving their original
