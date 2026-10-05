@@ -184,11 +184,11 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
 
         // Keep the existing vertical spacing and use a shared horizontal center.
         int centeredX = ( soundX + settingsX ) / 2;
-        pSoundLabel->SetPositionOfCenter( centeredX, soundY - 50 );
-        pSettingsLabel->SetPositionOfCenter( centeredX, settingsY - 50 );
+        pSoundLabel->SetPositionOfCenter( centeredX, soundY );
+        pSettingsLabel->SetPositionOfCenter( centeredX, settingsY );
 
         graphicsX = centeredX;
-        graphicsY = settingsY + ( settingsY - soundY ) - 50;
+        graphicsY = settingsY + ( settingsY - soundY );
         pGraphicsLabel->SetPositionOfCenter( graphicsX, graphicsY );
 
         // Reposition the reused value/arrows by preserving their original
@@ -243,7 +243,7 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
     // re-center menu items
     //
     menu->ResetTransformation();
-    menu->Translate( 0, 50 );
+    menu->Translate( 0, 30 );
 #endif
 
     // TC: [TEMP] disable controller screen for now to free up some memory for HUD map
