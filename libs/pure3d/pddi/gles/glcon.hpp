@@ -95,6 +95,9 @@ public :
     pglDisplay* GetDisplay(void) {return display;}
     void SetShaderProgram(pglProgram* program);
     void SetTextureEnvironment(const pglTextureEnv* texEnv);
+#ifdef RAD_ANDROID
+    void ApplyCelShadingState();
+#endif
 
     unsigned contextID;
 
