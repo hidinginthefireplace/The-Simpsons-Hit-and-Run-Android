@@ -41,6 +41,34 @@ void SetCelShadingObjectEnabled(bool enabled)
 void SetCelShadingOutlinePass(bool enabled)
 {
     gCelShadingOutlinePass = enabled;
+
+    if (enabled && gCelShadingEnabled && gCelShadingObjectEnabled)
+    {
+        // Keep the outline behind the normal pass and render only backfaces.
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glDepthMask(GL_FALSE);
+    }
+    else
+    {
+        // Restore the renderer's normal culling and depth-write state after
+        // the silhouette pass, even when the same material remains current.
+        if (gCelShadingContext)
+        {
+            const pddiCullMode mode = gCelShadingContext->GetCullMode();
+            if (mode == PDDI_CULL_NONE)
+            {
+                glDisable(GL_CULL_FACE);
+            }
+            else
+            {
+                glEnable(GL_CULL_FACE);
+                glCullFace(mode == PDDI_CULL_INVERTED ? GL_BACK : GL_FRONT);
+            }
+        }
+        glDepthMask(GL_TRUE);
+    }
+
     ApplyCelShadingState();
 }
 #endif
