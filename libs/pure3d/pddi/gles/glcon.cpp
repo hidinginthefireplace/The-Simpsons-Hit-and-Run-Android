@@ -10,6 +10,12 @@
 #include <pddi/gles/glmat.hpp>
 #include <pddi/gles/glprog.hpp>
 
+#ifdef RAD_ANDROID
+static bool gCelShadingEnabled = true;
+bool IsCelShadingEnabled() { return gCelShadingEnabled; }
+void SetCelShadingEnabled(bool enabled) { gCelShadingEnabled = enabled; }
+#endif
+
 #include <pddi/base/debug.hpp>
 #include <math.h>
 #include <string.h>
@@ -191,6 +197,7 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "varying vec4 cpri;\n"
         "varying vec3 toonNormal;\n"
         "varying vec3 toonViewPos;\n"
+        "uniform int toonEnabled;\n"
 
         "void main() {\n"
         "    vec4 V = modelview * vec4(position, 1.0);\n"
@@ -241,6 +248,27 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "}\n"
 
         "vec3 toonLightingColor() {\n"
+        "    if (toonEnabled == 0) {\n"
+        "        vec3 n = normalize(toonNormal);\n"
+        "        vec3 diff = ecm.rgb + acm.rgb * acs.rgb;\n"
+        "        vec3 spec = vec3(0.0);\n"
+#ifdef RAD_ANDROID
+        "        if (lit == 0) return vec3(1.0);\n"
+#endif
+        "        for (int i = 0; i < " PDDI_STRINGIZE(PDDI_MAX_LIGHTS) "; i++) {\n"
+        "            if (lights[i].enabled == 0) continue;\n"
+        "            vec3 VP = direction(vec4(toonViewPos, 1.0), lights[i].position);\n"
+        "            float ndotl = product(n, VP);\n"
+        "            vec3 h = normalize(VP + vec3(0.0, 0.0, 1.0));\n"
+        "            float specular = power(product(n, h), srm);\n"
+        "            vec3 k = lights[i].attenuation;\n"
+        "            float d = distance(toonViewPos, lights[i].position.xyz);\n"
+        "            float att = lights[i].position.w != 0.0 ? 1.0 / (k[0] + k[1] * d + k[2] * d * d) : 1.0;\n"
+        "            diff += att * ndotl * dcm.rgb * lights[i].colour.rgb;\n"
+        "            spec += att * specular * scm.rgb * lights[i].colour.rgb;\n"
+        "        }\n"
+        "        return diff + spec;\n"
+        "    }\n"
         "    vec3 diff = ecm.rgb + acm.rgb * acs.rgb;\n"
         "    vec3 spec = vec3(0.0);\n"
 #ifdef RAD_ANDROID
@@ -1180,6 +1208,13 @@ float pglContext::EndTiming(void)
 void pglContext::SetShaderProgram(pglProgram* program)
 {
     if(program == currentProgram)
+    {
+#ifdef RAD_ANDROID
+        if (currentProgram)
+            currentProgram->SetCelShadingEnabled(gCelShadingEnabled);
+#endif
+        return;
+    }
         return;
 
     if(currentProgram)
@@ -1190,6 +1225,9 @@ void pglContext::SetShaderProgram(pglProgram* program)
 
     currentProgram->AddRef();
     currentProgram->UseProgram();
+#ifdef RAD_ANDROID
+    currentProgram->SetCelShadingEnabled(gCelShadingEnabled);
+#endif
     currentProgram->SetProjectionMatrix(&projection);
 
     LoadHardwareMatrix(PDDI_MATRIX_MODELVIEW);
