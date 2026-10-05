@@ -23,6 +23,10 @@
 #include <p3d/view.hpp>
 #include <render/animentitydsgmanager/animentitydsgmanager.h>
 
+#ifdef RAD_ANDROID
+void SetCelShadingSuppressed(bool suppressed);
+#endif
+
 #ifndef TRUE
 #define TRUE 1
 #endif
@@ -274,6 +278,11 @@ void WorldSphereDSG::SetMultiController(tMultiController* ipMultiController)
 void WorldSphereDSG::Display()
 {
     
+#ifdef RAD_ANDROID
+    // Sky/background geometry and its flare never participate in toon shading.
+    SetCelShadingSuppressed(true);
+#endif
+
 #ifdef PROFILER_ENABLED
     char profileName[] = "  WorldSphereDSG Display";
 #endif
@@ -311,6 +320,9 @@ void WorldSphereDSG::Display()
 	{
 		mpFlare->Display();
 	}
+#ifdef RAD_ANDROID
+    SetCelShadingSuppressed(false);
+#endif
     DSG_END_PROFILE(profileName)
 }
 //========================================================================
