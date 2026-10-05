@@ -56,6 +56,7 @@ pglProgram::pglProgram()
 
     #ifdef RAD_ANDROID
     lit = -1;
+    toonEnabled = -1;
     #endif
 
 #endif
@@ -220,6 +221,16 @@ void pglProgram::SetLightState(int handle, const pddiLight* lightState)
 #endif
 }
 
+void pglProgram::SetCelShadingEnabled(bool enabled)
+{
+#ifdef RAD_ANDROID
+    if (toonEnabled >= 0)
+        glUniform1i(toonEnabled, enabled ? 1 : 0);
+#else
+    (void)enabled;
+#endif
+}
+
 void pglProgram::SetAmbientLight(pddiColour ambient)
 {
     if (acs)
@@ -319,6 +330,7 @@ bool pglProgram::LinkProgram(GLuint vertexShader, GLuint fragmentShader)
 
     #ifdef RAD_ANDROID
     lit = glGetUniformLocation(program, "lit");
+    toonEnabled = glGetUniformLocation(program, "toonEnabled");
     #endif
 
 #ifndef RAD_VITAGL
