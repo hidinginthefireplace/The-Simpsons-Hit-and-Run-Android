@@ -33,6 +33,7 @@
 #include <p3d/effects/particlesystem.hpp>
 #include <pddi/pddi.hpp>
 #ifdef RAD_ANDROID
+#include <pddi/gles/gl.hpp>
 #include <pddi/gles/glcon.hpp>
 #endif
 #include <p3d/utility.hpp>
