@@ -9,8 +9,11 @@
 #include <p3d/view.hpp>
 #include <pddi/pddi.hpp>
 #ifdef RAD_ANDROID
-#include <pddi/gles/gl.hpp>
-#include <pddi/gles/glcon.hpp>
+bool IsCelShadingEnabled();
+bool IsCelShadingObjectEnabled();
+void SetCelShadingObjectEnabled(bool enabled);
+bool IsCelShadingOutlinePass();
+void SetCelShadingOutlinePass(bool enabled);
 #endif
 #include <camera/supercammanager.h>
 #include <contexts/bootupcontext.h>
