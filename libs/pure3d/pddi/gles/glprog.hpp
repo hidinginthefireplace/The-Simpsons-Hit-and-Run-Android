@@ -37,6 +37,9 @@ public:
     void SetLightState(int handle, const pddiLight* lightState);
     void SetAmbientLight(pddiColour ambient);
     void SetCelShadingEnabled(bool enabled);
+#ifdef RAD_ANDROID
+    void SetCelShadingState(bool enabled, bool objectEnabled, bool outlinePass);
+#endif
 
     inline bool SupportsLighting() { return acs >= 0; }
     inline bool SupportsTextures() { return sampler >= 0; }
