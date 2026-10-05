@@ -19,6 +19,10 @@
 #include <memory/srrmemory.h>
 #include <p3d/utility.hpp>
 
+#ifdef RAD_ANDROID
+void SetCelShadingSuppressed(bool suppressed);
+#endif
+
 //************************************************************************
 //
 // Global Data, Local Data, Local Classes
@@ -226,9 +230,15 @@ void StaticEntityDSG::Display()
 
     if(mIsGeo & IS_SHADOW)
     {
+#ifdef RAD_ANDROID
+        SetCelShadingSuppressed(true);
+#endif
         p3d::pddi->SetZWrite(false);
         mpDrawstuff->Display();
         p3d::pddi->SetZWrite(true);
+#ifdef RAD_ANDROID
+        SetCelShadingSuppressed(false);
+#endif
     }
     else
     {
