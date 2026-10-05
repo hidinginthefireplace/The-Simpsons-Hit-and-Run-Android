@@ -352,7 +352,7 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
     GLuint fragmentShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
         (toonLighting +
         "void main() {\n"
-        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0) {\n"
+        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0 && lit != 0) {\n"
         "        gl_FragColor = vec4(0.0, 0.0, 0.0, cpri.a * dcm.a);\n"
         "        return;\n"
         "    }\n"
@@ -365,7 +365,7 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "uniform sampler2D tex;\n"
         "void main() {\n"
         "    vec4 base = texture2D(tex, tc) * cpri;\n"
-        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0) {\n"
+        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0 && lit != 0) {\n"
         "        gl_FragColor = vec4(0.0, 0.0, 0.0, base.a);\n"
         "        return;\n"
         "    }\n"
@@ -379,7 +379,7 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "uniform sampler2D tex;\n"
         "void main() {\n"
         "    vec4 base = texture2D(tex, tc) * cpri;\n"
-        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0) {\n"
+        "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0 && lit != 0) {\n"
         "        if (base.a < alpharef) discard;\n"
         "        gl_FragColor = vec4(0.0, 0.0, 0.0, base.a);\n"
         "        return;\n"
