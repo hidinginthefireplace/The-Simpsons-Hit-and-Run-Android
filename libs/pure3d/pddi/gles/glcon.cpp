@@ -318,7 +318,7 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "const float toonFlatLight = 0.78;\n"
 
         // Subtle camera-facing rim highlight for the flat toon pass.
-        "const float toonRimStrength = 0.15;\n"
+        "const float toonRimStrength = 0.20;\n"
 
         "vec3 toonLightingColor() {\n"
         "    vec3 n = normalize(toonNormal);\n"
