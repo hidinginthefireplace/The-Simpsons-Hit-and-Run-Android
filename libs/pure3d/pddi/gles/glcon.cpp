@@ -66,7 +66,7 @@ void SetCelShadingOutlinePass(bool enabled)
                 glCullFace(mode == PDDI_CULL_INVERTED ? GL_BACK : GL_FRONT);
             }
         }
-        glDepthMask(gCelShadingContext ? (gCelShadingContext->GetZWrite() ? GL_TRUE : GL_FALSE) : GL_TRUE);
+        glDepthMask(GL_TRUE);
     }
 
     ApplyCelShadingState();
