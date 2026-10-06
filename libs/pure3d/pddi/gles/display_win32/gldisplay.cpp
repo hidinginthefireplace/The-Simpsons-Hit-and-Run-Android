@@ -271,7 +271,6 @@ static void ApplyCelPostProcess(int width, int height)
     if (scissorEnabled) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
     if (stencilEnabled) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
 }
-#endif
 
 static int gSHARAndroidRenderWidth = 0;
 static int gSHARAndroidRenderHeight = 0;
