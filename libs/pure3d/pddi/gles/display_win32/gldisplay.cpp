@@ -599,7 +599,6 @@ static void ApplyCelPostProcess(int width, int height)
      * Leave framebuffer 0 bound so SDL_GL_SwapWindow presents the final image.
      */
 }
-}
 
 }
 
