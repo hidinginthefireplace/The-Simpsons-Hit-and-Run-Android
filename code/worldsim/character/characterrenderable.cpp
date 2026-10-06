@@ -8,6 +8,11 @@
 #include <p3d/shadow.hpp>
 #include <p3d/view.hpp>
 #include <pddi/pddi.hpp>
+#ifdef RAD_ANDROID
+bool IsCelShadingEnabled();
+bool IsCelShadingObjectEnabled();
+void SetCelShadingObjectEnabled(bool enabled);
+#endif
 #include <camera/supercammanager.h>
 #include <contexts/bootupcontext.h>
 
@@ -552,7 +557,20 @@ void CharacterRenderable::DisplayModel( tPose* pose )
         draw->ProcessShaders( blendAlpha );
         tShaderIntBroadcast emissiveFade( PDDI_SP_EMISSIVEALPHA, mFadeAlpha );
         draw->ProcessShaders( emissiveFade );
+#ifdef RAD_ANDROID
+        const bool celObjectScopeWasEnabled = IsCelShadingObjectEnabled();
+        if (IsCelShadingEnabled() && !celObjectScopeWasEnabled)
+        {
+            SetCelShadingObjectEnabled(true);
+        }
+#endif
         draw->Display( pose );
+#ifdef RAD_ANDROID
+        if (!celObjectScopeWasEnabled)
+        {
+            SetCelShadingObjectEnabled(false);
+        }
+#endif
     }
 }
 
