@@ -51,9 +51,10 @@ void SetCelShadingOutlinePass(bool enabled)
 
     if (enabled && gCelShadingEnabled && gCelShadingObjectEnabled)
     {
-        // Keep the outline behind the normal pass and render only backfaces.
+        // The engine's normal cull mode removes front faces, so the
+        // silhouette pass must do the opposite: render backfaces only.
         glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
+        glCullFace(GL_FRONT);
         glDepthMask(GL_FALSE);
     }
     else
@@ -320,16 +321,19 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "float product(vec3 x, vec3 y) { return max(dot(x,y), 0.0); }\n"
         "float power(float x, float y) { return y != 0.0 ? pow(x,y) : 1.0; }\n"
 
-        // One flat toon tone for enabled characters and vehicles. This removes
-        // the two-band light/shadow jump and keeps the source texture colours intact.
-        "const float toonFlatLight = 0.78;\n"
+        // Three broad lighting bands tuned toward the colourful Simpsons-cartoon
+        // look, with a subtle camera-facing rim highlight.
+        "float toonBand(float ndotl) {\n"
+        "    if (ndotl < 0.22) return 0.0;\n"
+        "    if (ndotl < 0.52) return 0.58;\n"
+        "    return 1.0;\n"
+        "}\n"
 
-        // Subtle camera-facing rim highlight for the flat toon pass.
         "const float toonRimStrength = 0.20;\n"
 
         "vec3 toonLightingColor() {\n"
-        "    vec3 n = normalize(toonNormal);\n"
         "    if (toonEnabled == 0 || toonObjectEnabled == 0) {\n"
+        "        vec3 n = normalize(toonNormal);\n"
         "        vec3 diff = ecm.rgb + acm.rgb * acs.rgb;\n"
         "        vec3 spec = vec3(0.0);\n"
 #ifdef RAD_ANDROID
@@ -350,12 +354,28 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "        return diff + spec;\n"
         "    }\n"
 #ifdef RAD_ANDROID
-        "    vec3 toonDiffuseColor = (lit != 0) ? dcm.rgb : vec3(1.0);\n"
-#else
-        "    vec3 toonDiffuseColor = dcm.rgb;\n"
+        "    if (lit == 0) return vec3(1.0);\n"
 #endif
+        "    vec3 diff = ecm.rgb + acm.rgb * acs.rgb;\n"
+        "    vec3 spec = vec3(0.0);\n"
+        "    vec3 n = normalize(toonNormal);\n"
+        "    for (int i = 0; i < " PDDI_STRINGIZE(PDDI_MAX_LIGHTS) "; i++) {\n"
+        "        if (lights[i].enabled == 0) continue;\n"
+        "        vec3 VP = direction(vec4(toonViewPos, 1.0), lights[i].position);\n"
+        "        float ndotl = product(n, VP);\n"
+        "        float band = toonBand(ndotl);\n"
+        "        vec3 h = normalize(VP + vec3(0.0, 0.0, 1.0));\n"
+        "        float specular = power(product(n, h), srm);\n"
+        "        float toonSpec = step(0.92, specular) * step(0.05, ndotl);\n"
+        "        vec3 k = lights[i].attenuation;\n"
+        "        float d = distance(toonViewPos, lights[i].position.xyz);\n"
+        "        float att = lights[i].position.w != 0.0 ? 1.0 / (k[0] + k[1] * d + k[2] * d * d) : 1.0;\n"
+        "        diff += att * band * dcm.rgb * lights[i].colour.rgb;\n"
+        "        spec += att * toonSpec * scm.rgb * lights[i].colour.rgb;\n"
+        "    }\n"
         "    float rim = pow(1.0 - max(dot(n, normalize(-toonViewPos)), 0.0), 2.5);\n"
-        "    return toonDiffuseColor * (toonFlatLight + toonRimStrength * rim);\n"
+        "    diff += dcm.rgb * toonRimStrength * rim;\n"
+        "    return diff + spec;\n"
         "}\n";
 
     GLuint fragmentShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
