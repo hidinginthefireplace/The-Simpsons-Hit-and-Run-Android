@@ -22,6 +22,10 @@ class pglExtGamma;
 #ifdef RAD_ANDROID
 bool IsCelShadingEnabled();
 void SetCelShadingEnabled(bool enabled);
+bool IsCelShadingObjectEnabled();
+void SetCelShadingObjectEnabled(bool enabled);
+bool IsCelShadingOutlinePass();
+void SetCelShadingOutlinePass(bool enabled);
 #endif
 
 //--------------------------------------------------------------
@@ -91,6 +95,9 @@ public :
     pglDisplay* GetDisplay(void) {return display;}
     void SetShaderProgram(pglProgram* program);
     void SetTextureEnvironment(const pglTextureEnv* texEnv);
+#ifdef RAD_ANDROID
+    void ApplyCelShadingState();
+#endif
 
     unsigned contextID;
 
