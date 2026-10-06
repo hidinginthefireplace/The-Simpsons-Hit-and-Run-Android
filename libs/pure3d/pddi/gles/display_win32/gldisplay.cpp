@@ -23,6 +23,9 @@ namespace
 GLuint gCelPostProgram = 0;
 GLuint gCelPostTexture = 0;
 GLuint gCelPostVbo = 0;
+GLuint gCelRenderFbo = 0;
+GLuint gCelRenderDepth = 0;
+bool gCelRenderFboReady = false;
 GLint gCelPostSceneLocation = -1;
 GLint gCelPostTexelLocation = -1;
 int gCelPostWidth = 0;
@@ -51,6 +54,95 @@ static GLuint CompileCelPostShader(GLenum type, const char* source)
     }
 
     return shader;
+}
+
+static bool EnsureCelRenderTarget(int width, int height)
+{
+    if (width <= 0 || height <= 0)
+        return false;
+
+    if (gCelRenderFbo == 0)
+        glGenFramebuffers(1, &gCelRenderFbo);
+
+    if (gCelRenderDepth == 0)
+        glGenRenderbuffers(1, &gCelRenderDepth);
+
+    if (gCelRenderFbo == 0 || gCelRenderDepth == 0)
+        return false;
+
+    /*
+     * The cel post-process texture is also the colour attachment for the
+     * off-screen game render target. It must exist before the FBO is checked.
+     */
+    if (!EnsureCelPostProcessResources(width, height))
+        return false;
+
+    GLint previousFramebuffer = 0;
+    GLint previousTexture2D = 0;
+    GLint previousRenderbuffer = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture2D);
+    glGetIntegerv(GL_RENDERBUFFER_BINDING, &previousRenderbuffer);
+
+    glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glBindRenderbuffer(GL_RENDERBUFFER, gCelRenderDepth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, gCelRenderFbo);
+    glFramebufferTexture2D(
+        GL_FRAMEBUFFER,
+        GL_COLOR_ATTACHMENT0,
+        GL_TEXTURE_2D,
+        gCelPostTexture,
+        0
+    );
+    glFramebufferRenderbuffer(
+        GL_FRAMEBUFFER,
+        GL_DEPTH_ATTACHMENT,
+        GL_RENDERBUFFER,
+        gCelRenderDepth
+    );
+
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    gCelRenderFboReady = (status == GL_FRAMEBUFFER_COMPLETE);
+
+    if (!gCelRenderFboReady)
+    {
+        SDL_LogError(
+            SDL_LOG_CATEGORY_RENDER,
+            "SHAR Android cel render FBO incomplete: 0x%04x",
+            (unsigned)status
+        );
+    }
+    else
+    {
+        SDL_Log(
+            "SHAR Android cel render FBO ready: %dx%d",
+            width,
+            height
+        );
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, (GLuint)previousRenderbuffer);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture2D);
+
+    return gCelRenderFboReady;
+}
+
+static bool BindCelRenderTarget(int width, int height)
+{
+    if (!EnsureCelRenderTarget(width, height))
+        return false;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, gCelRenderFbo);
+    glViewport(0, 0, width, height);
+    return true;
 }
 
 static bool EnsureCelPostProcessResources(int width, int height)
@@ -167,6 +259,17 @@ static void ApplyCelPostProcess(int width, int height)
     if (!IsCelShadingEnabled())
         return;
 
+    /*
+     * The game must have rendered this frame into our off-screen target.
+     * During the first frame after the menu toggle, the toggle can happen
+     * after BeginFrame(); in that case the frame was rendered to the normal
+     * framebuffer and must simply be presented unchanged.
+     */
+    GLint currentFramebuffer = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFramebuffer);
+    if ((GLuint)currentFramebuffer != gCelRenderFbo || !gCelRenderFboReady)
+        return;
+
     if (!EnsureCelPostProcessResources(width, height))
         return;
 
@@ -178,14 +281,12 @@ static void ApplyCelPostProcess(int width, int height)
     const GLboolean cullEnabled = glIsEnabled(GL_CULL_FACE);
     const GLboolean scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
     const GLboolean stencilEnabled = glIsEnabled(GL_STENCIL_TEST);
-    GLint previousFramebuffer = 0;
     GLint previousProgram = 0;
     GLint previousActiveTexture = GL_TEXTURE0;
     GLint previousTexture2D = 0;
     GLint previousArrayBuffer = 0;
     GLint previousVao = 0;
     GLint previousAttrib0Enabled = GL_FALSE;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
     glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
     glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture2D);
@@ -193,34 +294,17 @@ static void ApplyCelPostProcess(int width, int height)
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING_OES, &previousVao);
     glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &previousAttrib0Enabled);
 
+    /*
+     * The source is our completed off-screen colour texture. Render the
+     * post-process into the SDL window framebuffer.
+     */
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
     glDisable(GL_CULL_FACE);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_STENCIL_TEST);
-
-    /*
-     * Preserve the framebuffer selected by the game's renderer.
-     *
-     * The previous diagnostic forced framebuffer 0 here. On Android/GLES
-     * that is not necessarily the framebuffer containing the game's final
-     * image, so the capture could legitimately be all black. The post-process
-     * must operate on whichever framebuffer is already active.
-     *
-     * Copy that image to a texture, then draw the post-process back over the
-     * same framebuffer.
-     */
-    glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
-    glCopyTexSubImage2D(
-        GL_TEXTURE_2D,
-        0,
-        0,
-        0,
-        0,
-        0,
-        width,
-        height
-    );
 
     glViewport(0, 0, width, height);
     glUseProgram(gCelPostProgram);
@@ -228,11 +312,6 @@ static void ApplyCelPostProcess(int width, int height)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
     glUniform1i(gCelPostSceneLocation, 0);
-    glUniform2f(
-        gCelPostTexelLocation,
-        1.0f / (GLfloat)width,
-        1.0f / (GLfloat)height
-    );
 
     glBindVertexArrayOES(0);
     glBindBuffer(GL_ARRAY_BUFFER, gCelPostVbo);
@@ -249,9 +328,7 @@ static void ApplyCelPostProcess(int width, int height)
 
     glBindTexture(GL_TEXTURE_2D, previousTexture2D);
     glActiveTexture(previousActiveTexture);
-    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
     glUseProgram((GLuint)previousProgram);
-
     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 
     if (depthEnabled) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
@@ -259,6 +336,11 @@ static void ApplyCelPostProcess(int width, int height)
     if (cullEnabled) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
     if (scissorEnabled) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
     if (stencilEnabled) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
+
+    /*
+     * Leave framebuffer 0 bound so SDL_GL_SwapWindow presents the image we
+     * just generated.
+     */
 }
 
 }
@@ -362,6 +444,19 @@ pglDisplay ::pglDisplay(pddiDisplayInfo* info)
 
 pglDisplay ::~pglDisplay()
 {
+#ifdef RAD_ANDROID
+    if (gCelRenderDepth)
+    {
+        glDeleteRenderbuffers(1, &gCelRenderDepth);
+        gCelRenderDepth = 0;
+    }
+    if (gCelRenderFbo)
+    {
+        glDeleteFramebuffers(1, &gCelRenderFbo);
+        gCelRenderFbo = 0;
+    }
+#endif
+
     /* release and free the device context and rendering context */
 #if SDL_MAJOR_VERSION < 3
     SDL_GL_DeleteContext(hRC);
