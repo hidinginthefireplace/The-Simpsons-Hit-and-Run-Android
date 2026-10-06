@@ -420,6 +420,18 @@ extern DECLSPEC int SDLCALL SDL_AndroidGetExternalStorageState(void);
 extern DECLSPEC const char * SDLCALL SDL_AndroidGetExternalStoragePath(void);
 
 /**
+ * Get the primary Android app-specific external-files directory without
+ * applying the game's selected game-data path override.
+ *
+ * This is typically:
+ * `/storage/emulated/0/Android/data/your.app.package/files`.
+ *
+ * This is separate from SDL_AndroidGetExternalStoragePath(), which this
+ * project overrides for its selectable game-data location.
+ */
+extern DECLSPEC const char * SDLCALL SDL_AndroidGetApplicationExternalFilesPath(void);
+
+/**
  * Request permissions at runtime.
  *
  * This blocks the calling thread until the permission is granted or denied.
