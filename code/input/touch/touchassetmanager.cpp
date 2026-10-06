@@ -648,11 +648,11 @@ bool TouchAssetManager::BuildAssetRoot()
 #if !defined(RAD_ANDROID)
     return true;
 #else
-    const char* storagePath = SDL_AndroidGetExternalStoragePath();
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
 
     if ( storagePath == 0 || storagePath[ 0 ] == '\0' )
     {
-        SetLastError( "SDL_AndroidGetExternalStoragePath returned null/empty." );
+        SetLastError( "SDL_AndroidGetApplicationExternalFilesPath returned null/empty." );
         return false;
     }
 
