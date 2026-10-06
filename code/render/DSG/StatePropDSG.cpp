@@ -15,6 +15,10 @@
 #include <memory/classsizetracker.h>
 #include <radtime.hpp>
 #include <render/DSG/StatePropDSG.h>
+#ifdef RAD_ANDROID
+bool IsCelShadingSuppressed();
+void SetCelShadingSuppressed(bool suppressed);
+#endif
 #include <console/console.h>
 #include <stateprop/statepropdata.hpp>
 #include <render/RenderManager/RenderManager.h>
@@ -858,7 +862,20 @@ StatePropDSG::DisplaySimpleShadow()
 
 	    // Display
 	    p3d::stack->PushMultiply( shadowTransform );
+#ifdef RAD_ANDROID
+        const bool celWasSuppressed = IsCelShadingSuppressed();
+        if (!celWasSuppressed)
+        {
+            SetCelShadingSuppressed(true);
+        }
+#endif
         element->Display();
+#ifdef RAD_ANDROID
+        if (!celWasSuppressed)
+        {
+            SetCelShadingSuppressed(false);
+        }
+#endif
         p3d::stack->Pop();
         element->SetVisibility( false );
     }
