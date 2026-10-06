@@ -17,6 +17,10 @@
 //========================================
 #include <p3d/utility.hpp>
 #include <render/DSG/InstStatEntityDSG.h>
+#ifdef RAD_ANDROID
+bool IsCelShadingSuppressed();
+void SetCelShadingSuppressed(bool suppressed);
+#endif
 #include <memory/srrmemory.h>
 #include <render/IntersectManager/IntersectManager.h>
 #include <p3d/matrixstack.hpp>
@@ -168,7 +172,20 @@ void InstStatEntityDSG::DisplaySimpleShadow()
 
 	        // Display
 	        p3d::stack->PushMultiply( shadowTransform );
-	        mpShadowDrawable->Display();
+	#ifdef RAD_ANDROID
+        const bool celWasSuppressed = IsCelShadingSuppressed();
+        if (!celWasSuppressed)
+        {
+            SetCelShadingSuppressed(true);
+        }
+#endif
+        mpShadowDrawable->Display();
+#ifdef RAD_ANDROID
+        if (!celWasSuppressed)
+        {
+            SetCelShadingSuppressed(false);
+        }
+#endif
             p3d::stack->Pop();
         }
     }
