@@ -93,7 +93,7 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
      */
     private static final int SHAR_FALLBACK_MAX_TARGET_RENDER_HEIGHT = 1080;
 
-    // Runtime value loaded from Simpsons_resolution.txt.
+    // Runtime value optionally loaded from app-internal Simpsons_resolution.txt.
     private int mSHARTargetRenderHeight = SHAR_DEFAULT_TARGET_RENDER_HEIGHT;
 
     // Round render width to avoid odd framebuffer sizes.
@@ -146,7 +146,9 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
         /*
          * Simpsons Android:
-         * Load/create the user resolution config before applying the Surface size.
+         * Load the optional user resolution config from app-internal storage
+         * before applying the Surface size. When it is absent, use the built-in
+         * 1080p target without creating a file on first launch.
          *
          * The config file is read before native code starts, so PDDI receives
          * the correct render resolution from the beginning.
@@ -188,7 +190,12 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     }
 
     private File getSHARResolutionConfigFile() {
-        File baseDir = getSHARPrivateBaseDir();
+        File baseDir = null;
+
+        try {
+            baseDir = getContext().getFilesDir();
+        } catch (Exception ignored) {
+        }
 
         if (baseDir == null) {
             return null;
@@ -207,85 +214,6 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         File touchControlsDir = new File(baseDir, SHAR_TOUCH_CONTROLS_FOLDER);
 
         return new File(touchControlsDir, SHAR_TOUCH_MODE_CONFIG_FILE);
-    }
-
-    private void createDefaultSHARResolutionConfigIfNeeded(File configFile) {
-        if (configFile == null || configFile.exists()) {
-            return;
-        }
-
-        try {
-            File parent = configFile.getParentFile();
-
-            if (parent != null && !parent.exists()) {
-                parent.mkdirs();
-            }
-
-            OutputStreamWriter writer = new OutputStreamWriter(
-                    new FileOutputStream(configFile),
-                    StandardCharsets.UTF_8
-            );
-
-            writer.write("# Simpsons Hit & Run Android adaptive render resolution\n");
-            writer.write("#\n");
-            writer.write("# This file controls the internal render resolution used by the game on Android.\n");
-            writer.write("# The game does not need to render at the full physical screen resolution.\n");
-            writer.write("# Instead, the game renders at a lower internal resolution and Android scales the final image to fullscreen.\n");
-            writer.write("#\n");
-            writer.write("# You only need to change target_height.\n");
-            writer.write("# The render width is calculated automatically to preserve the device aspect ratio.\n");
-            writer.write("#\n");
-            writer.write("# Standard values: 720, 800, 850, 900, 1080.\n");
-            writer.write("# Recommended value: 720 or higher is an light and optimized game.\n");
-            writer.write("# Higher values improve sharpness but increase GPU load.\n");
-            writer.write("# Lower values improve performance but reduce image quality.\n");
-            writer.write("# The maximum target_height is the device landscape height, which is the physical short side.\n");
-            writer.write("# Example: on a 2772x1280 device, the maximum target_height is 1280.\n");
-            writer.write("# If target_height is set above 1280 on that device, it will be clamped to 1280.\n");
-            writer.write("# Values lower than 300 will be clamped to 300 automatically.\n");
-            writer.write("#\n");
-            writer.write("# How it works:\n");
-            writer.write("# 1. The phone physical resolution is converted to landscape terms.\n");
-            writer.write("# 2. target_height becomes the internal render height.\n");
-            writer.write("# 3. The internal render width is calculated using the physical aspect ratio.\n");
-            writer.write("# 4. The calculated width is rounded to a multiple of 8 to avoid odd framebuffer sizes.\n");
-            writer.write("# 5. Android scales the final image to the full physical screen.\n");
-            writer.write("#\n");
-            writer.write("# Example with a POCO F7 with 2772x1280 device and target_height=1080:\n");
-            writer.write("# physical landscape size = 2772x1280\n");
-            writer.write("# target render height = 1080\n");
-            writer.write("# raw render width = 1080 * 2772 / 1280 = 2338.875\n");
-            writer.write("# rounded raw width = 2339\n");
-            writer.write("# aligned width to multiple of 8 = 2336\n");
-            writer.write("# final internal render resolution = 2336x1080\n");
-            writer.write("# final visual output = scaled by Android to 2772x1280\n");
-            writer.write("#\n");
-            writer.write("# Examples:\n");
-            writer.write("# target_height=720\n");
-            writer.write("# target_height=900\n");
-            writer.write("# target_height=1080\n");
-            writer.write("# You can also use MAX to render at the maximum useful height for your device.\n");
-            writer.write("# Example: on a 2772x1280 device, target_height=MAX means target_height=1280.\n");
-            writer.write("\n");
-            writer.write("target_height=" + SHAR_DEFAULT_TARGET_RENDER_HEIGHT + "\n");
-
-            writer.flush();
-            writer.close();
-
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR resolution config created: " + configFile.getAbsolutePath()
-                );
-            }
-        } catch (Exception e) {
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR resolution config creation failed: " + e.getMessage()
-                );
-            }
-        }
     }
 
 private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
@@ -351,8 +279,6 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
             }
             return;
         }
-
-        createDefaultSHARResolutionConfigIfNeeded(configFile);
 
         if (!configFile.exists()) {
             if (SHAR_LOG_RESOLUTION) {
