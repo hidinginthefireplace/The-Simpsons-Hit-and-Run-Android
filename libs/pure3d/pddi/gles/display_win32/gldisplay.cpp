@@ -22,6 +22,7 @@ namespace
 {
 GLuint gCelPostProgram = 0;
 GLuint gCelPostTexture = 0;
+GLuint gCelPostVbo = 0;
 GLint gCelPostSceneLocation = -1;
 GLint gCelPostTexelLocation = -1;
 int gCelPostWidth = 0;
@@ -143,6 +144,18 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostTexelLocation = glGetUniformLocation(gCelPostProgram, "texelSize");
 
         glGenTextures(1, &gCelPostTexture);
+
+        static const GLfloat quad[] =
+        {
+            -1.0f, -1.0f,
+             1.0f, -1.0f,
+            -1.0f,  1.0f,
+             1.0f,  1.0f
+        };
+        glGenBuffers(1, &gCelPostVbo);
+        glBindBuffer(GL_ARRAY_BUFFER, gCelPostVbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
     if (gCelPostWidth != width || gCelPostHeight != height)
@@ -179,14 +192,6 @@ static void ApplyCelPostProcess(int width, int height)
     if (!EnsureCelPostProcessResources(width, height))
         return;
 
-    static const GLfloat quad[] =
-    {
-        -1.0f, -1.0f,
-         1.0f, -1.0f,
-        -1.0f,  1.0f,
-         1.0f,  1.0f
-    };
-
     GLint viewport[4];
     glGetIntegerv(GL_VIEWPORT, viewport);
 
@@ -198,9 +203,15 @@ static void ApplyCelPostProcess(int width, int height)
     GLint previousProgram = 0;
     GLint previousActiveTexture = GL_TEXTURE0;
     GLint previousTexture2D = 0;
+    GLint previousArrayBuffer = 0;
+    GLint previousVao = 0;
+    GLint previousAttrib0Enabled = GL_FALSE;
     glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
     glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture2D);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousArrayBuffer);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING_OES, &previousVao);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &previousAttrib0Enabled);
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
@@ -235,10 +246,18 @@ static void ApplyCelPostProcess(int width, int height)
         1.0f / (GLfloat)height
     );
 
+    glBindVertexArrayOES(0);
+    glBindBuffer(GL_ARRAY_BUFFER, gCelPostVbo);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)0);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glDisableVertexAttribArray(0);
+
+    if (previousAttrib0Enabled)
+        glEnableVertexAttribArray(0);
+    else
+        glDisableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, (GLuint)previousArrayBuffer);
+    glBindVertexArrayOES((GLuint)previousVao);
 
     glBindTexture(GL_TEXTURE_2D, previousTexture2D);
     glActiveTexture(previousActiveTexture);
