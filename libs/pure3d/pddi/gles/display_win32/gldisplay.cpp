@@ -26,10 +26,19 @@ GLuint gCelPostVbo = 0;
 GLuint gCelRenderFbo = 0;
 GLuint gCelRenderDepth = 0;
 bool gCelRenderFboReady = false;
+
+GLuint gCelFxaaProgram = 0;
+GLuint gCelFxaaTexture = 0;
+GLuint gCelFxaaFbo = 0;
+bool gCelFxaaFboReady = false;
 GLint gCelPostSceneLocation = -1;
 GLint gCelPostTexelLocation = -1;
+GLint gCelFxaaSceneLocation = -1;
+GLint gCelFxaaTexelLocation = -1;
 int gCelPostWidth = 0;
 int gCelPostHeight = 0;
+int gCelFxaaWidth = 0;
+int gCelFxaaHeight = 0;
 
 static GLuint CompileCelPostShader(GLenum type, const char* source)
 {
@@ -57,6 +66,7 @@ static GLuint CompileCelPostShader(GLenum type, const char* source)
 }
 
 static bool EnsureCelPostProcessResources(int width, int height);
+static bool EnsureCelFxaaResources(int width, int height);
 
 static bool EnsureCelRenderTarget(int width, int height)
 {
@@ -279,6 +289,190 @@ static bool EnsureCelPostProcessResources(int width, int height)
     return gCelPostProgram != 0 && gCelPostTexture != 0;
 }
 
+static bool EnsureCelFxaaResources(int width, int height)
+{
+    if (width <= 0 || height <= 0)
+        return false;
+
+    if (!EnsureCelPostProcessResources(width, height))
+        return false;
+
+    if (gCelFxaaProgram == 0)
+    {
+        const char* vertexSource =
+            "attribute vec2 position;\n"
+            "varying vec2 texcoord;\n"
+            "void main() {\n"
+            "    texcoord = position * 0.5 + 0.5;\n"
+            "    gl_Position = vec4(position, 0.0, 1.0);\n"
+            "}\n";
+
+        /*
+         * Lightweight FXAA-style pass for GLES2.
+         *
+         * It detects a local luminance edge, estimates its direction, and
+         * samples along that direction. This is intentionally a single pass
+         * so the Android/Shield renderer gets useful AA without introducing
+         * the extra resources required by SMAA.
+         */
+        const char* fragmentSource =
+            "precision mediump float;\n"
+            "uniform sampler2D sceneTex;\n"
+            "uniform vec2 texelSize;\n"
+            "varying vec2 texcoord;\n"
+            "\n"
+            "float sceneLuma(vec3 colour) {\n"
+            "    return dot(colour, vec3(0.299, 0.587, 0.114));\n"
+            "}\n"
+            "\n"
+            "void main() {\n"
+            "    vec3 rgbM  = texture2D(sceneTex, texcoord).rgb;\n"
+            "    vec3 rgbNW = texture2D(sceneTex, texcoord + vec2(-1.0, -1.0) * texelSize).rgb;\n"
+            "    vec3 rgbNE = texture2D(sceneTex, texcoord + vec2( 1.0, -1.0) * texelSize).rgb;\n"
+            "    vec3 rgbSW = texture2D(sceneTex, texcoord + vec2(-1.0,  1.0) * texelSize).rgb;\n"
+            "    vec3 rgbSE = texture2D(sceneTex, texcoord + vec2( 1.0,  1.0) * texelSize).rgb;\n"
+            "\n"
+            "    float lumaM  = sceneLuma(rgbM);\n"
+            "    float lumaNW = sceneLuma(rgbNW);\n"
+            "    float lumaNE = sceneLuma(rgbNE);\n"
+            "    float lumaSW = sceneLuma(rgbSW);\n"
+            "    float lumaSE = sceneLuma(rgbSE);\n"
+            "\n"
+            "    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));\n"
+            "    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));\n"
+            "\n"
+            "    vec2 dir;\n"
+            "    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));\n"
+            "    dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));\n"
+            "\n"
+            "    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.03125, 0.0078125);\n"
+            "    float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);\n"
+            "    dir = clamp(dir * rcpDirMin, -8.0, 8.0) * texelSize;\n"
+            "\n"
+            "    vec3 rgbA = 0.5 * (\n"
+            "        texture2D(sceneTex, texcoord + dir * (1.0 / 3.0 - 0.5)).rgb +\n"
+            "        texture2D(sceneTex, texcoord + dir * (2.0 / 3.0 - 0.5)).rgb);\n"
+            "\n"
+            "    vec3 rgbB = rgbA * 0.5 + 0.25 * (\n"
+            "        texture2D(sceneTex, texcoord + dir * -0.5).rgb +\n"
+            "        texture2D(sceneTex, texcoord + dir *  0.5).rgb);\n"
+            "    float lumaB = sceneLuma(rgbB);\n"
+            "\n"
+            "    vec3 result = (lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB;\n"
+            "    gl_FragColor = vec4(result, texture2D(sceneTex, texcoord).a);\n"
+            "}\n";
+
+        GLuint vs = CompileCelPostShader(GL_VERTEX_SHADER, vertexSource);
+        GLuint fs = CompileCelPostShader(GL_FRAGMENT_SHADER, fragmentSource);
+        if (vs == 0 || fs == 0)
+        {
+            if (vs) glDeleteShader(vs);
+            if (fs) glDeleteShader(fs);
+            return false;
+        }
+
+        gCelFxaaProgram = glCreateProgram();
+        glBindAttribLocation(gCelFxaaProgram, 0, "position");
+        glAttachShader(gCelFxaaProgram, vs);
+        glAttachShader(gCelFxaaProgram, fs);
+        glLinkProgram(gCelFxaaProgram);
+
+        GLint linked = GL_FALSE;
+        glGetProgramiv(gCelFxaaProgram, GL_LINK_STATUS, &linked);
+        if (linked == GL_FALSE)
+        {
+            GLint length = 0;
+            glGetProgramiv(gCelFxaaProgram, GL_INFO_LOG_LENGTH, &length);
+            if (length > 0)
+            {
+                std::vector<char> log((size_t)length + 1, 0);
+                glGetProgramInfoLog(gCelFxaaProgram, length, NULL, log.data());
+                SDL_LogError(SDL_LOG_CATEGORY_RENDER, "Cel FXAA program link failed: %s", log.data());
+            }
+
+            glDeleteProgram(gCelFxaaProgram);
+            gCelFxaaProgram = 0;
+            glDeleteShader(vs);
+            glDeleteShader(fs);
+            return false;
+        }
+
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+
+        gCelFxaaSceneLocation = glGetUniformLocation(gCelFxaaProgram, "sceneTex");
+        gCelFxaaTexelLocation = glGetUniformLocation(gCelFxaaProgram, "texelSize");
+
+        glGenTextures(1, &gCelFxaaTexture);
+        glGenFramebuffers(1, &gCelFxaaFbo);
+    }
+
+    glBindTexture(GL_TEXTURE_2D, gCelFxaaTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    if (gCelFxaaWidth != width || gCelFxaaHeight != height)
+    {
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA,
+            width,
+            height,
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            NULL
+        );
+        gCelFxaaWidth = width;
+        gCelFxaaHeight = height;
+    }
+
+    GLint previousFramebuffer = 0;
+    GLint previousTexture2D = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture2D);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, gCelFxaaFbo);
+    glFramebufferTexture2D(
+        GL_FRAMEBUFFER,
+        GL_COLOR_ATTACHMENT0,
+        GL_TEXTURE_2D,
+        gCelFxaaTexture,
+        0
+    );
+
+    const GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    gCelFxaaFboReady = (status == GL_FRAMEBUFFER_COMPLETE);
+
+    if (!gCelFxaaFboReady)
+    {
+        SDL_LogError(
+            SDL_LOG_CATEGORY_RENDER,
+            "SHAR Android FXAA FBO incomplete: 0x%04x",
+            (unsigned)status
+        );
+    }
+    else
+    {
+        SDL_Log(
+            "SHAR Android FXAA FBO ready: %dx%d",
+            width,
+            height
+        );
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture2D);
+
+    return gCelFxaaProgram != 0 &&
+           gCelFxaaTexture != 0 &&
+           gCelFxaaFbo != 0 &&
+           gCelFxaaFboReady;
+}
+
 static void ApplyCelPostProcess(int width, int height)
 {
     if (!IsCelShadingEnabled())
@@ -297,6 +491,13 @@ static void ApplyCelPostProcess(int width, int height)
 
     if (!EnsureCelPostProcessResources(width, height))
         return;
+
+    /*
+     * FXAA needs a separate render target so the toon pass can be sampled
+     * while the AA pass is being written. If it cannot be created, keep the
+     * proven toon-to-default-framebuffer path below as a safe fallback.
+     */
+    const bool fxaaReady = EnsureCelFxaaResources(width, height);
 
     GLint viewport[4];
     glGetIntegerv(GL_VIEWPORT, viewport);
@@ -319,32 +520,62 @@ static void ApplyCelPostProcess(int width, int height)
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING_OES, &previousVao);
     glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &previousAttrib0Enabled);
 
-    /*
-     * The source is our completed off-screen colour texture. Render the
-     * post-process into the SDL window framebuffer.
-     */
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
     glDisable(GL_CULL_FACE);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_STENCIL_TEST);
-
     glViewport(0, 0, width, height);
+
+    /*
+     * Pass 1: toon processing.
+     *
+     * If FXAA is available, render the toon result into the FXAA input
+     * texture. Otherwise render directly to framebuffer 0 as before.
+     */
+    glBindFramebuffer(GL_FRAMEBUFFER, fxaaReady ? gCelFxaaFbo : 0);
     glUseProgram(gCelPostProgram);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
     glUniform1i(gCelPostSceneLocation, 0);
     if (gCelPostTexelLocation >= 0)
-        glUniform2f(gCelPostTexelLocation, 1.0f / (float)width, 1.0f / (float)height);
+        glUniform2f(
+            gCelPostTexelLocation,
+            1.0f / (float)width,
+            1.0f / (float)height
+        );
 
     glBindVertexArrayOES(0);
     glBindBuffer(GL_ARRAY_BUFFER, gCelPostVbo);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)0);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    /*
+     * Pass 2: FXAA over the complete toon-processed frame.
+     */
+    if (fxaaReady)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glUseProgram(gCelFxaaProgram);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, gCelFxaaTexture);
+        glUniform1i(gCelFxaaSceneLocation, 0);
+        if (gCelFxaaTexelLocation >= 0)
+            glUniform2f(
+                gCelFxaaTexelLocation,
+                1.0f / (float)width,
+                1.0f / (float)height
+            );
+
+        glBindVertexArrayOES(0);
+        glBindBuffer(GL_ARRAY_BUFFER, gCelPostVbo);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)0);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
 
     if (previousAttrib0Enabled)
         glEnableVertexAttribArray(0);
@@ -365,9 +596,9 @@ static void ApplyCelPostProcess(int width, int height)
     if (stencilEnabled) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
 
     /*
-     * Leave framebuffer 0 bound so SDL_GL_SwapWindow presents the image we
-     * just generated.
+     * Leave framebuffer 0 bound so SDL_GL_SwapWindow presents the final image.
      */
+}
 }
 
 }
@@ -489,6 +720,16 @@ pglDisplay ::pglDisplay(pddiDisplayInfo* info)
 pglDisplay ::~pglDisplay()
 {
 #ifdef RAD_ANDROID
+    if (gCelFxaaFbo)
+    {
+        glDeleteFramebuffers(1, &gCelFxaaFbo);
+        gCelFxaaFbo = 0;
+    }
+    if (gCelFxaaTexture)
+    {
+        glDeleteTextures(1, &gCelFxaaTexture);
+        gCelFxaaTexture = 0;
+    }
     if (gCelRenderDepth)
     {
         glDeleteRenderbuffers(1, &gCelRenderDepth);
