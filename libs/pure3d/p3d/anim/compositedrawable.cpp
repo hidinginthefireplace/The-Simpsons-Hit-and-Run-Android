@@ -23,6 +23,11 @@
 #include <float.h>
 #include <string.h>
 
+#ifdef RAD_ANDROID
+bool IsCelShadingSuppressed();
+void SetCelShadingSuppressed(bool suppressed);
+#endif
+
 const int resizeElementSize = 2;
 const int defaultInitialElementSize = 5;
 
@@ -399,7 +404,20 @@ void tCompositeDrawable::DrawableEffectElement::Draw(tPose* pose)
     P3DASSERTMSG(effect, "No effect attached", "tCompositeDrawable::DrawEffectElement()");
 
     p3d::stack->PushMultiply( (pose->GetJoint(poseIndex))->worldMatrix );
+#ifdef RAD_ANDROID
+    const bool celWasSuppressed = IsCelShadingSuppressed();
+    if (!celWasSuppressed)
+    {
+        SetCelShadingSuppressed(true);
+    }
+#endif
     effect->Display();
+#ifdef RAD_ANDROID
+    if (!celWasSuppressed)
+    {
+        SetCelShadingSuppressed(false);
+    }
+#endif
     p3d::stack->Pop();
 }
 
