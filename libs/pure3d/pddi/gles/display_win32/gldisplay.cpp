@@ -11,6 +11,7 @@
 #include<stdio.h>
 #include<string.h>
 #include<math.h>
+#include<vector>
 
 #if defined(RAD_ANDROID)
 #include <jni.h>
@@ -42,7 +43,7 @@ static GLuint CompileCelPostShader(GLenum type, const char* source)
         {
             std::vector<char> log((size_t)length + 1, 0);
             glGetShaderInfoLog(shader, length, NULL, log.data());
-            SDL_LogError(SDL_LOG_CATEGORY_RENDER, "Cel post-process shader compile failed: %s", log.data());
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cel post-process shader compile failed: %s", log.data());
         }
         glDeleteShader(shader);
         return 0;
@@ -194,6 +195,12 @@ static void ApplyCelPostProcess(int width, int height)
     const GLboolean cullEnabled = glIsEnabled(GL_CULL_FACE);
     const GLboolean scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
     const GLboolean stencilEnabled = glIsEnabled(GL_STENCIL_TEST);
+    GLint previousProgram = 0;
+    GLint previousActiveTexture = GL_TEXTURE0;
+    GLint previousTexture2D = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture2D);
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
@@ -233,8 +240,9 @@ static void ApplyCelPostProcess(int width, int height)
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     glDisableVertexAttribArray(0);
 
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glUseProgram(0);
+    glBindTexture(GL_TEXTURE_2D, previousTexture2D);
+    glActiveTexture(previousActiveTexture);
+    glUseProgram((GLuint)previousProgram);
 
     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 
@@ -747,6 +755,15 @@ void pglDisplay::SetGamma(float r, float g, float b)
 
 void pglDisplay::SwapBuffers(void)
 {
+#ifdef RAD_ANDROID
+    /*
+     * The post-process is deliberately applied at the final presentation
+     * point. This means every completed render path in the game is treated
+     * uniformly, including world geometry, characters, vehicles and effects.
+     */
+    ApplyCelPostProcess(winWidth, winHeight);
+#endif
+
     SDL_GL_SwapWindow(win);
     reset = false;
     #ifdef RAD_ANDROID
