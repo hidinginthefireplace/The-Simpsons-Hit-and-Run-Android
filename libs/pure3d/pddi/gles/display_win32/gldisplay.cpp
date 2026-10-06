@@ -15,6 +15,237 @@
 #if defined(RAD_ANDROID)
 #include <jni.h>
 
+bool IsCelShadingEnabled();
+
+namespace
+{
+GLuint gCelPostProgram = 0;
+GLuint gCelPostTexture = 0;
+GLint gCelPostSceneLocation = -1;
+GLint gCelPostTexelLocation = -1;
+int gCelPostWidth = 0;
+int gCelPostHeight = 0;
+
+static GLuint CompileCelPostShader(GLenum type, const char* source)
+{
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, 0);
+    glCompileShader(shader);
+
+    GLint compiled = GL_FALSE;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+    if (compiled == GL_FALSE)
+    {
+        GLint length = 0;
+        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
+        if (length > 0)
+        {
+            std::vector<char> log((size_t)length + 1, 0);
+            glGetShaderInfoLog(shader, length, NULL, log.data());
+            SDL_LogError(SDL_LOG_CATEGORY_RENDER, "Cel post-process shader compile failed: %s", log.data());
+        }
+        glDeleteShader(shader);
+        return 0;
+    }
+
+    return shader;
+}
+
+static bool EnsureCelPostProcessResources(int width, int height)
+{
+    if (width <= 0 || height <= 0)
+        return false;
+
+    if (gCelPostProgram == 0)
+    {
+        const char* vertexSource =
+            "attribute vec2 position;\n"
+            "varying vec2 texcoord;\n"
+            "void main() {\n"
+            "    texcoord = position * 0.5 + 0.5;\n"
+            "    gl_Position = vec4(position, 0.0, 1.0);\n"
+            "}\n";
+
+        const char* fragmentSource =
+            "precision mediump float;\n"
+            "uniform sampler2D sceneTex;\n"
+            "uniform vec2 texelSize;\n"
+            "varying vec2 texcoord;\n"
+
+            "float luminance(vec3 c) {\n"
+            "    return dot(c, vec3(0.299, 0.587, 0.114));\n"
+            "}\n"
+
+            "void main() {\n"
+            "    vec2 uv = texcoord;\n"
+            "    vec3 center = texture2D(sceneTex, uv).rgb;\n"
+            "    vec3 left   = texture2D(sceneTex, uv + vec2(-texelSize.x, 0.0)).rgb;\n"
+            "    vec3 right  = texture2D(sceneTex, uv + vec2( texelSize.x, 0.0)).rgb;\n"
+            "    vec3 up     = texture2D(sceneTex, uv + vec2(0.0,  texelSize.y)).rgb;\n"
+            "    vec3 down   = texture2D(sceneTex, uv + vec2(0.0, -texelSize.y)).rgb;\n"
+
+            // One cel threshold rather than the three-band lighting experiment.
+            "    float lum = luminance(center);\n"
+            "    float shadowBand = 1.0 - step(0.42, lum);\n"
+            "    vec3 toon = center * mix(1.0, 0.78, shadowBand);\n"
+
+            // Screen-space edge detection. This is intentionally based on
+            // luminance so it also catches silhouettes of assets that use
+            // completely different Pure3D draw paths.
+            "    float edgeX = abs(luminance(right) - luminance(left));\n"
+            "    float edgeY = abs(luminance(up) - luminance(down));\n"
+            "    float edge = smoothstep(0.08, 0.22, max(edgeX, edgeY));\n"
+            "    toon = mix(toon, vec3(0.0), edge * 0.88);\n"
+
+            "    gl_FragColor = vec4(toon, 1.0);\n"
+            "}\n";
+
+        GLuint vs = CompileCelPostShader(GL_VERTEX_SHADER, vertexSource);
+        GLuint fs = CompileCelPostShader(GL_FRAGMENT_SHADER, fragmentSource);
+        if (vs == 0 || fs == 0)
+        {
+            if (vs) glDeleteShader(vs);
+            if (fs) glDeleteShader(fs);
+            return false;
+        }
+
+        gCelPostProgram = glCreateProgram();
+        glBindAttribLocation(gCelPostProgram, 0, "position");
+        glAttachShader(gCelPostProgram, vs);
+        glAttachShader(gCelPostProgram, fs);
+        glLinkProgram(gCelPostProgram);
+
+        GLint linked = GL_FALSE;
+        glGetProgramiv(gCelPostProgram, GL_LINK_STATUS, &linked);
+        if (linked == GL_FALSE)
+        {
+            GLint length = 0;
+            glGetProgramiv(gCelPostProgram, GL_INFO_LOG_LENGTH, &length);
+            if (length > 0)
+            {
+                std::vector<char> log((size_t)length + 1, 0);
+                glGetProgramInfoLog(gCelPostProgram, length, NULL, log.data());
+                SDL_LogError(SDL_LOG_CATEGORY_RENDER, "Cel post-process program link failed: %s", log.data());
+            }
+
+            glDeleteProgram(gCelPostProgram);
+            gCelPostProgram = 0;
+            glDeleteShader(vs);
+            glDeleteShader(fs);
+            return false;
+        }
+
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+
+        gCelPostSceneLocation = glGetUniformLocation(gCelPostProgram, "sceneTex");
+        gCelPostTexelLocation = glGetUniformLocation(gCelPostProgram, "texelSize");
+
+        glGenTextures(1, &gCelPostTexture);
+    }
+
+    if (gCelPostWidth != width || gCelPostHeight != height)
+    {
+        glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA,
+            width,
+            height,
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            NULL
+        );
+
+        gCelPostWidth = width;
+        gCelPostHeight = height;
+    }
+
+    return gCelPostProgram != 0 && gCelPostTexture != 0;
+}
+
+static void ApplyCelPostProcess(int width, int height)
+{
+    if (!IsCelShadingEnabled())
+        return;
+
+    if (!EnsureCelPostProcessResources(width, height))
+        return;
+
+    static const GLfloat quad[] =
+    {
+        -1.0f, -1.0f,
+         1.0f, -1.0f,
+        -1.0f,  1.0f,
+         1.0f,  1.0f
+    };
+
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+
+    const GLboolean depthEnabled = glIsEnabled(GL_DEPTH_TEST);
+    const GLboolean blendEnabled = glIsEnabled(GL_BLEND);
+    const GLboolean cullEnabled = glIsEnabled(GL_CULL_FACE);
+    const GLboolean scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
+    const GLboolean stencilEnabled = glIsEnabled(GL_STENCIL_TEST);
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_STENCIL_TEST);
+
+    // The game's final colour is rendered into the SDL default framebuffer.
+    // Copy that image to a texture, then draw the post-process back over it.
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
+    glCopyTexSubImage2D(
+        GL_TEXTURE_2D,
+        0,
+        0,
+        0,
+        0,
+        0,
+        width,
+        height
+    );
+
+    glViewport(0, 0, width, height);
+    glUseProgram(gCelPostProgram);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
+    glUniform1i(gCelPostSceneLocation, 0);
+    glUniform2f(
+        gCelPostTexelLocation,
+        1.0f / (GLfloat)width,
+        1.0f / (GLfloat)height
+    );
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glDisableVertexAttribArray(0);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
+
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+
+    if (depthEnabled) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+    if (blendEnabled) glEnable(GL_BLEND); else glDisable(GL_BLEND);
+    if (cullEnabled) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (scissorEnabled) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
+    if (stencilEnabled) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
+}
+#endif
+
 static int gSHARAndroidRenderWidth = 0;
 static int gSHARAndroidRenderHeight = 0;
 
