@@ -555,7 +555,11 @@ bool TouchControlsConfigurationManager::BuildPaths()
 
     return true;
 #else
-    const char* storagePath = SDL_AndroidGetExternalStoragePath();
+    // Touch-control settings must stay in the app's primary Android
+    // external-files directory. Do not use SDL_AndroidGetExternalStoragePath()
+    // because this project overrides that API to point at the selected
+    // game-data location, which may be a USB drive.
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
 
     if ( storagePath == 0 || storagePath[ 0 ] == '\0' )
     {
