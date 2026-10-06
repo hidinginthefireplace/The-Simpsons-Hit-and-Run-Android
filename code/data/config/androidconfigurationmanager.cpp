@@ -72,17 +72,17 @@ void AndroidConfigurationManager::Initialize()
         return;
     }
 
+    this->EnsureDirectory();
+
     const bool loadedConfiguration = this->LoadConfigurationFile();
     const int loadedVersion = this->LoadVersionFile();
 
     //
-    // Do not create configuration files on first launch. If a configuration
-    // file already exists but has an old/missing version, refresh it while
-    // preserving the values that were loaded.
+    // If the file does not exist, or the version is old/missing,
+    // rewrite the configuration while preserving any values already loaded.
     //
-    if( loadedConfiguration && loadedVersion != CURRENT_CONFIGURATION_VERSION )
+    if( !loadedConfiguration || loadedVersion != CURRENT_CONFIGURATION_VERSION )
     {
-        this->EnsureDirectory();
         this->WriteConfigurationFile();
         this->WriteVersionFile();
     }
