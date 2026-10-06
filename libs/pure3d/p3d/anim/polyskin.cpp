@@ -32,11 +32,7 @@ static bool ShouldCelShadeSkin(tPrimGroup* group)
     if (!IsCelShadingEnabled() || IsCelShadingSuppressed() || !group)
         return false;
 
-    if (IsCelShadingObjectEnabled())
-        return true;
-
-    tShader* shader = group->GetShader();
-    return shader != NULL && !shader->mTranslucent;
+    return IsCelShadingObjectEnabled();
 }
 #endif
 
