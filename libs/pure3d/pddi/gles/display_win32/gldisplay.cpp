@@ -178,12 +178,14 @@ static void ApplyCelPostProcess(int width, int height)
     const GLboolean cullEnabled = glIsEnabled(GL_CULL_FACE);
     const GLboolean scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
     const GLboolean stencilEnabled = glIsEnabled(GL_STENCIL_TEST);
+    GLint previousFramebuffer = 0;
     GLint previousProgram = 0;
     GLint previousActiveTexture = GL_TEXTURE0;
     GLint previousTexture2D = 0;
     GLint previousArrayBuffer = 0;
     GLint previousVao = 0;
     GLint previousAttrib0Enabled = GL_FALSE;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
     glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
     glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture2D);
@@ -197,9 +199,17 @@ static void ApplyCelPostProcess(int width, int height)
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_STENCIL_TEST);
 
-    // The game's final colour is rendered into the SDL default framebuffer.
-    // Copy that image to a texture, then draw the post-process back over it.
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    /*
+     * Preserve the framebuffer selected by the game's renderer.
+     *
+     * The previous diagnostic forced framebuffer 0 here. On Android/GLES
+     * that is not necessarily the framebuffer containing the game's final
+     * image, so the capture could legitimately be all black. The post-process
+     * must operate on whichever framebuffer is already active.
+     *
+     * Copy that image to a texture, then draw the post-process back over the
+     * same framebuffer.
+     */
     glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
     glCopyTexSubImage2D(
         GL_TEXTURE_2D,
@@ -239,6 +249,7 @@ static void ApplyCelPostProcess(int width, int height)
 
     glBindTexture(GL_TEXTURE_2D, previousTexture2D);
     glActiveTexture(previousActiveTexture);
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
     glUseProgram((GLuint)previousProgram);
 
     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
