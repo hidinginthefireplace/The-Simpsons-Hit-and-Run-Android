@@ -175,11 +175,11 @@ bool TouchAssetExtractor::BuildOutputRoot()
 #if !defined(RAD_ANDROID)
     return true;
 #else
-    const char* storagePath = SDL_AndroidGetExternalStoragePath();
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
 
     if ( storagePath == NULL || storagePath[ 0 ] == '\0' )
     {
-        SetLastError( "SDL_AndroidGetExternalStoragePath returned null/empty." );
+        SetLastError( "SDL_AndroidGetApplicationExternalFilesPath returned null/empty." );
         return false;
     }
 
@@ -204,7 +204,7 @@ bool TouchAssetExtractor::NeedsExtraction() const
         return true;
     }
 
-    const char* storagePath = SDL_AndroidGetExternalStoragePath();
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
 
     if ( storagePath == NULL || storagePath[ 0 ] == '\0' )
     {
@@ -262,11 +262,11 @@ bool TouchAssetExtractor::CopyAssetFile( const char* relativePath )
         return false;
     }
 
-    const char* storagePath = SDL_AndroidGetExternalStoragePath();
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
 
     if ( storagePath == NULL || storagePath[ 0 ] == '\0' )
     {
-        SetLastError( "Cannot copy asset: external storage path is invalid." );
+        SetLastError( "Cannot copy asset: application external-files path is invalid." );
         return false;
     }
 
@@ -474,7 +474,7 @@ bool TouchAssetExtractor::WriteVersionFile() const
 #if !defined(RAD_ANDROID)
     return true;
 #else
-    const char* storagePath = SDL_AndroidGetExternalStoragePath();
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
 
     if ( storagePath == NULL || storagePath[ 0 ] == '\0' )
     {
@@ -514,7 +514,7 @@ bool TouchAssetExtractor::IsVersionFileValid() const
 #if !defined(RAD_ANDROID)
     return true;
 #else
-    const char* storagePath = SDL_AndroidGetExternalStoragePath();
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
 
     if ( storagePath == NULL || storagePath[ 0 ] == '\0' )
     {
