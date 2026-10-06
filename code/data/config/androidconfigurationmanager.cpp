@@ -72,17 +72,17 @@ void AndroidConfigurationManager::Initialize()
         return;
     }
 
-    this->EnsureDirectory();
-
     const bool loadedConfiguration = this->LoadConfigurationFile();
     const int loadedVersion = this->LoadVersionFile();
 
     //
-    // If the file does not exist, or the version is old/missing,
-    // rewrite the configuration while preserving any values already loaded.
+    // Do not create configuration files on first launch. If a configuration
+    // file already exists but has an old/missing version, refresh it while
+    // preserving the values that were loaded.
     //
-    if( !loadedConfiguration || loadedVersion != CURRENT_CONFIGURATION_VERSION )
+    if( loadedConfiguration && loadedVersion != CURRENT_CONFIGURATION_VERSION )
     {
+        this->EnsureDirectory();
         this->WriteConfigurationFile();
         this->WriteVersionFile();
     }
@@ -101,7 +101,6 @@ void AndroidConfigurationManager::Reload()
         return;
     }
 
-    this->EnsureDirectory();
     this->LoadConfigurationFile();
 #endif
 }
@@ -179,12 +178,9 @@ void AndroidConfigurationManager::SetPhoneVibrationEnabled( bool enabled )
 
 bool AndroidConfigurationManager::BuildPaths()
 {
-    const char* basePath = SDL_AndroidGetExternalStoragePath();
-
-    if( basePath == NULL || basePath[ 0 ] == '\0' )
-    {
-        basePath = SDL_AndroidGetInternalStoragePath();
-    }
+    // Simpsons configuration is app-internal only. This keeps camera and
+    // gamepad settings independent of the selected USB game-data location.
+    const char* basePath = SDL_AndroidGetInternalStoragePath();
 
     if( basePath == NULL || basePath[ 0 ] == '\0' )
     {
