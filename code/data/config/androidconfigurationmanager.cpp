@@ -178,9 +178,11 @@ void AndroidConfigurationManager::SetPhoneVibrationEnabled( bool enabled )
 
 bool AndroidConfigurationManager::BuildPaths()
 {
-    // Simpsons configuration is app-internal only. This keeps camera and
-    // gamepad settings independent of the selected USB game-data location.
-    const char* basePath = SDL_AndroidGetInternalStoragePath();
+    // Simpsons configuration belongs in the app's primary Android
+    // external-files directory under /Android/data/<package>/files.
+    // Do not use SDL_AndroidGetExternalStoragePath(), because this project
+    // overrides that API for the selectable USB game-data location.
+    const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
 
     if( basePath == NULL || basePath[ 0 ] == '\0' )
     {
