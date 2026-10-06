@@ -56,6 +56,8 @@ static GLuint CompileCelPostShader(GLenum type, const char* source)
     return shader;
 }
 
+static bool EnsureCelPostProcessResources(int width, int height);
+
 static bool EnsureCelRenderTarget(int width, int height)
 {
     if (width <= 0 || height <= 0)
@@ -144,8 +146,6 @@ static bool BindCelRenderTarget(int width, int height)
     glViewport(0, 0, width, height);
     return true;
 }
-
-static bool EnsureCelPostProcessResources(int width, int height);
 
 static bool EnsureCelPostProcessResources(int width, int height)
 {
