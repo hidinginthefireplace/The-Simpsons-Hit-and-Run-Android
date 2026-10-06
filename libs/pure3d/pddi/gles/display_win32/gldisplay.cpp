@@ -145,6 +145,8 @@ static bool BindCelRenderTarget(int width, int height)
     return true;
 }
 
+static bool EnsureCelPostProcessResources(int width, int height);
+
 static bool EnsureCelPostProcessResources(int width, int height)
 {
     if (width <= 0 || height <= 0)
@@ -343,6 +345,23 @@ static void ApplyCelPostProcess(int width, int height)
      */
 }
 
+}
+
+bool BeginCelPostProcessFrame(int width, int height)
+{
+    if (!IsCelShadingEnabled())
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return false;
+    }
+
+    if (!BindCelRenderTarget(width, height))
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return false;
+    }
+
+    return true;
 }
 
 static int gSHARAndroidRenderWidth = 0;
