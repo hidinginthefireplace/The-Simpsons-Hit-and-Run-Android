@@ -244,7 +244,7 @@ void pglProgram::SetCelShadingState(bool enabled, bool objectEnabled, bool outli
     if (toonOutlinePass >= 0)
         glUniform1i(toonOutlinePass, outlinePass ? 1 : 0);
     if (toonOutlineWidth >= 0)
-        glUniform1f(toonOutlineWidth, 0.006f);
+        glUniform1f(toonOutlineWidth, 0.009f);
 }
 #endif
 
