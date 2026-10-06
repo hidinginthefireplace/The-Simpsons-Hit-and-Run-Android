@@ -71,35 +71,13 @@ static bool EnsureCelPostProcessResources(int width, int height)
         const char* fragmentSource =
             "precision mediump float;\n"
             "uniform sampler2D sceneTex;\n"
-            "uniform vec2 texelSize;\n"
             "varying vec2 texcoord;\n"
 
-            "float luminance(vec3 c) {\n"
-            "    return dot(c, vec3(0.299, 0.587, 0.114));\n"
-            "}\n"
-
+            // Diagnostic passthrough: reproduce the captured framebuffer exactly.
+            // If this is black, the problem is the framebuffer capture/presentation path,
+            // not the cel-shading math.
             "void main() {\n"
-            "    vec2 uv = texcoord;\n"
-            "    vec3 center = texture2D(sceneTex, uv).rgb;\n"
-            "    vec3 left   = texture2D(sceneTex, uv + vec2(-texelSize.x, 0.0)).rgb;\n"
-            "    vec3 right  = texture2D(sceneTex, uv + vec2( texelSize.x, 0.0)).rgb;\n"
-            "    vec3 up     = texture2D(sceneTex, uv + vec2(0.0,  texelSize.y)).rgb;\n"
-            "    vec3 down   = texture2D(sceneTex, uv + vec2(0.0, -texelSize.y)).rgb;\n"
-
-            // One cel threshold rather than the three-band lighting experiment.
-            "    float lum = luminance(center);\n"
-            "    float shadowBand = 1.0 - step(0.42, lum);\n"
-            "    vec3 toon = center * mix(1.0, 0.78, shadowBand);\n"
-
-            // Screen-space edge detection. This is intentionally based on
-            // luminance so it also catches silhouettes of assets that use
-            // completely different Pure3D draw paths.
-            "    float edgeX = abs(luminance(right) - luminance(left));\n"
-            "    float edgeY = abs(luminance(up) - luminance(down));\n"
-            "    float edge = smoothstep(0.08, 0.22, max(edgeX, edgeY));\n"
-            "    toon = mix(toon, vec3(0.0), edge * 0.88);\n"
-
-            "    gl_FragColor = vec4(toon, 1.0);\n"
+            "    gl_FragColor = texture2D(sceneTex, texcoord);\n"
             "}\n";
 
         GLuint vs = CompileCelPostShader(GL_VERTEX_SHADER, vertexSource);
