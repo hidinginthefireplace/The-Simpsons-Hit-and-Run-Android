@@ -2593,6 +2593,59 @@ const char *SDL_AndroidGetExternalStoragePath(void)
     return s_AndroidExternalFilesPath;
 }
 
+const char *SDL_AndroidGetApplicationExternalFilesPath(void)
+{
+    static char *s_AndroidApplicationExternalFilesPath = NULL;
+
+    if (!s_AndroidApplicationExternalFilesPath) {
+        struct LocalReferenceHolder refs = LocalReferenceHolder_Setup(__FUNCTION__);
+        jmethodID mid;
+        jobject context;
+        jobject fileObject;
+        jstring pathString;
+        const char *path;
+
+        JNIEnv *env = Android_JNI_GetEnv();
+        if (!LocalReferenceHolder_Init(&refs, env)) {
+            LocalReferenceHolder_Cleanup(&refs);
+            return NULL;
+        }
+
+        context = (*env)->CallStaticObjectMethod(env, mActivityClass, midGetContext);
+        if (!context) {
+            SDL_SetError("Couldn't get Android context");
+            LocalReferenceHolder_Cleanup(&refs);
+            return NULL;
+        }
+
+        mid = (*env)->GetMethodID(env, (*env)->GetObjectClass(env, context),
+                                  "getExternalFilesDir", "(Ljava/lang/String;)Ljava/io/File;");
+        fileObject = (*env)->CallObjectMethod(env, context, mid, NULL);
+        if (!fileObject) {
+            SDL_SetError("Couldn't get application external-files directory");
+            LocalReferenceHolder_Cleanup(&refs);
+            return NULL;
+        }
+
+        mid = (*env)->GetMethodID(env, (*env)->GetObjectClass(env, fileObject),
+                                  "getAbsolutePath", "()Ljava/lang/String;");
+        pathString = (jstring)(*env)->CallObjectMethod(env, fileObject, mid);
+
+        if (Android_JNI_ExceptionOccurred(SDL_FALSE)) {
+            LocalReferenceHolder_Cleanup(&refs);
+            return NULL;
+        }
+
+        path = (*env)->GetStringUTFChars(env, pathString, NULL);
+        s_AndroidApplicationExternalFilesPath = SDL_strdup(path);
+        (*env)->ReleaseStringUTFChars(env, pathString, path);
+
+        LocalReferenceHolder_Cleanup(&refs);
+    }
+
+    return s_AndroidApplicationExternalFilesPath;
+}
+
 SDL_bool SDL_AndroidRequestPermission(const char *permission)
 {
     return Android_JNI_RequestPermission(permission);
