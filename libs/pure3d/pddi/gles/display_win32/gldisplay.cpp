@@ -165,13 +165,36 @@ static bool EnsureCelPostProcessResources(int width, int height)
         const char* fragmentSource =
             "precision mediump float;\n"
             "uniform sampler2D sceneTex;\n"
+            "uniform vec2 texelSize;\n"
             "varying vec2 texcoord;\n"
-
-            // Diagnostic passthrough: reproduce the captured framebuffer exactly.
-            // If this is black, the problem is the framebuffer capture/presentation path,
-            // not the cel-shading math.
+            "\n"
+            "float sceneLuma(vec3 colour) {\n"
+            "    return dot(colour, vec3(0.299, 0.587, 0.114));\n"
+            "}\n"
+            "\n"
             "void main() {\n"
-            "    gl_FragColor = texture2D(sceneTex, texcoord);\n"
+            "    vec4 scene = texture2D(sceneTex, texcoord);\n"
+            "    float centreLuma = sceneLuma(scene.rgb);\n"
+            "\n"
+            "    // Deliberately strong 4-tone lighting quantization for this test.\n"
+            "    // It should be obvious on the complete scene, not just characters.\n"
+            "    float band = floor(clamp(centreLuma, 0.0, 0.9999) * 4.0) / 3.0;\n"
+            "    float shade = 0.50 + band * 0.50;\n"
+            "    vec3 toonColour = scene.rgb * shade;\n"
+            "\n"
+            "    // Screen-space edge detection. Because this operates on the final\n"
+            "    // colour buffer, edges in buildings, props, vehicles, characters,\n"
+            "    // effects and in-game menus are all eligible for an outline.\n"
+            "    float leftLuma  = sceneLuma(texture2D(sceneTex, texcoord - vec2(texelSize.x, 0.0)).rgb);\n"
+            "    float rightLuma = sceneLuma(texture2D(sceneTex, texcoord + vec2(texelSize.x, 0.0)).rgb);\n"
+            "    float upLuma    = sceneLuma(texture2D(sceneTex, texcoord + vec2(0.0, texelSize.y)).rgb);\n"
+            "    float downLuma  = sceneLuma(texture2D(sceneTex, texcoord - vec2(0.0, texelSize.y)).rgb);\n"
+            "    float edgeStrength = max(max(abs(centreLuma - leftLuma), abs(centreLuma - rightLuma)),\n"
+            "                             max(abs(centreLuma - upLuma), abs(centreLuma - downLuma)));\n"
+            "    float edge = smoothstep(0.08, 0.20, edgeStrength);\n"
+            "    toonColour = mix(toonColour, toonColour * 0.08, edge);\n"
+            "\n"
+            "    gl_FragColor = vec4(toonColour, scene.a);\n"
             "}\n";
 
         GLuint vs = CompileCelPostShader(GL_VERTEX_SHADER, vertexSource);
@@ -314,6 +337,8 @@ static void ApplyCelPostProcess(int width, int height)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
     glUniform1i(gCelPostSceneLocation, 0);
+    if (gCelPostTexelLocation >= 0)
+        glUniform2f(gCelPostTexelLocation, 1.0f / (float)width, 1.0f / (float)height);
 
     glBindVertexArrayOES(0);
     glBindBuffer(GL_ARRAY_BUFFER, gCelPostVbo);
