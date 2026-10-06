@@ -457,6 +457,17 @@ void pglContext::BeginFrame()
     }
 
     projection.Identity();
+
+#ifdef RAD_ANDROID
+    /*
+     * When enabled, route the complete game frame (including menus) into the
+     * off-screen cel render target before any draw calls occur.
+     *
+     * When disabled or when the FBO cannot be created, framebuffer 0 remains
+     * active and the original renderer path is untouched.
+     */
+    BeginCelPostProcessFrame(display->GetWidth(), display->GetHeight());
+#endif
 }
 
 void pglContext::EndFrame()
