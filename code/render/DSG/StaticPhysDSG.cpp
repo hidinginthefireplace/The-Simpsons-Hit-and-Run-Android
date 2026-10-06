@@ -22,6 +22,10 @@
 // Project Includes
 //========================================
 #include <render/DSG/StaticPhysDSG.h>
+#ifdef RAD_ANDROID
+bool IsCelShadingSuppressed();
+void SetCelShadingSuppressed(bool suppressed);
+#endif
 #include <render/Particles/particlemanager.h>
 #include <render/breakables/breakablesmanager.h>
 #include <render/IntersectManager/IntersectManager.h>
@@ -537,7 +541,20 @@ void StaticPhysDSG::DisplaySimpleShadow()
 
 	// Display
 	p3d::stack->PushMultiply( shadowTransform );
+#ifdef RAD_ANDROID
+        const bool celWasSuppressed = IsCelShadingSuppressed();
+        if (!celWasSuppressed)
+        {
+            SetCelShadingSuppressed(true);
+        }
+#endif
 	mpShadow->Display();
+#ifdef RAD_ANDROID
+        if (!celWasSuppressed)
+        {
+            SetCelShadingSuppressed(false);
+        }
+#endif
     p3d::stack->Pop();
     }
     else
