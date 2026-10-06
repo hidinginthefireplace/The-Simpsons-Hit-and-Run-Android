@@ -272,6 +272,8 @@ static void ApplyCelPostProcess(int width, int height)
     if (stencilEnabled) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
 }
 
+}
+
 static int gSHARAndroidRenderWidth = 0;
 static int gSHARAndroidRenderHeight = 0;
 
