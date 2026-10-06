@@ -171,11 +171,17 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         mIsSurfaceReady = false;
     }
 
+    /*
+     * Android's "external files" directory on the primary device storage is
+     * the app-specific location under /Android/data/<package>/files.
+     *
+     * This is intentionally separate from the selectable USB game-data path.
+     */
     private File getSHARPrivateBaseDir() {
         File baseDir = null;
 
         try {
-            baseDir = getContext().getFilesDir();
+            baseDir = getContext().getExternalFilesDir(null);
         } catch (Exception ignored) {
         }
 
@@ -183,12 +189,7 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     }
 
     private File getSHARResolutionConfigFile() {
-        File baseDir = null;
-
-        try {
-            baseDir = getContext().getFilesDir();
-        } catch (Exception ignored) {
-        }
+        File baseDir = getSHARPrivateBaseDir();
 
         if (baseDir == null) {
             return null;
