@@ -32,6 +32,11 @@
 #include <p3d/view.hpp>
 #include <p3d/effects/particlesystem.hpp>
 #include <pddi/pddi.hpp>
+#ifdef RAD_ANDROID
+bool IsCelShadingEnabled();
+bool IsCelShadingObjectEnabled();
+void SetCelShadingObjectEnabled(bool enabled);
+#endif
 #include <p3d/utility.hpp>
 #include <typeinfo>
 #include <p3d/anim/visibilityanimation.hpp>
@@ -1078,7 +1083,20 @@ BEGIN_PROFILE("GeometryVehicle::CompDraw->Disp")
     }
     if( sbDrawVehicle )
     {
+#ifdef RAD_ANDROID
+        const bool celObjectScopeWasEnabled = IsCelShadingObjectEnabled();
+        if (IsCelShadingEnabled() && !celObjectScopeWasEnabled)
+        {
+            SetCelShadingObjectEnabled(true);
+        }
+#endif
         mCompositeDrawable->Display();
+#ifdef RAD_ANDROID
+        if (!celObjectScopeWasEnabled)
+        {
+            SetCelShadingObjectEnabled(false);
+        }
+#endif
     }
     if( !smokeFirst )
     {
