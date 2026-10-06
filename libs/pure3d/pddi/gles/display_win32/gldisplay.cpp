@@ -179,7 +179,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    // Deliberately strong 4-tone lighting quantization for this test.\n"
             "    // It should be obvious on the complete scene, not just characters.\n"
             "    float band = floor(clamp(centreLuma, 0.0, 0.9999) * 4.0) / 3.0;\n"
-            "    float shade = 0.90 + band * 0.10;\n"
+            "    float shade = 1.0;\n"
             "    vec3 toonColour = scene.rgb * shade;\n"
             "\n"
             "    // Screen-space edge detection. Because this operates on the final\n"
