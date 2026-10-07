@@ -236,7 +236,7 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
             writer.write("# You only need to change target_height.\n");
             writer.write("# The render width is calculated automatically to preserve the device aspect ratio.\n");
             writer.write("#\n");
-            writer.write("# Standard values: 720, 800, 850, 900, 1080.\n");
+            writer.write("# Standard values: 720, 800, 850, 900, 1080, 1440, 2160.\n");
             writer.write("# Higher values improve sharpness but increase GPU load.\n");
             writer.write("# Lower values improve performance but reduce image quality.\n");
             writer.write("# The maximum target_height is the device landscape height, which is the physical short side.\n");
@@ -249,7 +249,7 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
             writer.write("# 4. The calculated width is rounded to a multiple of 8 to avoid odd framebuffer sizes.\n");
             writer.write("# 5. Android scales the final image to the full physical screen.\n");
             writer.write("#\n");
-            writer.write("# You can also use MAX to render at the maximum useful height for your device.\n");
+            writer.write("# You can also use MAX to render at the maximum useful height reported by the display modes.\n");
             writer.write("#\n");
             writer.write("target_height=" + SHAR_DEFAULT_TARGET_RENDER_HEIGHT + "\n");
 
@@ -550,16 +550,60 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         int[] size = new int[] { 0, 0 };
 
         try {
-            DisplayMetrics realMetrics = new DisplayMetrics();
+            /*
+             * Android TV devices such as the Shield can expose a logical
+             * 1920x1080 display size even when the active HDMI output is 4K.
+             *
+             * Prefer the largest physical display mode reported by Android.
+             * Display.Mode describes the actual pixel dimensions supported by
+             * the display, which lets target_height=max resolve to 2160 on
+             * a 3840x2160 Shield output.
+             */
+            if (Build.VERSION.SDK_INT >= 23) {
+                Display.Mode[] modes = mDisplay.getSupportedModes();
 
-            if (Build.VERSION.SDK_INT >= 17) {
-                mDisplay.getRealMetrics(realMetrics);
-            } else {
-                mDisplay.getMetrics(realMetrics);
+                if (modes != null) {
+                    long bestArea = 0;
+
+                    for (Display.Mode mode : modes) {
+                        if (mode == null) {
+                            continue;
+                        }
+
+                        int modeWidth = mode.getPhysicalWidth();
+                        int modeHeight = mode.getPhysicalHeight();
+
+                        if (modeWidth <= 0 || modeHeight <= 0) {
+                            continue;
+                        }
+
+                        long area = (long) modeWidth * (long) modeHeight;
+
+                        if (area > bestArea) {
+                            bestArea = area;
+                            size[0] = modeWidth;
+                            size[1] = modeHeight;
+                        }
+                    }
+                }
             }
 
-            size[0] = realMetrics.widthPixels;
-            size[1] = realMetrics.heightPixels;
+            /*
+             * Fall back to the current real metrics when no physical display
+             * mode was available.
+             */
+            if (size[0] <= 0 || size[1] <= 0) {
+                DisplayMetrics realMetrics = new DisplayMetrics();
+
+                if (Build.VERSION.SDK_INT >= 17) {
+                    mDisplay.getRealMetrics(realMetrics);
+                } else {
+                    mDisplay.getMetrics(realMetrics);
+                }
+
+                size[0] = realMetrics.widthPixels;
+                size[1] = realMetrics.heightPixels;
+            }
         } catch (Exception ignored) {
         }
 
