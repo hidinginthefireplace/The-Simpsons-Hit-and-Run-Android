@@ -188,15 +188,30 @@ public class StorageActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
+        TextView setup = new TextView(this);
+        setup.setText("First-Time Setup");
+        setup.setTextSize(24);
+        setup.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        setup.setTextColor(Color.WHITE);
+        setup.setGravity(Gravity.CENTER);
+        setup.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
+        LinearLayout.LayoutParams setupParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        setupParams.setMargins(0, dp(8), 0, 0);
+        content.addView(setup, setupParams);
+
         TextView help = new TextView(this);
-        help.setText("\nFirst time setup\n\nChoose where the game data is stored");
+        help.setText("Choose where the game data is stored");
         help.setTextSize(20);
         help.setTextColor(Color.WHITE);
         help.setGravity(Gravity.CENTER);
         help.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
-        content.addView(help, new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams helpParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        helpParams.setMargins(0, dp(12), 0, 0);
+        content.addView(help, helpParams);
 
         String saved = SimpsonsActivity.getSavedGameDataPath(this);
         if (saved != null && new File(saved).isDirectory()) {
@@ -254,8 +269,9 @@ public class StorageActivity extends Activity {
         normal.setCornerRadius(dp(14));
 
         GradientDrawable focused = new GradientDrawable();
-        focused.setColor(DARK_BLUE);
+        focused.setColor(YELLOW);
         focused.setCornerRadius(dp(14));
+        focused.setStroke(dp(5), DARK_BLUE);
 
         StateListDrawable states = new StateListDrawable();
         states.addState(new int[] { android.R.attr.state_focused }, focused);
@@ -272,7 +288,7 @@ public class StorageActivity extends Activity {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        p.setMargins(0, dp(10), 0, 0);
+        p.setMargins(0, dp(18), 0, 0);
         return p;
     }
 
