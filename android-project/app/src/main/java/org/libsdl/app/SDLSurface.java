@@ -81,7 +81,7 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     private static final String SHAR_TOUCH_CONTROLS_FOLDER = "touch_controls";
     private static final String SHAR_TOUCH_MODE_CONFIG_FILE = "Simpsons_touch_mode.txt";
 
-    private static final int SHAR_DEFAULT_TARGET_RENDER_HEIGHT = 1080;
+    private static final int SHAR_DEFAULT_TARGET_RENDER_HEIGHT = 1440;
     private static final int SHAR_MIN_TARGET_RENDER_HEIGHT = 300;
 
     /*
