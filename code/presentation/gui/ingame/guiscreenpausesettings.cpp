@@ -389,6 +389,16 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
     }
 #endif
 
+#if defined(RAD_ANDROID)
+    // Shift the entire Android Pause Settings menu as one group.
+    // Positive values move the menu upward in the Android layout.
+    const int ANDROID_SETTINGS_MENU_Y_OFFSET = 20;
+    if( pMenuGroup != NULL )
+    {
+        pMenuGroup->Translate( 0, ANDROID_SETTINGS_MENU_Y_OFFSET );
+    }
+#endif
+
     #if defined(RAD_ANDROID)
     //
     // Dejamos de dibujar la opción tutorial en este menu
