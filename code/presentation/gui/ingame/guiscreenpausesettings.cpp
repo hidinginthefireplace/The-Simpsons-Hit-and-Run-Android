@@ -1208,17 +1208,17 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
 
         if( resolutionText != NULL && resolutionValue != NULL )
         {
-            resolutionText->SetString( 0, "Resolution" );
+            resolutionText->SetString( 0, "Resolution", (unsigned int)0 );
 
             while( resolutionValue->GetNumOfStrings() < SHAR_RESOLUTION_SELECTION_COUNT )
             {
                 resolutionValue->AddHardCodedString( "" );
             }
 
-            resolutionValue->SetString( 0, "720p" );
-            resolutionValue->SetString( 1, "900p" );
-            resolutionValue->SetString( 2, "1080p" );
-            resolutionValue->SetString( 3, "Maximum" );
+            resolutionValue->SetString( 0, "720p", (unsigned int)0 );
+            resolutionValue->SetString( 1, "900p", (unsigned int)0 );
+            resolutionValue->SetString( 2, "1080p", (unsigned int)0 );
+            resolutionValue->SetString( 3, "Maximum", (unsigned int)0 );
         }
     }
 
