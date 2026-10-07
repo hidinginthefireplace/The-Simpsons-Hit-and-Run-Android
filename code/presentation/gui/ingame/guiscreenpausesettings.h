@@ -68,6 +68,9 @@ private:
     #endif
         MENU_ITEM_INTERSECT_NAV_SYSTEM,
         MENU_ITEM_RADAR,
+    #if defined(RAD_ANDROID)
+        MENU_ITEM_RESOLUTION,
+    #endif
     #if !defined(RAD_PC) //&& !defined(RAD_ANDROID) // temporalmente desactivado la opcion del menu vibracion en android
         MENU_ITEM_VIBRATION,
     #endif
@@ -81,6 +84,7 @@ private:
    #if defined(RAD_ANDROID)
     bool mHasInvertCamControl=false;
     bool mHasGamepadVibration=false;
+    bool mResolutionSelectionChanged=false;
 
     int mMenuItemToGuiMenuIndex[ NUM_PAUSE_SETTINGS_MENU_ITEMS ];
     int mGuiMenuIndexToMenuItem[ NUM_PAUSE_SETTINGS_MENU_ITEMS ];
