@@ -47,7 +47,7 @@ jobs:
           KEYSTORE="$RUNNER_TEMP/release.keystore"
           keytool -genkeypair -v             -keystore "$KEYSTORE"             -storepass android             -keypass android             -alias androidrelease             -keyalg RSA             -keysize 2048             -validity 10000             -dname "CN=Simpsons Hit and Run Android, OU=Build, O=Community, L=, ST=, C=US"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign             --ks "$KEYSTORE"             --ks-pass pass:android             --key-pass pass:android             --out app/build/outputs/apk/release/app-release.apk             "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app-release.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
           rm -f "$APK"
 
       - name: Upload experimental APK
