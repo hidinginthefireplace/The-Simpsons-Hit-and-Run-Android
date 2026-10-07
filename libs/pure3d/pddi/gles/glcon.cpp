@@ -53,12 +53,12 @@ static void WriteCelShadingConfiguration()
     if (file == nullptr)
         return;
 
-    fprintf(file, "# Simpsons Hit & Run Android - Cel Shading\\n");
-    fprintf(file, "# Change only true/false values.\\n");
-    fprintf(file, "# You can use 1/0 values too.\\n");
-    fprintf(file, "# Restart the game after changing this file.\\n");
-    fprintf(file, "\\n");
-    fprintf(file, "cel_shading=%s\\n", gCelShadingEnabled ? "true" : "false");
+    fprintf(file, "# Simpsons Hit & Run Android - Cel Shading\n");
+    fprintf(file, "# Change only true/false values.\n");
+    fprintf(file, "# You can use 1/0 values too.\n");
+    fprintf(file, "# Restart the game after changing this file.\n");
+    fprintf(file, "\n");
+    fprintf(file, "cel_shading=%s\n", gCelShadingEnabled ? "true" : "false");
 
     fclose(file);
 }
