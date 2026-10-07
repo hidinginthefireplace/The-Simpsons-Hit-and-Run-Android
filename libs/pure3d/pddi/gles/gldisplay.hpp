@@ -84,5 +84,6 @@ private:
 
 #ifdef RAD_ANDROID
 bool BeginCelPostProcessFrame(int width, int height);
+void ApplyCelPostProcessBeforeGui(int width, int height);
 #endif
 #endif
