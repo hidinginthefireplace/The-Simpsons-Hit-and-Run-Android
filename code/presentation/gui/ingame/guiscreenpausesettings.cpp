@@ -113,6 +113,8 @@ const int NUM_PC_CAMERAS_FOR_WALKING_WITHOUT_CHEAT = 1;
 
 #if defined(RAD_ANDROID)
 
+static const int ANDROID_SETTINGS_MENU_Y_OFFSET = 15;
+
 static void CopyAndroidMenuTextAppearance( FeText* destination, FeText* source )
 {
     if( destination == NULL || source == NULL )
@@ -318,6 +320,25 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
         else if( i == MENU_ITEM_VIBRATION )
         {
             mHasGamepadVibration = added;
+        }
+    }
+
+    // Shift the entire Android Settings list upward together without changing row spacing.
+    const int settingsItemsToTranslate[] =
+    {
+        MENU_ITEM_CAMERA,
+        MENU_ITEM_JUMP_CAMERAS,
+        MENU_ITEM_INTERSECT_NAV_SYSTEM,
+        MENU_ITEM_RADAR
+    };
+
+    for( unsigned int i = 0; i < sizeof( settingsItemsToTranslate ) / sizeof( settingsItemsToTranslate[ 0 ] ); i++ )
+    {
+        Scrooby::Group* settingsGroup = pPage->GetGroup( PAUSE_SETTINGS_MENU_ITEMS[ settingsItemsToTranslate[ i ] ] );
+
+        if( settingsGroup != NULL )
+        {
+            settingsGroup->Translate( 0, ANDROID_SETTINGS_MENU_Y_OFFSET );
         }
     }
 
@@ -1277,7 +1298,7 @@ bool CGuiScreenPauseSettings::AddGeneratedAndroidToggleMenuItem
 
     const int rowNumber =
         logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ? 1 : 2;
-    const int rowY = radarY + rowSpacing * rowNumber;
+    const int rowY = radarY + rowSpacing * rowNumber + ANDROID_SETTINGS_MENU_Y_OFFSET;
 
     const char* labelText =
         logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ?
