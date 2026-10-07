@@ -36,7 +36,7 @@ AndroidConfigurationManager* GetAndroidConfigurationManager()
 AndroidConfigurationManager::AndroidConfigurationManager()
 :
     m_initialized( false ),
-    m_invertCamera( true ),
+    m_invertCamera( false ),
     m_gamepadVibration( true ),
     m_phoneVibration( false ),
     m_dirty( false )
@@ -50,7 +50,7 @@ AndroidConfigurationManager::AndroidConfigurationManager()
 
 void AndroidConfigurationManager::SetDefaults()
 {
-    m_invertCamera = true;
+    m_invertCamera = false;
     m_gamepadVibration = true;
     m_phoneVibration = false;
     m_dirty = false;
