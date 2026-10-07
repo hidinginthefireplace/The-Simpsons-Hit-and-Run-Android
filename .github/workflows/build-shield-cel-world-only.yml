@@ -1,9 +1,9 @@
-name: Build Shield Cel World-Only GUI Exclusion Experiment
+name: Build Shield Resolution 1440p-2160p Experiment
 
 on:
   push:
     branches:
-      - android11-shield-cel-world-only
+      - android11-shield-resolution-1440-2160
   workflow_dispatch:
   pull_request:
     branches:
@@ -56,8 +56,8 @@ jobs:
       - name: Upload experimental APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simpsons-Hit-and-Run-Shield-Cel-World-Only-GUI-Exclusion-Experiment
+          name: Simpsons-Hit-and-Run-Shield-Resolution-1440p-2160p-Experiment
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
-# Cel world-only experiment based on the working cel persistence baseline.
+# Resolution 1440p/2160p experiment based on the working cel world-only/persistence baseline.
