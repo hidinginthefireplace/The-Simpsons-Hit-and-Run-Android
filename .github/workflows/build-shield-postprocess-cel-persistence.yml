@@ -59,3 +59,5 @@ jobs:
           name: Simpsons-Hit-and-Run-Shield-Cel-Persistence-Experiment
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
+
+# Persistence experiment build based on stable run 37552155481.
