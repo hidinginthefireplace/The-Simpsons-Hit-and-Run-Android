@@ -113,7 +113,7 @@ const int NUM_PC_CAMERAS_FOR_WALKING_WITHOUT_CHEAT = 1;
 
 #if defined(RAD_ANDROID)
 
-static void CopyAndroidMenuTextAppearance( FeText* destination, const FeText* source )
+static void CopyAndroidMenuTextAppearance( FeText* destination, FeText* source )
 {
     if( destination == NULL || source == NULL )
     {
