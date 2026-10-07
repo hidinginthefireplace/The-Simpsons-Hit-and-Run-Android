@@ -19,6 +19,7 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.RelativeLayout;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -746,53 +747,6 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         }
     }
 
-    private void applySurfaceViewUpscale(int renderWidth, int renderHeight) {
-        if (!SHAR_USE_ADAPTIVE_RENDER_RESOLUTION) {
-            setScaleX(1.0f);
-            setScaleY(1.0f);
-            return;
-        }
-
-        if (renderWidth <= 0 || renderHeight <= 0) {
-            return;
-        }
-
-        int[] size = getPhysicalDisplaySize();
-
-        int deviceWidth = size[0];
-        int deviceHeight = size[1];
-
-        if (deviceWidth <= 0 || deviceHeight <= 0) {
-            return;
-        }
-
-        /*
-         * Simpsons Android runs in landscape.
-         * Upscale the fixed internal render buffer to the physical landscape size.
-         */
-        int targetViewWidth = Math.max(deviceWidth, deviceHeight);
-        int targetViewHeight = Math.min(deviceWidth, deviceHeight);
-
-        final float scaleX = targetViewWidth / (float) renderWidth;
-        final float scaleY = targetViewHeight / (float) renderHeight;
-
-        /*
-         * Apply after layout traversal, because SurfaceView/Android can override
-         * transforms during surfaceChanged/onConfigurationChanged/resume.
-         */
-        post(new Runnable() {
-            @Override
-            public void run() {
-                setPivotX(0.0f);
-                setPivotY(0.0f);
-                setTranslationX(0.0f);
-                setTranslationY(0.0f);
-                setScaleX(scaleX);
-                setScaleY(scaleY);
-            }
-        });
-    }
-
     private void applyAdaptiveFixedSurfaceSize(String reason, boolean force) {
         if (!SHAR_USE_ADAPTIVE_RENDER_RESOLUTION) {
             setScaleX(1.0f);
@@ -866,10 +820,18 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         getHolder().setFixedSize(mRenderWidth, mRenderHeight);
 
         /*
-         * Some Android devices do not visually upscale the SurfaceView automatically
-         * after setFixedSize(), so we explicitly scale it to fullscreen.
+         * Keep the View itself fullscreen. setFixedSize() controls only the
+         * underlying Surface buffer used for rendering; do not apply a second
+         * View transform, or lower internal resolutions become magnified/cropped.
          */
-        applySurfaceViewUpscale(mRenderWidth, mRenderHeight);
+        RelativeLayout.LayoutParams surfaceParams =
+                new RelativeLayout.LayoutParams(
+                        RelativeLayout.LayoutParams.MATCH_PARENT,
+                        RelativeLayout.LayoutParams.MATCH_PARENT
+                );
+        setLayoutParams(surfaceParams);
+        setScaleX(1.0f);
+        setScaleY(1.0f);
 
         logAdaptiveResolutionIfNeeded(
                 reason,
@@ -1154,10 +1116,17 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         sendSHARRenderResolutionToNative(mRenderWidth, mRenderHeight, "surfaceChanged");
 
         /*
-         * Apply visual fullscreen scaling after Android reports the final Surface size.
-         * This keeps the reduced internal buffer stretched to the physical display.
+         * The SurfaceView remains fullscreen; only its underlying Surface buffer
+         * uses the selected internal render resolution.
          */
-        applySurfaceViewUpscale(mRenderWidth, mRenderHeight);
+        RelativeLayout.LayoutParams surfaceParams =
+                new RelativeLayout.LayoutParams(
+                        RelativeLayout.LayoutParams.MATCH_PARENT,
+                        RelativeLayout.LayoutParams.MATCH_PARENT
+                );
+        setLayoutParams(surfaceParams);
+        setScaleX(1.0f);
+        setScaleY(1.0f);
 
         
         applyTouchNormalizationBase(
