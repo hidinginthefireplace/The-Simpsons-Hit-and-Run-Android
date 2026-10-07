@@ -32,6 +32,7 @@ class CGuiMenu;
 namespace Scrooby
 {
     class Screen;
+    class Group;
 };
 
 //===========================================================================
@@ -63,17 +64,24 @@ private:
     {
         MENU_ITEM_CAMERA,
         MENU_ITEM_JUMP_CAMERAS,
-    #if !defined(RAD_PC) //&& !defined(RAD_ANDROID)// he encontrado que como estamos usando en android los assets de pc, pues claro no encontramos esta opcion es lógico
-        MENU_ITEM_INVERT_CAM_CONTROL,
-    #endif
+#if defined(RAD_ANDROID)
         MENU_ITEM_INTERSECT_NAV_SYSTEM,
         MENU_ITEM_RADAR,
-    #if !defined(RAD_PC) //&& !defined(RAD_ANDROID) // temporalmente desactivado la opcion del menu vibracion en android
+        MENU_ITEM_INVERT_CAM_CONTROL,
         MENU_ITEM_VIBRATION,
-    #endif
-        #if !defined(RAD_ANDROID)
+#else
+#if !defined(RAD_PC)
+        MENU_ITEM_INVERT_CAM_CONTROL,
+#endif
+        MENU_ITEM_INTERSECT_NAV_SYSTEM,
+        MENU_ITEM_RADAR,
+#if !defined(RAD_PC)
+        MENU_ITEM_VIBRATION,
+#endif
+#endif
+#if !defined(RAD_ANDROID)
         MENU_ITEM_TUTORIAL,
-        #endif
+#endif
 
         NUM_PAUSE_SETTINGS_MENU_ITEMS
     };
@@ -90,6 +98,13 @@ private:
     (
         Scrooby::Page* pPage,
         const char* item,
+        int logicalMenuItem
+    );
+
+    bool AddGeneratedAndroidToggleMenuItem
+    (
+        Scrooby::Group* pMenuGroup,
+        Scrooby::Page* pPage,
         int logicalMenuItem
     );
 
