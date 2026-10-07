@@ -595,6 +595,47 @@ const tSprite* FeSprite::GetRawSprite()
     return mSprite;
 }
 
+void FeSprite::CopySpriteDataFrom( const FeSprite& source )
+{
+    while( mAliases.Size() > 0 )
+    {
+        const int index = mAliases.Size() - 1;
+
+        if( mAliases[ index ] != NULL )
+        {
+            delete mAliases[ index ];
+        }
+
+        mAliases.Erase( index );
+    }
+
+    for( int i = 0; i < source.mAliases.Size(); ++i )
+    {
+        if( source.mAliases[ i ] != NULL )
+        {
+            this->AddImage( static_cast<const char*>( *source.mAliases[ i ] ) );
+        }
+    }
+
+    if( mAliases.Size() > 0 )
+    {
+        const int sourceIndex =
+            ( source.mIndex >= 0 && source.mIndex < mAliases.Size() ) ?
+            source.mIndex :
+            0;
+
+        this->SetIndex( sourceIndex );
+    }
+    else
+    {
+        mIndex = source.mIndex;
+        mSprite = source.mSprite;
+        m_drawable = source.m_drawable;
+    }
+
+    m_isDirty = true;
+}
+
 #ifdef DEBUGWATCH
 void FeSprite::WatchAll( const char* nameSpace )
 {
