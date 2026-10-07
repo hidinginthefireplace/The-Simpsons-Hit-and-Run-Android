@@ -158,6 +158,37 @@ static void CopyAndroidMenuSpriteAppearance( FeSprite* destination, const FeSpri
     destination->SetAlpha( source->GetAlpha() );
 }
 
+static void ShiftAndroidPauseSettingsDrawableY
+(
+    Scrooby::BoundedDrawable* drawable,
+    int yOffset
+)
+{
+    if( drawable == NULL || yOffset == 0 )
+    {
+        return;
+    }
+
+    Scrooby::Text* text = dynamic_cast<Scrooby::Text*>( drawable );
+    if( text != NULL )
+    {
+        int x = 0;
+        int y = 0;
+        text->GetBoundingBoxCenter( x, y );
+        text->SetPositionOfCenter( x, y + yOffset );
+        return;
+    }
+
+    Scrooby::Sprite* sprite = dynamic_cast<Scrooby::Sprite*>( drawable );
+    if( sprite != NULL )
+    {
+        int x = 0;
+        int y = 0;
+        sprite->GetBoundingBoxCenter( x, y );
+        sprite->SetPositionOfCenter( x, y + yOffset );
+    }
+}
+
 static bool GetAndroidSettingsRowGeometry
 (
     Scrooby::Page* pPage,
@@ -386,6 +417,25 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
                               pLArrow,
                               pRArrow,
                               SELECTION_ENABLED | VALUES_WRAPPED | TEXT_OUTLINE_ENABLED );
+    }
+#endif
+
+#if defined(RAD_ANDROID)
+    // Move the entire Pause > Options > Settings list upward by 15 layout units.
+    // This keeps all six settings aligned and preserves their existing spacing.
+    const int ANDROID_SETTINGS_MENU_Y_OFFSET = -15;
+
+    for( int menuIndex = 0; menuIndex < m_pMenu->GetNumItems(); ++menuIndex )
+    {
+        GuiMenuItem* menuItem = m_pMenu->GetMenuItem( menuIndex );
+
+        if( menuItem != NULL )
+        {
+            ShiftAndroidPauseSettingsDrawableY( menuItem->GetItem(), ANDROID_SETTINGS_MENU_Y_OFFSET );
+            ShiftAndroidPauseSettingsDrawableY( menuItem->GetItemValue(), ANDROID_SETTINGS_MENU_Y_OFFSET );
+            ShiftAndroidPauseSettingsDrawableY( menuItem->m_itemValueArrowL, ANDROID_SETTINGS_MENU_Y_OFFSET );
+            ShiftAndroidPauseSettingsDrawableY( menuItem->m_itemValueArrowR, ANDROID_SETTINGS_MENU_Y_OFFSET );
+        }
     }
 #endif
 
