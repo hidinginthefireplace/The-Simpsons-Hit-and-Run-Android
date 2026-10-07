@@ -57,6 +57,9 @@ public:
     void SetImage( int index, const char* alias );
     void SetRawSprite( tSprite* sprite, bool updateDrawable = false );
 
+    // Concrete helper for cloning menu-arrow image data onto runtime-created sprites.
+    void CopySpriteDataFrom( const FeSprite& source );
+
     // methods for indexing of multi-sprites
     virtual int GetIndex();
     virtual void SetIndex( int n );    
