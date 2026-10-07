@@ -456,7 +456,8 @@ radDrive::CompletionStatus radSdlDrive::Initialize( void )
 
 //=============================================================================
 // Function:    radSdlDrive::OpenFile
-//=============================================================================#ifdef RAD_ANDROID
+//=============================================================================
+#ifdef RAD_ANDROID
 // Save slots are application-owned settings/data, not game assets.
 // Keep them in the primary Android app external-files directory even when
 // the selected game-data directory is on USB.
