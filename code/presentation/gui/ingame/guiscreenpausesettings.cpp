@@ -1132,7 +1132,7 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
         {
             return AddGeneratedAndroidToggleMenuItem
             (
-                pMenuGroup,
+                pPage->GetGroup( "Menu" ),
                 pPage,
                 logicalMenuItem
             );
@@ -1150,7 +1150,7 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
         {
             return AddGeneratedAndroidToggleMenuItem
             (
-                pMenuGroup,
+                pPage->GetGroup( "Menu" ),
                 pPage,
                 logicalMenuItem
             );
@@ -1171,7 +1171,7 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
         {
             return AddGeneratedAndroidToggleMenuItem
             (
-                pMenuGroup,
+                pPage->GetGroup( "Menu" ),
                 pPage,
                 logicalMenuItem
             );
