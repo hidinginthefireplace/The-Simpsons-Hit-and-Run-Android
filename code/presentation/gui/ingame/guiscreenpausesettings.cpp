@@ -36,6 +36,12 @@
 #include <Text.h>
 #include <strings/unicodeString.h>
 
+#if defined(RAD_ANDROID)
+#include "FeGroup.h"
+#include "FeText.h"
+#include "FeSprite.h"
+#endif
+
 
 #if defined(RAD_ANDROID)
 #include <data/config/androidconfigurationmanager.h>
@@ -71,17 +77,24 @@ const char* PAUSE_SETTINGS_MENU_ITEMS[] =
 {
     "Camera",
     "JumpCamera",
-#if !defined(RAD_PC)// && !defined(RAD_ANDROID)
+#if defined(RAD_ANDROID)
+    "IntersectNavSystem",
+    "Radar",
+    "InvertCamControl",
+    "Vibration",
+#else
+#if !defined(RAD_PC)
     "InvertCamControl",
 #endif
     "IntersectNavSystem",
     "Radar",
-#if !defined(RAD_PC) //&& !defined(RAD_ANDROID)
+#if !defined(RAD_PC)
     "Vibration",
 #endif
-    #if !defined(RAD_ANDROID)
+#if !defined(RAD_ANDROID)
     "Tutorial",
-    #endif
+#endif
+#endif
 
     ""
 };
@@ -96,6 +109,130 @@ SuperCam::Type PC_CAMERAS_FOR_WALKING[] =
 
 const int NUM_PC_CAMERAS_FOR_WALKING = sizeof(PC_CAMERAS_FOR_WALKING)/sizeof(SuperCam::Type);
 const int NUM_PC_CAMERAS_FOR_WALKING_WITHOUT_CHEAT = 1;
+#endif
+
+#if defined(RAD_ANDROID)
+
+static void CopyAndroidMenuTextAppearance( FeText* destination, const FeText* source )
+{
+    if( destination == NULL || source == NULL )
+    {
+        return;
+    }
+
+    destination->SetTextStyle( source->GetTextStyleResourceID() );
+
+    int width = 0;
+    int height = 0;
+    source->GetBoundingBoxSize( width, height );
+    destination->SetBoundingBoxSize( width, height );
+
+    destination->SetHorizontalJustification( source->GetHorizontalJustification() );
+    destination->SetVerticalJustification( source->GetVerticalJustification() );
+    destination->SetColour( source->GetColour() );
+    destination->SetAlpha( source->GetAlpha() );
+    destination->SetTextMode( source->GetTextMode() );
+    destination->SetDisplayShadow( source->IsDisplayingShadow() );
+    destination->SetShadowOffset( source->GetXShadowOffset(), source->GetYShadowOffset() );
+    destination->SetShadowColour( source->GetShadowColour() );
+    destination->SetDisplayOutline( source->IsDisplayingOutline() );
+    destination->SetOutlineColour( source->GetOutlineColour() );
+}
+
+static void CopyAndroidMenuSpriteAppearance( FeSprite* destination, const FeSprite* source )
+{
+    if( destination == NULL || source == NULL )
+    {
+        return;
+    }
+
+    destination->CopySpriteDataFrom( *source );
+
+    int width = 0;
+    int height = 0;
+    source->GetBoundingBoxSize( width, height );
+    destination->SetBoundingBoxSize( width, height );
+    destination->SetHorizontalJustification( source->GetHorizontalJustification() );
+    destination->SetVerticalJustification( source->GetVerticalJustification() );
+    destination->SetColour( source->GetColour() );
+    destination->SetAlpha( source->GetAlpha() );
+}
+
+static bool GetAndroidSettingsRowGeometry
+(
+    Scrooby::Page* pPage,
+    int& labelX,
+    int& valueX,
+    int& leftArrowX,
+    int& rightArrowX,
+    int& baseY,
+    int& rowSpacing
+)
+{
+    if( pPage == NULL )
+    {
+        return false;
+    }
+
+    Scrooby::Group* pNavGroup = pPage->GetGroup( "IntersectNavSystem" );
+    Scrooby::Group* pRadarGroup = pPage->GetGroup( "Radar" );
+
+    if( pNavGroup == NULL || pRadarGroup == NULL )
+    {
+        return false;
+    }
+
+    Scrooby::Text* pNavLabel = pNavGroup->GetText( "IntersectNavSystem" );
+    Scrooby::Text* pRadarLabel = pRadarGroup->GetText( "Radar" );
+    Scrooby::Text* pRadarValue = pRadarGroup->GetText( "Radar_Value" );
+    Scrooby::Sprite* pRadarLArrow = pRadarGroup->GetSprite( "Radar_LArrow" );
+    Scrooby::Sprite* pRadarRArrow = pRadarGroup->GetSprite( "Radar_RArrow" );
+
+    if( pNavLabel == NULL || pRadarLabel == NULL || pRadarValue == NULL )
+    {
+        return false;
+    }
+
+    int navX = 0;
+    int navY = 0;
+    int radarLabelX = 0;
+    int radarY = 0;
+    int radarValueX = 0;
+    int radarValueY = 0;
+    int radarLArrowX = 0;
+    int radarLArrowY = 0;
+    int radarRArrowX = 0;
+    int radarRArrowY = 0;
+
+    pNavLabel->GetBoundingBoxCenter( navX, navY );
+    pRadarLabel->GetBoundingBoxCenter( radarLabelX, radarY );
+    pRadarValue->GetBoundingBoxCenter( radarValueX, radarValueY );
+
+    if( pRadarLArrow != NULL )
+    {
+        pRadarLArrow->GetBoundingBoxCenter( radarLArrowX, radarLArrowY );
+    }
+
+    if( pRadarRArrow != NULL )
+    {
+        pRadarRArrow->GetBoundingBoxCenter( radarRArrowX, radarRArrowY );
+    }
+
+    labelX = radarLabelX;
+    valueX = radarValueX;
+    leftArrowX = radarLArrowX;
+    rightArrowX = radarRArrowX;
+    baseY = radarY;
+    rowSpacing = radarY - navY;
+
+    if( rowSpacing == 0 )
+    {
+        rowSpacing = 60;
+    }
+
+    return true;
+}
+
 #endif
 
 //===========================================================================
@@ -993,7 +1130,12 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
     {
         if( IsAndroidOptionalMenuItem( logicalMenuItem ) )
         {
-            return false;
+            return AddGeneratedAndroidToggleMenuItem
+            (
+                pMenuGroup,
+                pPage,
+                logicalMenuItem
+            );
         }
 
         rAssert( group != NULL );
@@ -1006,7 +1148,12 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
     {
         if( IsAndroidOptionalMenuItem( logicalMenuItem ) )
         {
-            return false;
+            return AddGeneratedAndroidToggleMenuItem
+            (
+                pMenuGroup,
+                pPage,
+                logicalMenuItem
+            );
         }
 
         rAssert( pText != NULL );
@@ -1022,8 +1169,12 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
     {
         if( IsAndroidOptionalMenuItem( logicalMenuItem ) )
         {
-            pText->SetVisible( false );
-            return false;
+            return AddGeneratedAndroidToggleMenuItem
+            (
+                pMenuGroup,
+                pPage,
+                logicalMenuItem
+            );
         }
 
         rAssert( pTextValue != NULL );
@@ -1041,20 +1192,12 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
     if( IsAndroidOptionalMenuItem( logicalMenuItem ) &&
         ( pLArrow == NULL || pRArrow == NULL ) )
     {
-        pText->SetVisible( false );
-        pTextValue->SetVisible( false );
-
-        if( pLArrow != NULL )
-        {
-            pLArrow->SetVisible( false );
-        }
-
-        if( pRArrow != NULL )
-        {
-            pRArrow->SetVisible( false );
-        }
-
-        return false;
+        return AddGeneratedAndroidToggleMenuItem
+        (
+            pMenuGroup,
+            pPage,
+            logicalMenuItem
+        );
     }
 
     mMenuItemToGuiMenuIndex[ logicalMenuItem ] = mNumActiveMenuItems;
@@ -1068,6 +1211,177 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
         NULL,
         pLArrow,
         pRArrow,
+        SELECTION_ENABLED | VALUES_WRAPPED | TEXT_OUTLINE_ENABLED
+    );
+
+    mNumActiveMenuItems++;
+
+    return true;
+}
+
+bool CGuiScreenPauseSettings::AddGeneratedAndroidToggleMenuItem
+(
+    Scrooby::Group* pMenuGroup,
+    Scrooby::Page* pPage,
+    int logicalMenuItem
+)
+{
+    FeGroup* menuGroup = dynamic_cast<FeGroup*>( pMenuGroup );
+
+    if( menuGroup == NULL || pPage == NULL )
+    {
+        return false;
+    }
+
+    Scrooby::Group* radarGroup = pPage->GetGroup( "Radar" );
+
+    if( radarGroup == NULL )
+    {
+        return false;
+    }
+
+    FeText* templateLabel =
+        dynamic_cast<FeText*>( radarGroup->GetText( "Radar" ) );
+    FeText* templateValue =
+        dynamic_cast<FeText*>( radarGroup->GetText( "Radar_Value" ) );
+    FeSprite* templateLeftArrow =
+        dynamic_cast<FeSprite*>( radarGroup->GetSprite( "Radar_LArrow" ) );
+    FeSprite* templateRightArrow =
+        dynamic_cast<FeSprite*>( radarGroup->GetSprite( "Radar_RArrow" ) );
+
+    if( templateLabel == NULL || templateValue == NULL )
+    {
+        return false;
+    }
+
+    int labelX = 0;
+    int valueX = 0;
+    int leftArrowX = 0;
+    int rightArrowX = 0;
+    int radarY = 0;
+    int rowSpacing = 0;
+
+    if( !GetAndroidSettingsRowGeometry
+        (
+            pPage,
+            labelX,
+            valueX,
+            leftArrowX,
+            rightArrowX,
+            radarY,
+            rowSpacing
+        ) )
+    {
+        return false;
+    }
+
+    const int rowNumber =
+        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ? 1 : 2;
+    const int rowY = radarY + rowSpacing * rowNumber;
+
+    const char* labelText =
+        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ?
+        "Invert Camera" :
+        "Controller Vibration";
+
+    char nameBuffer[ 64 ];
+
+    snprintf
+    (
+        nameBuffer,
+        sizeof( nameBuffer ),
+        "AndroidSettings_%s_Label",
+        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ?
+        "InvertCamera" :
+        "ControllerVibration"
+    );
+
+    FeText* label = menuGroup->AddText( nameBuffer, 0, 0 );
+
+    snprintf
+    (
+        nameBuffer,
+        sizeof( nameBuffer ),
+        "AndroidSettings_%s_Value",
+        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ?
+        "InvertCamera" :
+        "ControllerVibration"
+    );
+
+    FeText* value = menuGroup->AddText( nameBuffer, 0, 0 );
+
+    if( label == NULL || value == NULL )
+    {
+        return false;
+    }
+
+    CopyAndroidMenuTextAppearance( label, templateLabel );
+    CopyAndroidMenuTextAppearance( value, templateValue );
+
+    label->AddHardCodedString( labelText );
+    value->AddHardCodedString( "OFF" );
+    value->AddHardCodedString( "ON" );
+    value->SetIndex( 0 );
+
+    label->SetPositionOfCenter( labelX, rowY );
+    value->SetPositionOfCenter( valueX, rowY );
+
+    FeSprite* leftArrow = NULL;
+    FeSprite* rightArrow = NULL;
+
+    if( templateLeftArrow != NULL && templateRightArrow != NULL )
+    {
+        char leftName[ 64 ];
+        char rightName[ 64 ];
+
+        snprintf
+        (
+            leftName,
+            sizeof( leftName ),
+            "AndroidSettings_%s_LArrow",
+            logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ?
+            "InvertCamera" :
+            "ControllerVibration"
+        );
+
+        snprintf
+        (
+            rightName,
+            sizeof( rightName ),
+            "AndroidSettings_%s_RArrow",
+            logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ?
+            "InvertCamera" :
+            "ControllerVibration"
+        );
+
+        leftArrow = menuGroup->AddSprite( leftName, 0, 0 );
+        rightArrow = menuGroup->AddSprite( rightName, 0, 0 );
+
+        if( leftArrow != NULL && rightArrow != NULL )
+        {
+            CopyAndroidMenuSpriteAppearance( leftArrow, templateLeftArrow );
+            CopyAndroidMenuSpriteAppearance( rightArrow, templateRightArrow );
+
+            leftArrow->SetPositionOfCenter( leftArrowX, rowY );
+            rightArrow->SetPositionOfCenter( rightArrowX, rowY );
+
+            leftArrow->SetVisible( false );
+            rightArrow->SetVisible( false );
+        }
+    }
+
+    const int guiMenuIndex = mNumActiveMenuItems;
+    mMenuItemToGuiMenuIndex[ logicalMenuItem ] = guiMenuIndex;
+    mGuiMenuIndexToMenuItem[ guiMenuIndex ] = logicalMenuItem;
+
+    m_pMenu->AddMenuItem
+    (
+        label,
+        value,
+        NULL,
+        NULL,
+        leftArrow,
+        rightArrow,
         SELECTION_ENABLED | VALUES_WRAPPED | TEXT_OUTLINE_ENABLED
     );
 
