@@ -42,7 +42,9 @@
 #include <SDL.h>
 #include <FeText.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #endif
 
 
@@ -134,7 +136,18 @@ namespace
 
         while( fgets( line, sizeof( line ), file ) != NULL )
         {
-            char* value = strchr( line, '=' );
+            char* lineStart = line;
+            while( *lineStart == ' ' || *lineStart == '\t' )
+            {
+                lineStart++;
+            }
+
+            if( *lineStart == '#' || *lineStart == '\0' )
+            {
+                continue;
+            }
+
+            char* value = strchr( lineStart, '=' );
 
             if( value == NULL )
             {
