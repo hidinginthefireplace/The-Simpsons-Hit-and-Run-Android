@@ -477,7 +477,7 @@ static bool IsAndroidSaveFile( const char* fileName )
 
     // The game uses Save1, Save2 and Save3.
     return ( fileName[ 4 ] >= '1' && fileName[ 4 ] <= '3' &&
-             fileName[ 5 ] == ' ' );
+             fileName[ 5 ] == '\0' );
 }
 
 static bool BuildAndroidSaveFileSpec( const char* fileName,
@@ -494,7 +494,7 @@ static bool BuildAndroidSaveFileSpec( const char* fileName,
     const char* storagePath =
         SDL_AndroidGetApplicationExternalFilesPath();
 
-    if ( storagePath == NULL || storagePath[ 0 ] == ' ' )
+    if ( storagePath == NULL || storagePath[ 0 ] == '\0' )
     {
         return false;
     }
