@@ -1010,10 +1010,10 @@ void CGuiScreenPauseSettings::InitOutro()
 
         if( resolutionMenuIndex != -1 )
         {
-            SaveSHARResolutionSelection
-            (
-                m_pMenu->GetSelectionValue( resolutionMenuIndex )
-            );
+            // DIAGNOSTIC: keep the renderer at the known-good 1080p target.
+            // The resolution selector remains visible and interactive, but its
+            // selection is not allowed to change the persisted render target.
+            SaveSHARResolutionSelection( SHAR_RESOLUTION_DEFAULT_SELECTION );
         }
 
         mResolutionSelectionChanged = false;
