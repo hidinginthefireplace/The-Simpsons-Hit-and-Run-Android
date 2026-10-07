@@ -83,6 +83,9 @@ class FeText
         void SetTextStyle( unsigned int resourceID );
         tFont* GetTextStyle() const;
 
+        // Concrete helper for copying the style used by an existing FE text element.
+        unsigned int GetTextStyleResourceID() const { return mTextStyle; }
+
         void AddHardCodedString( const char* string );
         void AddTextBibleString( unsigned int textBibleResourceID, const char* stringID );
         void AddTextBibleString( const char* textBibleName, const char* stringID );
