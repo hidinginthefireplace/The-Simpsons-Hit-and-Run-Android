@@ -243,13 +243,19 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
             writer.write("# Values lower than 300 will be clamped to 300 automatically.\n");
             writer.write("#\n");
             writer.write("# How it works:\n");
-            writer.write("# 1. The phone physical resolution is converted to landscape terms.\n");
+            writer.write("# 1. The device display resolution is converted to landscape terms.\n");
             writer.write("# 2. target_height becomes the internal render height.\n");
             writer.write("# 3. The internal render width is calculated using the physical aspect ratio.\n");
             writer.write("# 4. The calculated width is rounded to a multiple of 8 to avoid odd framebuffer sizes.\n");
             writer.write("# 5. Android scales the final image to the full physical screen.\n");
             writer.write("#\n");
             writer.write("# You can also use MAX to render at the maximum useful height reported by the display modes.\n");
+            writer.write("#\n");
+            writer.write("# Manual examples:\n");
+            writer.write("# target_height=720\n");
+            writer.write("# target_height=1080\n");
+            writer.write("# target_height=1440\n");
+            writer.write("# target_height=2160\n");
             writer.write("#\n");
             writer.write("target_height=" + SHAR_DEFAULT_TARGET_RENDER_HEIGHT + "\n");
 
