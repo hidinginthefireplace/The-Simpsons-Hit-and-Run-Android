@@ -39,6 +39,10 @@
 
 #if defined(RAD_ANDROID)
 #include <data/config/androidconfigurationmanager.h>
+#include <SDL.h>
+#include <FeText.h>
+#include <stdio.h>
+#include <string.h>
 #endif
 
 
@@ -76,6 +80,9 @@ const char* PAUSE_SETTINGS_MENU_ITEMS[] =
 #endif
     "IntersectNavSystem",
     "Radar",
+#if defined(RAD_ANDROID)
+    "Resolution",
+#endif
 #if !defined(RAD_PC) //&& !defined(RAD_ANDROID)
     "Vibration",
 #endif
@@ -85,6 +92,131 @@ const char* PAUSE_SETTINGS_MENU_ITEMS[] =
 
     ""
 };
+
+#if defined(RAD_ANDROID)
+namespace
+{
+    const int SHAR_RESOLUTION_SELECTION_COUNT = 4;
+    const int SHAR_RESOLUTION_DEFAULT_SELECTION = 2;
+
+    int GetSHARResolutionHeightForSelection( int selection )
+    {
+        switch( selection )
+        {
+            case 0: return 720;
+            case 1: return 900;
+            case 2: return 1080;
+            default: return 0; // Maximum is written as MAX.
+        }
+    }
+
+    int LoadSHARResolutionSelection()
+    {
+        const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
+
+        if( basePath == NULL || basePath[ 0 ] == '\0' )
+        {
+            return SHAR_RESOLUTION_DEFAULT_SELECTION;
+        }
+
+        char path[ 512 ];
+        snprintf( path, sizeof( path ), "%s/Simpsons_resolution.txt", basePath );
+
+        FILE* file = fopen( path, "r" );
+
+        if( file == NULL )
+        {
+            return SHAR_RESOLUTION_DEFAULT_SELECTION;
+        }
+
+        char line[ 256 ];
+        int selection = SHAR_RESOLUTION_DEFAULT_SELECTION;
+
+        while( fgets( line, sizeof( line ), file ) != NULL )
+        {
+            char* value = strchr( line, '=' );
+
+            if( value == NULL )
+            {
+                continue;
+            }
+
+            value++;
+            while( *value == ' ' || *value == '\t' )
+            {
+                value++;
+            }
+
+            if( strncasecmp( value, "max", 3 ) == 0 )
+            {
+                selection = 3;
+                break;
+            }
+
+            const int height = atoi( value );
+
+            if( height == 720 )
+            {
+                selection = 0;
+                break;
+            }
+
+            if( height == 900 )
+            {
+                selection = 1;
+                break;
+            }
+
+            if( height == 1080 )
+            {
+                selection = 2;
+                break;
+            }
+        }
+
+        fclose( file );
+        return selection;
+    }
+
+    void SaveSHARResolutionSelection( int selection )
+    {
+        const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
+
+        if( basePath == NULL || basePath[ 0 ] == '\0' )
+        {
+            return;
+        }
+
+        char path[ 512 ];
+        snprintf( path, sizeof( path ), "%s/Simpsons_resolution.txt", basePath );
+
+        FILE* file = fopen( path, "w" );
+
+        if( file == NULL )
+        {
+            return;
+        }
+
+        fprintf( file, "# Simpsons Hit & Run Android adaptive render resolution\n" );
+        fprintf( file, "# This setting is also available from the Pause Settings menu.\n" );
+        fprintf( file, "# Changes take effect the next time the game starts.\n" );
+        fprintf( file, "# The render width is calculated automatically from the device aspect ratio.\n" );
+        fprintf( file, "#\n" );
+
+        if( selection == 3 )
+        {
+            fprintf( file, "target_height=MAX\n" );
+        }
+        else
+        {
+            fprintf( file, "target_height=%d\n",
+                      GetSHARResolutionHeightForSelection( selection ) );
+        }
+
+        fclose( file );
+    }
+}
+#endif
 
 #ifdef RAD_PC
 SuperCam::Type PC_CAMERAS_FOR_WALKING[] =
@@ -196,7 +328,18 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
         // IMPORTANT:
         // This is the original access pattern.
         //
-        Scrooby::Group* group = pPage->GetGroup( item );
+        const char* groupName = item;
+    const char* elementName = item;
+
+    if( logicalMenuItem == MENU_ITEM_RESOLUTION )
+    {
+        // Reuse the existing Tutorial row from the console/PC PauseSettings
+        // layout so Android does not require a new P3D frontend asset.
+        groupName = "Tutorial";
+        elementName = "Tutorial";
+    }
+
+    Scrooby::Group* group = pPage->GetGroup( groupName );
 
         //
         // Diagnostic only. Do not use this group yet.
@@ -222,7 +365,7 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
 
         pText->SetTextMode( Scrooby::TEXT_WRAP );
 
-        sprintf( itemName, "%s_Value", item );
+        sprintf( itemName, "%s_Value", elementName );
         Scrooby::Text* pTextValue = group->GetText( itemName );
 
 
@@ -235,9 +378,9 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
 
         pTextValue->SetTextMode( Scrooby::TEXT_WRAP );
 
-        sprintf( itemName, "%s_LArrow", item );
+        sprintf( itemName, "%s_LArrow", elementName );
         Scrooby::Sprite* pLArrow = group->GetSprite( itemName );
-        sprintf( itemName, "%s_RArrow", item );
+        sprintf( itemName, "%s_RArrow", elementName );
         Scrooby::Sprite* pRArrow = group->GetSprite( itemName );
 
 
@@ -252,44 +395,6 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
     }
 #endif
 
-    #if defined(RAD_ANDROID)
-    //
-    // Dejamos de dibujar la opción tutorial en este menu
-    //
-    Scrooby::Group* pTutorialGroup = pPage->GetGroup( "Tutorial" );
-
-    if( pTutorialGroup == NULL && pMenuGroup != NULL )
-    {
-        pTutorialGroup = pMenuGroup->GetGroup( "Tutorial" );
-    }
-
-    if( pTutorialGroup != NULL )
-    {
-        Scrooby::Text* pTutorialText = pTutorialGroup->GetText( "Tutorial" );
-        if( pTutorialText != NULL )
-        {
-            pTutorialText->SetVisible( false );
-        }
-
-        Scrooby::Text* pTutorialValue = pTutorialGroup->GetText( "Tutorial_Value" );
-        if( pTutorialValue != NULL )
-        {
-            pTutorialValue->SetVisible( false );
-        }
-
-        Scrooby::Sprite* pTutorialLArrow = pTutorialGroup->GetSprite( "Tutorial_LArrow" );
-        if( pTutorialLArrow != NULL )
-        {
-            pTutorialLArrow->SetVisible( false );
-        }
-
-        Scrooby::Sprite* pTutorialRArrow = pTutorialGroup->GetSprite( "Tutorial_RArrow" );
-        if( pTutorialRArrow != NULL )
-        {
-            pTutorialRArrow->SetVisible( false );
-        }
-    }
-#endif
 
 #ifdef RAD_GAMECUBE
     // change "Vibration" text to "Rumble"
@@ -424,6 +529,15 @@ void CGuiScreenPauseSettings::HandleMessage
                     //
                     GetSuperCamManager()->GetSCC( 0 )->Update( 0 );
                 }
+#if defined(RAD_ANDROID)
+                else if( logicalMenuItem == MENU_ITEM_RESOLUTION )
+                {
+                    if( param2 < SHAR_RESOLUTION_SELECTION_COUNT )
+                    {
+                        mResolutionSelectionChanged = true;
+                    }
+                }
+#endif
 #if !defined(RAD_PC) && !defined(RAD_ANDROID)
                 else if( param1 == MENU_ITEM_VIBRATION )
                 {
@@ -525,6 +639,32 @@ void CGuiScreenPauseSettings::InitIntro()
     {
         m_currentCameraSelectionMode = CAMERA_SELECTION_NOT_AVAILABLE;
     }
+
+#if defined(RAD_ANDROID)
+    {
+        const int resolutionMenuIndex =
+            GetGuiMenuIndexFromMenuItem( MENU_ITEM_RESOLUTION );
+
+        if( resolutionMenuIndex != -1 )
+        {
+            m_pMenu->SetSelectionValueCount
+            (
+                resolutionMenuIndex,
+                SHAR_RESOLUTION_SELECTION_COUNT
+            );
+
+            m_pMenu->SetSelectionValue
+            (
+                resolutionMenuIndex,
+                LoadSHARResolutionSelection()
+            );
+
+            // SetSelectionValue() sends a value-changed message. Clear that
+            // notification because the value above came from the config file.
+            mResolutionSelectionChanged = false;
+        }
+    }
+#endif
 
     // update other gameplay settings
     //
@@ -861,6 +1001,22 @@ void CGuiScreenPauseSettings::InitOutro()
 #endif
 
 #if defined(RAD_ANDROID)
+    if( mResolutionSelectionChanged )
+    {
+        const int resolutionMenuIndex =
+            GetGuiMenuIndexFromMenuItem( MENU_ITEM_RESOLUTION );
+
+        if( resolutionMenuIndex != -1 )
+        {
+            SaveSHARResolutionSelection
+            (
+                m_pMenu->GetSelectionValue( resolutionMenuIndex )
+            );
+        }
+
+        mResolutionSelectionChanged = false;
+    }
+
     GetAndroidConfigurationManager()->SaveIfDirty();
 #endif
 
@@ -1079,7 +1235,8 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
 bool CGuiScreenPauseSettings::IsAndroidOptionalMenuItem( int logicalMenuItem ) const
 {
     return logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ||
-           logicalMenuItem == MENU_ITEM_VIBRATION;
+           logicalMenuItem == MENU_ITEM_VIBRATION ||
+           logicalMenuItem == MENU_ITEM_RESOLUTION;
 }
 
 bool CGuiScreenPauseSettings::HasMenuItem( int logicalMenuItem ) const
