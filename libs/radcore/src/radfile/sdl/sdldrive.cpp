@@ -456,6 +456,63 @@ radDrive::CompletionStatus radSdlDrive::Initialize( void )
 
 //=============================================================================
 // Function:    radSdlDrive::OpenFile
+//=============================================================================#ifdef RAD_ANDROID
+// Save slots are application-owned settings/data, not game assets.
+// Keep them in the primary Android app external-files directory even when
+// the selected game-data directory is on USB.
+static bool IsAndroidSaveFile( const char* fileName )
+{
+    if ( fileName == NULL )
+    {
+        return false;
+    }
+
+    if ( fileName[ 0 ] != 'S' ||
+         fileName[ 1 ] != 'a' ||
+         fileName[ 2 ] != 'v' ||
+         fileName[ 3 ] != 'e' )
+    {
+        return false;
+    }
+
+    // The game uses Save1, Save2 and Save3.
+    return ( fileName[ 4 ] >= '1' && fileName[ 4 ] <= '3' &&
+             fileName[ 5 ] == ' ' );
+}
+
+static bool BuildAndroidSaveFileSpec( const char* fileName,
+                                      char* fullName,
+                                      unsigned int size )
+{
+    if ( !IsAndroidSaveFile( fileName ) ||
+         fullName == NULL ||
+         size == 0 )
+    {
+        return false;
+    }
+
+    const char* storagePath =
+        SDL_AndroidGetApplicationExternalFilesPath();
+
+    if ( storagePath == NULL || storagePath[ 0 ] == ' ' )
+    {
+        return false;
+    }
+
+    snprintf(
+        fullName,
+        size,
+        "%s/%s",
+        storagePath,
+        fileName
+    );
+
+    return true;
+}
+#endif
+
+//=============================================================================
+// Function:    radSdlDrive::OpenFile
 //=============================================================================
 
 radDrive::CompletionStatus radSdlDrive::OpenFile
@@ -471,7 +528,18 @@ radDrive::CompletionStatus radSdlDrive::OpenFile
     // Build the full filename
     //
     char fullName[ radFileFilenameMax + 1 ];
+
+#if defined(RAD_ANDROID)
+    if ( !BuildAndroidSaveFileSpec(
+            fileName,
+            fullName,
+            radFileFilenameMax + 1 ) )
+    {
+        BuildFileSpec( fileName, fullName, radFileFilenameMax + 1 );
+    }
+#else
     BuildFileSpec( fileName, fullName, radFileFilenameMax + 1 );
+#endif
 
     //
     // Translate flags to SDL
@@ -844,7 +912,18 @@ radDrive::CompletionStatus radSdlDrive::DestroyFile( const char* filename )
     // Build the full filename
     //
     char fullSpec[ radFileFilenameMax + 1 ];
+
+#if defined(RAD_ANDROID)
+    if ( !BuildAndroidSaveFileSpec(
+            filename,
+            fullSpec,
+            radFileFilenameMax + 1 ) )
+    {
+        BuildFileSpec( filename, fullSpec, radFileFilenameMax + 1 );
+    }
+#else
     BuildFileSpec( filename, fullSpec, radFileFilenameMax + 1 );
+#endif
 
     if ( SDL_RemovePath( fullSpec ) )
     {
