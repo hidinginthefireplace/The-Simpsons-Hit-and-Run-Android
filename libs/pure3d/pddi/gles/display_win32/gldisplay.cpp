@@ -389,6 +389,17 @@ bool BeginCelPostProcessFrame(int width, int height)
     return true;
 }
 
+void ApplyCelPostProcessBeforeGui(int width, int height)
+{
+    /*
+     * The game/world layers have finished rendering at this point, while
+     * the dedicated GUI layer has not started yet. Apply the screen-space
+     * cel pass here so GUI and touch overlays are drawn afterward without
+     * being processed.
+     */
+    ApplyCelPostProcess(width, height);
+}
+
 static int gSHARAndroidRenderWidth = 0;
 static int gSHARAndroidRenderHeight = 0;
 
@@ -903,15 +914,6 @@ void pglDisplay::SetGamma(float r, float g, float b)
 
 void pglDisplay::SwapBuffers(void)
 {
-#ifdef RAD_ANDROID
-    /*
-     * The post-process is deliberately applied at the final presentation
-     * point. This means every completed render path in the game is treated
-     * uniformly, including world geometry, characters, vehicles and effects.
-     */
-    ApplyCelPostProcess(winWidth, winHeight);
-#endif
-
     SDL_GL_SwapWindow(win);
     reset = false;
     #ifdef RAD_ANDROID
