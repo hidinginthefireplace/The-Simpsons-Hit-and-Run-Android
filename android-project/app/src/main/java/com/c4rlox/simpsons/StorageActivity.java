@@ -100,9 +100,9 @@ public class StorageActivity extends Activity {
 
         if (!gameDir.exists() && !gameDir.mkdirs()) {
             new AlertDialog.Builder(this)
-                    .setTitle("USB folder unavailable")
+                    .setTitle("Removable storage unavailable")
                     .setMessage("Could not create:\n" + gameDir.getAbsolutePath()
-                            + "\n\nCheck that the USB drive is writable.")
+                            + "\n\nCheck that the removable storage is writable.")
                     .setPositiveButton("OK", null)
                     .show();
             return;
@@ -122,7 +122,7 @@ public class StorageActivity extends Activity {
         finish();
     }
 
-    private List<File> getUsbVolumes() {
+    private List<File> getRemovableVolumes() {
         List<File> result = new ArrayList<>();
         String primaryStoragePath = Environment.getExternalStorageDirectory().getAbsolutePath();
 
@@ -179,22 +179,21 @@ public class StorageActivity extends Activity {
 
         TextView title = new TextView(this);
         title.setText("The Simpsons: Hit & Run\nGame Data Location");
-        title.setTextSize(26);
+        title.setTextSize(29);
+        title.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         title.setTextColor(YELLOW);
         title.setGravity(Gravity.CENTER);
-        title.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
+        title.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
         content.addView(title, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
         TextView help = new TextView(this);
-        help.setText("\nChoose where the game data is stored. A USB drive will use the folder\n"
-                + "/storage/<USB-ID>/Simpsons\n\n"
-                + "Your selection is remembered for future launches.");
-        help.setTextSize(17);
+        help.setText("\nFirst time setup\n\nChoose where the game data is stored");
+        help.setTextSize(20);
         help.setTextColor(Color.WHITE);
         help.setGravity(Gravity.CENTER);
-        help.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
+        help.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
         content.addView(help, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -203,10 +202,10 @@ public class StorageActivity extends Activity {
         if (saved != null && new File(saved).isDirectory()) {
             TextView current = new TextView(this);
             current.setText("\nCurrent: " + saved);
-            current.setTextSize(16);
+            current.setTextSize(17);
             current.setTextColor(YELLOW);
             current.setGravity(Gravity.CENTER);
-            current.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
+            current.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
             content.addView(current, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -219,14 +218,14 @@ public class StorageActivity extends Activity {
         internal.setOnClickListener(v -> useInternalStorage());
         content.addView(internal, buttonParams());
 
-        for (File volume : getUsbVolumes()) {
-            Button usb = new Button(this);
-            styleButton(usb);
-            usb.setText("Use USB: " + volume.getName()
+        for (File volume : getRemovableVolumes()) {
+            Button removable = new Button(this);
+            styleButton(removable);
+            removable.setText("Use Removable Storage: " + volume.getName()
                     + "\n" + getGameDataDirectory(volume.getAbsolutePath()).getAbsolutePath());
-            usb.setFocusable(true);
-            usb.setOnClickListener(v -> selectGameDataPath(volume.getAbsolutePath()));
-            content.addView(usb, buttonParams());
+            removable.setFocusable(true);
+            removable.setOnClickListener(v -> selectGameDataPath(volume.getAbsolutePath()));
+            content.addView(removable, buttonParams());
         }
 
         scroll.addView(content, new ScrollView.LayoutParams(
@@ -244,7 +243,8 @@ public class StorageActivity extends Activity {
     private void styleButton(Button button) {
         button.setTextColor(DARK_BLUE);
         button.setAllCaps(false);
-        button.setTextSize(18);
+        button.setTextSize(19);
+        button.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         button.setGravity(Gravity.CENTER);
         button.setMinHeight(dp(82));
         button.setPadding(dp(20), dp(14), dp(20), dp(14));
