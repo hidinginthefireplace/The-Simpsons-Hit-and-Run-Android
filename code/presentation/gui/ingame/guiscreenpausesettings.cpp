@@ -1184,7 +1184,7 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
 
     pText->SetTextMode( Scrooby::TEXT_WRAP );
 
-    sprintf( itemName, "%s_Value", item );
+    sprintf( itemName, "%s_Value", elementName );
     Scrooby::Text* pTextValue = group->GetText( itemName );
 
     if( pTextValue == NULL )
