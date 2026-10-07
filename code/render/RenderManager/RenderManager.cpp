@@ -84,6 +84,10 @@
 #include <p3d/light.hpp>
 #include <p3d/view.hpp>
 
+#ifdef RAD_ANDROID
+#include <pddi/gles/gldisplay.hpp>
+#endif
+
 #ifdef DEBUGWATCH
 #include <radmemorymonitor.hpp>
 #include <worldsim/worldphysicsmanager.h>
@@ -777,6 +781,21 @@ void RenderManager::ContextUpdate( unsigned int iElapsedTime )
 
     for (int i = RenderEnums::numLayers - 1; i > -1; i--)
     {
+#ifdef RAD_ANDROID
+        /*
+         * Apply the screen-space cel pass after all non-GUI layers have
+         * rendered, but immediately before the dedicated GUI layer.
+         * This keeps Scrooby GUI and touch controls out of the post-process.
+         */
+        if (i == RenderEnums::GUI)
+        {
+            ApplyCelPostProcessBeforeGui(
+                p3d::display->GetWidth(),
+                p3d::display->GetHeight()
+            );
+        }
+#endif
+
 #ifdef DEBUGINFO_ENABLED
         if (i == RenderEnums::GUI)
         {
