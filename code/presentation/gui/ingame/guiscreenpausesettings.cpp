@@ -341,18 +341,7 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
         // IMPORTANT:
         // This is the original access pattern.
         //
-        const char* groupName = item;
-    const char* elementName = item;
-
-    if( logicalMenuItem == MENU_ITEM_RESOLUTION )
-    {
-        // Reuse the existing Tutorial row from the console/PC PauseSettings
-        // layout so Android does not require a new P3D frontend asset.
-        groupName = "Tutorial";
-        elementName = "Tutorial";
-    }
-
-    Scrooby::Group* group = pPage->GetGroup( groupName );
+        Scrooby::Group* group = pPage->GetGroup( item );
 
         //
         // Diagnostic only. Do not use this group yet.
@@ -378,7 +367,7 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
 
         pText->SetTextMode( Scrooby::TEXT_WRAP );
 
-        sprintf( itemName, "%s_Value", elementName );
+        sprintf( itemName, "%s_Value", item );
         Scrooby::Text* pTextValue = group->GetText( itemName );
 
 
@@ -391,9 +380,9 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
 
         pTextValue->SetTextMode( Scrooby::TEXT_WRAP );
 
-        sprintf( itemName, "%s_LArrow", elementName );
+        sprintf( itemName, "%s_LArrow", item );
         Scrooby::Sprite* pLArrow = group->GetSprite( itemName );
-        sprintf( itemName, "%s_RArrow", elementName );
+        sprintf( itemName, "%s_RArrow", item );
         Scrooby::Sprite* pRArrow = group->GetSprite( itemName );
 
 
@@ -1156,7 +1145,18 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
 {
     char itemName[ 32 ];
 
-    Scrooby::Group* group = pPage->GetGroup( item );
+    const char* groupName = item;
+    const char* elementName = item;
+
+    if( logicalMenuItem == MENU_ITEM_RESOLUTION )
+    {
+        // Reuse the existing Tutorial row from the console/PC PauseSettings
+        // layout so Android does not require a new P3D frontend asset.
+        groupName = "Tutorial";
+        elementName = "Tutorial";
+    }
+
+    Scrooby::Group* group = pPage->GetGroup( groupName );
 
     if( group == NULL )
     {
@@ -1169,7 +1169,7 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
         return false;
     }
 
-    Scrooby::Text* pText = group->GetText( item );
+    Scrooby::Text* pText = group->GetText( elementName );
 
     if( pText == NULL )
     {
@@ -1201,10 +1201,31 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
 
     pTextValue->SetTextMode( Scrooby::TEXT_WRAP );
 
-    sprintf( itemName, "%s_LArrow", item );
+    if( logicalMenuItem == MENU_ITEM_RESOLUTION )
+    {
+        FeText* resolutionText = dynamic_cast<FeText*>( pText );
+        FeText* resolutionValue = dynamic_cast<FeText*>( pTextValue );
+
+        if( resolutionText != NULL && resolutionValue != NULL )
+        {
+            resolutionText->SetString( 0, "Resolution" );
+
+            while( resolutionValue->GetNumOfStrings() < SHAR_RESOLUTION_SELECTION_COUNT )
+            {
+                resolutionValue->AddHardCodedString( "" );
+            }
+
+            resolutionValue->SetString( 0, "720p" );
+            resolutionValue->SetString( 1, "900p" );
+            resolutionValue->SetString( 2, "1080p" );
+            resolutionValue->SetString( 3, "Maximum" );
+        }
+    }
+
+    sprintf( itemName, "%s_LArrow", elementName );
     Scrooby::Sprite* pLArrow = group->GetSprite( itemName );
 
-    sprintf( itemName, "%s_RArrow", item );
+    sprintf( itemName, "%s_RArrow", elementName );
     Scrooby::Sprite* pRArrow = group->GetSprite( itemName );
 
     if( IsAndroidOptionalMenuItem( logicalMenuItem ) &&
