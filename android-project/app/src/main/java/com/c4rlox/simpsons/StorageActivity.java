@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
@@ -17,15 +19,19 @@ import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
 public class StorageActivity extends Activity {
-    private static final int REQUEST_STORAGE_PERMISSION = 42;
     private static final int SKY_BLUE = Color.rgb(135, 206, 235);
     private static final int DARK_BLUE = Color.rgb(23, 59, 108);
     private static final int YELLOW = Color.rgb(212, 176, 0);
@@ -118,17 +124,26 @@ public class StorageActivity extends Activity {
 
     private List<File> getUsbVolumes() {
         List<File> result = new ArrayList<>();
+        String primaryStoragePath = Environment.getExternalStorageDirectory().getAbsolutePath();
+
         if (Build.VERSION.SDK_INT >= 24) {
             StorageManager manager = (StorageManager) getSystemService(Context.STORAGE_SERVICE);
             for (StorageVolume volume : manager.getStorageVolumes()) {
                 if (!volume.isRemovable()) {
                     continue;
                 }
+
                 File directory = null;
                 if (Build.VERSION.SDK_INT >= 30) {
                     directory = volume.getDirectory();
                 }
-                if (directory != null && directory.isDirectory()) {
+
+                // Shield TV can expose /storage/emulated/0 as a removable volume.
+                // It is still the primary internal shared storage, so never list
+                // it as a USB option.
+                if (directory != null
+                        && directory.isDirectory()
+                        && !directory.getAbsolutePath().equals(primaryStoragePath)) {
                     result.add(directory);
                 }
             }
@@ -137,19 +152,38 @@ public class StorageActivity extends Activity {
     }
 
     private void showStorageScreen() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        int pad = (int) (32 * getResources().getDisplayMetrics().density);
-        root.setPadding(pad, pad, pad, pad);
-        root.setBackgroundColor(SKY_BLUE);
+        FrameLayout root = new FrameLayout(this);
+
+        ImageView background = new ImageView(this);
+        background.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        try (InputStream input = getAssets().open("storage_screen_background.webp")) {
+            Bitmap bitmap = BitmapFactory.decodeStream(input);
+            background.setImageBitmap(bitmap);
+        } catch (IOException | RuntimeException e) {
+            background.setBackgroundColor(SKY_BLUE);
+        }
+        root.addView(background, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setClipToPadding(false);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setGravity(Gravity.CENTER_HORIZONTAL);
+        int sidePad = dp(24);
+        int topPad = dp(28);
+        content.setPadding(sidePad, topPad, sidePad, dp(28));
 
         TextView title = new TextView(this);
         title.setText("The Simpsons: Hit & Run\nGame Data Location");
-        title.setTextSize(24);
+        title.setTextSize(26);
         title.setTextColor(YELLOW);
         title.setGravity(Gravity.CENTER);
-        root.addView(title, new LinearLayout.LayoutParams(
+        title.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
+        content.addView(title, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
@@ -157,10 +191,11 @@ public class StorageActivity extends Activity {
         help.setText("\nChoose where the game data is stored. A USB drive will use the folder\n"
                 + "/storage/<USB-ID>/Simpsons\n\n"
                 + "Your selection is remembered for future launches.");
-        help.setTextSize(16);
+        help.setTextSize(17);
         help.setTextColor(Color.WHITE);
         help.setGravity(Gravity.CENTER);
-        root.addView(help, new LinearLayout.LayoutParams(
+        help.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
+        content.addView(help, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
@@ -171,7 +206,10 @@ public class StorageActivity extends Activity {
             current.setTextSize(16);
             current.setTextColor(YELLOW);
             current.setGravity(Gravity.CENTER);
-            root.addView(current);
+            current.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
+            content.addView(current, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
         }
 
         Button internal = new Button(this);
@@ -179,7 +217,7 @@ public class StorageActivity extends Activity {
         internal.setText("Use Internal Storage");
         internal.setFocusable(true);
         internal.setOnClickListener(v -> useInternalStorage());
-        root.addView(internal, buttonParams());
+        content.addView(internal, buttonParams());
 
         for (File volume : getUsbVolumes()) {
             Button usb = new Button(this);
@@ -188,8 +226,16 @@ public class StorageActivity extends Activity {
                     + "\n" + getGameDataDirectory(volume.getAbsolutePath()).getAbsolutePath());
             usb.setFocusable(true);
             usb.setOnClickListener(v -> selectGameDataPath(volume.getAbsolutePath()));
-            root.addView(usb, buttonParams());
+            content.addView(usb, buttonParams());
         }
+
+        scroll.addView(content, new ScrollView.LayoutParams(
+                ScrollView.LayoutParams.MATCH_PARENT,
+                ScrollView.LayoutParams.WRAP_CONTENT));
+
+        root.addView(scroll, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
 
         setContentView(root);
         internal.requestFocus();
@@ -198,16 +244,18 @@ public class StorageActivity extends Activity {
     private void styleButton(Button button) {
         button.setTextColor(DARK_BLUE);
         button.setAllCaps(false);
-        button.setTextSize(16);
-        button.setPadding(20, 16, 20, 16);
+        button.setTextSize(18);
+        button.setGravity(Gravity.CENTER);
+        button.setMinHeight(dp(82));
+        button.setPadding(dp(20), dp(14), dp(20), dp(14));
 
         GradientDrawable normal = new GradientDrawable();
         normal.setColor(YELLOW);
-        normal.setCornerRadius(12 * getResources().getDisplayMetrics().density);
+        normal.setCornerRadius(dp(14));
 
         GradientDrawable focused = new GradientDrawable();
         focused.setColor(DARK_BLUE);
-        focused.setCornerRadius(12 * getResources().getDisplayMetrics().density);
+        focused.setCornerRadius(dp(14));
 
         StateListDrawable states = new StateListDrawable();
         states.addState(new int[] { android.R.attr.state_focused }, focused);
@@ -224,7 +272,11 @@ public class StorageActivity extends Activity {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        p.setMargins(0, 12, 0, 0);
+        p.setMargins(0, dp(10), 0, 0);
         return p;
+    }
+
+    private int dp(int value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
 }
