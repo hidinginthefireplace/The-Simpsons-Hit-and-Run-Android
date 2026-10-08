@@ -47,10 +47,6 @@
 #include <constants/srrchunks.h>
 #include <memory/srrmemory.h>
 
-#ifdef RAD_ANDROID
-#include <pddi/gles/gldisplay.hpp>
-#endif
-
 #include <mission/gameplaymanager.h>
 
 #include <worldsim/avatarmanager.h>
@@ -580,21 +576,7 @@ void RenderManager::ContextUpdate( unsigned int iElapsedTime )
         }
 #endif
         if( mpRenderLayers[i]->IsRenderReady() )
-        {
-#ifdef RAD_ANDROID
-            /*
-             * The world/game layers are rendered into the cel FBO. Resolve
-             * the fullscreen post-process immediately before the GUI layer,
-             * so GUI/touch controls remain native and unfiltered.
-             */
-            if( i == RenderEnums::GUI )
-            {
-                ApplyCelPostProcessBeforeGui(
-                    p3d::display->GetWidth(),
-                    p3d::display->GetHeight()
-                );
-            }
-#endif
+        {    
     BEGIN_PROFILE( "Layers" );
             mpRenderLayers[i]->Render();
     END_PROFILE( "Layers" );
