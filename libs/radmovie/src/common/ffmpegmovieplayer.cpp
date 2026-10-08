@@ -26,7 +26,6 @@
     #include <errno.h>
     #include <cstdio>
     #include <cstring>
-    #include <cstring>
 #endif
 #ifndef RAD_MOVIEPLAYER_USE_BINK
 
