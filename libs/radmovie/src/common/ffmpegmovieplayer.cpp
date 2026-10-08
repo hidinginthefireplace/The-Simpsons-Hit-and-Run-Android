@@ -285,13 +285,11 @@ static std::string RadMakeAbsoluteGamePath(const char* path)
 
     for (char& c : base) if (c == '\\') c = '/';
 
-    // Si SDL solo devuelve "/storage/emulated/0", completamos como haces con el drive “ideal”
-    if (base.find("/Android/data/") == std::string::npos)
-    {
-        // OJO: aquí sí tienes hardcodeado el package (igual que en tu fallback actual)
-        base += "/Android/data/org.libsdl.app/files";
-    }
-
+    // SDL_AndroidGetExternalStoragePath() is already redirected by the
+    // Android storage setup to the selected game-data root.  In particular,
+    // when the user selects the USB drive it returns the Simpsons root
+    // (for example /storage/F28E-9EDF/Simpsons/).  Do not append an
+    // Android/data/... path here, or movie paths become invalid.
     if (!base.empty() && base.back() != '/')
         base.push_back('/');
 
