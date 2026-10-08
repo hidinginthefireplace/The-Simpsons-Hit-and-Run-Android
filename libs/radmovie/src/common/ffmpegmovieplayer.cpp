@@ -476,6 +476,10 @@ else {
 // NEW LOAD FOR ANDROID 
 void radMoviePlayer::Load( const char * pVideoFileName, unsigned int audioTrackIndex )
 {
+    LOGI("FMVTRACE: radMoviePlayer::Load ENTER file='%s' audioTrackIndex=%u",
+         pVideoFileName ? pVideoFileName : "<null>",
+         audioTrackIndex);
+
     rAssert( m_State == IRadMoviePlayer2::NoData );
     rAssert( pVideoFileName != NULL );
 
@@ -485,6 +489,8 @@ void radMoviePlayer::Load( const char * pVideoFileName, unsigned int audioTrackI
 #else
     const char* moviePath = pVideoFileName;
 #endif
+
+    LOGI("FMVTRACE: resolved movie path='%s'", moviePath);
 
     m_refIRadStopwatch->Stop( );
     m_refIRadStopwatch->Reset( );
@@ -499,16 +505,20 @@ void radMoviePlayer::Load( const char * pVideoFileName, unsigned int audioTrackI
     FILE* f = fopen( moviePath, "rb" );
     if( !f )
     {
+        LOGE("FMVTRACE: fopen FAILED path='%s' errno=%d", moviePath, errno);
         SetState( IRadMoviePlayer2::NoData );
         return;
     }
     fclose( f );
+    LOGI("FMVTRACE: fopen OK path='%s'", moviePath);
 
     // Some SHAR .rmv files are actually Xbox XMV files.
     // Detect them from their contents and explicitly select FFmpeg's XMV demuxer.
     // This also makes the filename extension irrelevant for these files.
     unsigned int xmvVersion = 0;
     bool isXboxXmv = RadIsXboxXmvFile(moviePath, &xmvVersion);
+    LOGI("FMVTRACE: Xbox/XMV detection=%d version=%u",
+         isXboxXmv ? 1 : 0, xmvVersion);
 
     const AVInputFormat* forcedInputFormat = NULL;
     if (isXboxXmv)
@@ -528,6 +538,8 @@ void radMoviePlayer::Load( const char * pVideoFileName, unsigned int audioTrackI
         }
     }
 
+    LOGI("FMVTRACE: opening with FFmpeg input format=%s",
+         forcedInputFormat ? forcedInputFormat->name : "<auto>");
     AV_CHK( avformat_open_input( &m_pFormatCtx, moviePath, forcedInputFormat, NULL ) );
 
     LOGI("FFmpeg movie format opened: path='%s' format='%s'",
