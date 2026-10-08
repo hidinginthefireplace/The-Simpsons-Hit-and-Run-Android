@@ -25,6 +25,7 @@
     #include <string>
     #include <errno.h>
     #include <cstdio>
+    #include <cstring>
 #endif
 #ifndef RAD_MOVIEPLAYER_USE_BINK
 
@@ -220,6 +221,41 @@ bool radMoviePlayer::Render( void )
 #include <SDL_system.h>
 #include <string>
 
+static bool RadIsXboxXmvFile(const char* path, unsigned int* versionOut)
+{
+    if (versionOut)
+        *versionOut = 0;
+
+    if (!path || !path[0])
+        return false;
+
+    FILE* f = fopen(path, "rb");
+    if (!f)
+        return false;
+
+    unsigned char header[20] = {};
+    size_t readCount = fread(header, 1, sizeof(header), f);
+    fclose(f);
+
+    if (readCount < sizeof(header))
+        return false;
+
+    // The XMV files used by SHAR carry the "xobX" signature at offset 12.
+    if (memcmp(header + 12, "xobX", 4) != 0)
+        return false;
+
+    if (versionOut)
+    {
+        *versionOut =
+            (unsigned int)header[16] |
+            ((unsigned int)header[17] << 8) |
+            ((unsigned int)header[18] << 16) |
+            ((unsigned int)header[19] << 24);
+    }
+
+    return true;
+}
+
 static std::string RadMakeAbsoluteGamePath(const char* path)
 {
     if (!path || !path[0]) return {};
@@ -342,7 +378,21 @@ else {
 
     const AVCodec* pVideoCodec = NULL;
     m_VideoTrackIndex = av_find_best_stream( m_pFormatCtx, AVMEDIA_TYPE_VIDEO, -1, -1, &pVideoCodec, 0 );
+    if (m_VideoTrackIndex < 0 || pVideoCodec == NULL)
+    {
+        LOGE("Movie has no usable video stream: stream_index=%d", m_VideoTrackIndex);
+        SetState( IRadMoviePlayer2::NoData );
+        return;
+    }
+
     AVCodecParameters* pVideoParams = m_pFormatCtx->streams[m_VideoTrackIndex]->codecpar;
+
+    LOGI("Movie video stream: index=%d codec_id=%d codec_name=%s %dx%d",
+         m_VideoTrackIndex,
+         (int)pVideoParams->codec_id,
+         pVideoCodec->name ? pVideoCodec->name : "<unknown>",
+         pVideoParams->width,
+         pVideoParams->height);
     m_pVideoCtx = avcodec_alloc_context3( pVideoCodec );
     AV_CHK( avcodec_parameters_to_context( m_pVideoCtx, pVideoParams ) );
     AV_CHK( avcodec_open2( m_pVideoCtx, pVideoCodec, NULL ) );
@@ -453,7 +503,36 @@ void radMoviePlayer::Load( const char * pVideoFileName, unsigned int audioTrackI
     }
     fclose( f );
 
-    AV_CHK( avformat_open_input( &m_pFormatCtx, moviePath, NULL, NULL ) );
+    // Some SHAR .rmv files are actually Xbox XMV files.
+    // Detect them from their contents and explicitly select FFmpeg's XMV demuxer.
+    // This also makes the filename extension irrelevant for these files.
+    unsigned int xmvVersion = 0;
+    bool isXboxXmv = RadIsXboxXmvFile(moviePath, &xmvVersion);
+
+    const AVInputFormat* forcedInputFormat = NULL;
+    if (isXboxXmv)
+    {
+        forcedInputFormat = av_find_input_format("xmv");
+
+        LOGI("Movie XMV detected: path='%s' version=%u demuxer=%s",
+             moviePath,
+             xmvVersion,
+             forcedInputFormat ? forcedInputFormat->name : "<unavailable>");
+
+        if (forcedInputFormat == NULL)
+        {
+            LOGE("Movie XMV detected, but FFmpeg's XMV demuxer is unavailable in the bundled Android FFmpeg build");
+            SetState( IRadMoviePlayer2::NoData );
+            return;
+        }
+    }
+
+    AV_CHK( avformat_open_input( &m_pFormatCtx, moviePath, forcedInputFormat, NULL ) );
+
+    LOGI("FFmpeg movie format opened: path='%s' format='%s'",
+         moviePath,
+         (m_pFormatCtx && m_pFormatCtx->iformat) ? m_pFormatCtx->iformat->name : "<unknown>");
+
     AV_CHK( avformat_find_stream_info( m_pFormatCtx, NULL ) );
 
     const AVCodec* pVideoCodec = NULL;
@@ -509,7 +588,23 @@ void radMoviePlayer::Load( const char * pVideoFileName, unsigned int audioTrackI
             0
         );
 
+        if (m_AudioTrackIndex < 0 || pAudioCodec == NULL)
+        {
+            LOGE("Movie audio stream unavailable: requested_track=%u stream_index=%d",
+                 audioTrackIndex,
+                 m_AudioTrackIndex);
+            SetState( IRadMoviePlayer2::NoData );
+            return;
+        }
+
         AVCodecParameters* pAudioParams = m_pFormatCtx->streams[m_AudioTrackIndex]->codecpar;
+
+        LOGI("Movie audio stream: index=%d codec_id=%d codec_name=%s channels=%d rate=%d",
+             m_AudioTrackIndex,
+             (int)pAudioParams->codec_id,
+             pAudioCodec->name ? pAudioCodec->name : "<unknown>",
+             pAudioParams->ch_layout.nb_channels,
+             pAudioParams->sample_rate);
 
         m_pAudioCtx = avcodec_alloc_context3( pAudioCodec );
         AV_CHK( avcodec_parameters_to_context( m_pAudioCtx, pAudioParams ) );
