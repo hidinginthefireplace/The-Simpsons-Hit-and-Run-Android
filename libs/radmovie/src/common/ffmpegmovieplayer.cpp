@@ -90,6 +90,7 @@ unsigned int const radMovie_NoAudioTrack = 0xFFFFFFFF;
         char str[AV_ERROR_MAX_STRING_SIZE]; \
         av_strerror(error, str, AV_ERROR_MAX_STRING_SIZE); \
         rDebugPrintf("FFMPEG error=%d (%s) at %s:%d\n", error, str, __FILE__, __LINE__); \
+        LOGE("FFMPEG error=%d (%s) at %s:%d", error, str, __FILE__, __LINE__); \
         SetState(IRadMoviePlayer2::NoData); \
         return; \
     } \
