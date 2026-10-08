@@ -28,6 +28,22 @@ GLuint gCelRenderDepth = 0;
 bool gCelRenderFboReady = false;
 GLint gCelPostSceneLocation = -1;
 GLint gCelPostTexelLocation = -1;
+GLint gCelPostBloomLocation = -1;
+GLint gCelPostBloomStrengthLocation = -1;
+
+GLuint gCelBloomExtractProgram = 0;
+GLuint gCelBloomBlurProgram = 0;
+GLuint gCelBloomFbo = 0;
+GLuint gCelBloomTexture = 0;
+GLuint gCelBloomScratchTexture = 0;
+GLint gCelBloomExtractSceneLocation = -1;
+GLint gCelBloomExtractTexelLocation = -1;
+GLint gCelBloomBlurSourceLocation = -1;
+GLint gCelBloomBlurStepLocation = -1;
+int gCelBloomWidth = 0;
+int gCelBloomHeight = 0;
+bool gCelBloomReady = false;
+
 int gCelPostWidth = 0;
 int gCelPostHeight = 0;
 
@@ -54,6 +70,45 @@ static GLuint CompileCelPostShader(GLenum type, const char* source)
     }
 
     return shader;
+}
+
+static GLuint CreateCelPostProgram(const char* vertexSource, const char* fragmentSource, const char* label)
+{
+    GLuint vs = CompileCelPostShader(GL_VERTEX_SHADER, vertexSource);
+    GLuint fs = CompileCelPostShader(GL_FRAGMENT_SHADER, fragmentSource);
+    if (vs == 0 || fs == 0)
+    {
+        if (vs) glDeleteShader(vs);
+        if (fs) glDeleteShader(fs);
+        return 0;
+    }
+
+    GLuint program = glCreateProgram();
+    glBindAttribLocation(program, 0, "position");
+    glAttachShader(program, vs);
+    glAttachShader(program, fs);
+    glLinkProgram(program);
+
+    GLint linked = GL_FALSE;
+    glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (linked == GL_FALSE)
+    {
+        GLint length = 0;
+        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
+        if (length > 0)
+        {
+            std::vector<char> log((size_t)length + 1, 0);
+            glGetProgramInfoLog(program, length, NULL, log.data());
+            SDL_LogError(SDL_LOG_CATEGORY_RENDER, "%s shader program link failed: %s",
+                label ? label : "Cel post-process", log.data());
+        }
+        glDeleteProgram(program);
+        program = 0;
+    }
+
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    return program;
 }
 
 static bool EnsureCelPostProcessResources(int width, int height);
@@ -165,6 +220,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
         const char* fragmentSource =
             "precision mediump float;\n"
             "uniform sampler2D sceneTex;\n"
+            "uniform sampler2D bloomTex;\n"
+            "uniform float bloomStrength;\n"
             "uniform vec2 texelSize;\n"
             "varying vec2 texcoord;\n"
             "\n"
@@ -205,46 +262,12 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    // Subtle atmospheric fog enhancement. Use the upper part of the\n"
             "    // completed scene as a cheap sky-colour reference.\n"
             "    vec3 fogColour = texture2D(sceneTex, vec2(0.5, 0.92)).rgb;\n"
-            "    float fogAmount = 0.04 * smoothstep(0.55, 1.0, texcoord.y);\n"
+            "    float fogAmount = 0.08 * smoothstep(0.55, 1.0, texcoord.y);\n"
             "    toonColour = mix(toonColour, fogColour, fogAmount);\n"
             "\n"
-            "    // Very subtle single-pass bloom for a soft Wind Waker HD-style highlight response.\n"
-            "    // Only bright pixels contribute, and the radius is deliberately small.\n"
-            "    // This stays within the existing GLES 2.0 post-process pass.\n"
-            "    const float bloomThreshold = 0.68;\n"
-            "    vec3 bloomColour = vec3(0.0);\n"
-            "    float bloomLuma = 0.0;\n"
-            "    vec3 bloomSample = vec3(0.0);\n"
-            "    vec2 bloomNear = texelSize * 3.0;\n"
-            "    vec2 bloomFar = texelSize * 7.0;\n"
-            "\n"
-            "    bloomSample = texture2D(sceneTex, texcoord + vec2(-bloomNear.x, 0.0)).rgb;\n"
-            "    bloomLuma = max(sceneLuma(bloomSample) - bloomThreshold, 0.0);\n"
-            "    bloomColour += bloomSample * bloomLuma * 0.40;\n"
-            "    bloomSample = texture2D(sceneTex, texcoord + vec2( bloomNear.x, 0.0)).rgb;\n"
-            "    bloomLuma = max(sceneLuma(bloomSample) - bloomThreshold, 0.0);\n"
-            "    bloomColour += bloomSample * bloomLuma * 0.40;\n"
-            "    bloomSample = texture2D(sceneTex, texcoord + vec2(0.0, -bloomNear.y)).rgb;\n"
-            "    bloomLuma = max(sceneLuma(bloomSample) - bloomThreshold, 0.0);\n"
-            "    bloomColour += bloomSample * bloomLuma * 0.40;\n"
-            "    bloomSample = texture2D(sceneTex, texcoord + vec2(0.0,  bloomNear.y)).rgb;\n"
-            "    bloomLuma = max(sceneLuma(bloomSample) - bloomThreshold, 0.0);\n"
-            "    bloomColour += bloomSample * bloomLuma * 0.40;\n"
-            "\n"
-            "    bloomSample = texture2D(sceneTex, texcoord + vec2(-bloomFar.x, 0.0)).rgb;\n"
-            "    bloomLuma = max(sceneLuma(bloomSample) - bloomThreshold, 0.0);\n"
-            "    bloomColour += bloomSample * bloomLuma * 0.20;\n"
-            "    bloomSample = texture2D(sceneTex, texcoord + vec2( bloomFar.x, 0.0)).rgb;\n"
-            "    bloomLuma = max(sceneLuma(bloomSample) - bloomThreshold, 0.0);\n"
-            "    bloomColour += bloomSample * bloomLuma * 0.20;\n"
-            "    bloomSample = texture2D(sceneTex, texcoord + vec2(0.0, -bloomFar.y)).rgb;\n"
-            "    bloomLuma = max(sceneLuma(bloomSample) - bloomThreshold, 0.0);\n"
-            "    bloomColour += bloomSample * bloomLuma * 0.20;\n"
-            "    bloomSample = texture2D(sceneTex, texcoord + vec2(0.0,  bloomFar.y)).rgb;\n"
-            "    bloomLuma = max(sceneLuma(bloomSample) - bloomThreshold, 0.0);\n"
-            "    bloomColour += bloomSample * bloomLuma * 0.20;\n"
-            "\n"
-            "    toonColour += bloomColour * 0.12;\n"
+            "    // Add the blurred bright-pass texture produced by the multi-pass bloom pipeline.\n"
+            "    vec3 bloomGlow = texture2D(bloomTex, texcoord).rgb;\n"
+            "    toonColour += bloomGlow * bloomStrength;\n"
             "\n"
             "    // Retain the existing screen-space sunlight/glare on top of the bloom.\n"
             "    float bright = max(centreLuma - 0.78, 0.0);\n"
@@ -254,18 +277,14 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float glare = bright * sunRegion * 0.08;\n"
             "    toonColour += vec3(glare, glare * 0.95, glare * 0.82);\n"
             "\n"
-            "    // Requested colour grade: +5%% saturation, +2%% contrast, neutral brightness.\n"
+            "    // Requested colour grade: +7%% saturation, +2%% contrast, neutral brightness.\n"
             "    float gradedLuma = sceneLuma(toonColour);\n"
-            "    toonColour = mix(vec3(gradedLuma), toonColour, 1.05);\n"
+            "    toonColour = mix(vec3(gradedLuma), toonColour, 1.07);\n"
             "    toonColour = (toonColour - vec3(0.5)) * 1.02 + vec3(0.5);\n"
             "\n"
             "    // Very small dither to reduce visible gradient/band stepping.\n"
             "    toonColour += vec3(randomNoise(texcoord) / 255.0);\n"
             "\n"
-            "    // Requested 5%% vignette strength at the extreme corners.\n"
-            "    float vignette = 1.0 - 0.05 * smoothstep(0.60, 1.0,\n"
-            "        distance(texcoord, vec2(0.5, 0.5)) * 1.4142);\n"
-            "    toonColour *= vignette;\n"
             "\n"
             "    gl_FragColor = vec4(clamp(toonColour, 0.0, 1.0), scene.a);\n"
             "}\n";
@@ -310,6 +329,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
 
         gCelPostSceneLocation = glGetUniformLocation(gCelPostProgram, "sceneTex");
         gCelPostTexelLocation = glGetUniformLocation(gCelPostProgram, "texelSize");
+        gCelPostBloomLocation = glGetUniformLocation(gCelPostProgram, "bloomTex");
+        gCelPostBloomStrengthLocation = glGetUniformLocation(gCelPostProgram, "bloomStrength");
 
         glGenTextures(1, &gCelPostTexture);
 
@@ -352,17 +373,147 @@ static bool EnsureCelPostProcessResources(int width, int height)
     return gCelPostProgram != 0 && gCelPostTexture != 0;
 }
 
+static bool EnsureCelBloomResources(int width, int height)
+{
+    if (width <= 0 || height <= 0)
+        return false;
+
+    const int bloomWidth = width > 3 ? width / 4 : 1;
+    const int bloomHeight = height > 3 ? height / 4 : 1;
+
+    static const char* vertexSource =
+        "attribute vec2 position;\n"
+        "varying vec2 texcoord;\n"
+        "void main() {\n"
+        "    texcoord = position * 0.5 + 0.5;\n"
+        "    gl_Position = vec4(position, 0.0, 1.0);\n"
+        "}\n";
+
+    if (gCelBloomExtractProgram == 0)
+    {
+        const char* extractFragment =
+            "precision mediump float;\n"
+            "uniform sampler2D sceneTex;\n"
+            "uniform vec2 sourceTexelSize;\n"
+            "varying vec2 texcoord;\n"
+            "float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }\n"
+            "void main() {\n"
+            "    vec2 d = sourceTexelSize * 2.0;\n"
+            "    vec3 c0 = texture2D(sceneTex, texcoord + vec2(-d.x, -d.y)).rgb;\n"
+            "    vec3 c1 = texture2D(sceneTex, texcoord + vec2( d.x, -d.y)).rgb;\n"
+            "    vec3 c2 = texture2D(sceneTex, texcoord + vec2(-d.x,  d.y)).rgb;\n"
+            "    vec3 c3 = texture2D(sceneTex, texcoord + vec2( d.x,  d.y)).rgb;\n"
+            "    vec3 c = (c0 + c1 + c2 + c3) * 0.25;\n"
+            "    float brightness = luma(c);\n"
+            "    float contribution = clamp((brightness - 0.68) / max(brightness, 0.001), 0.0, 1.0);\n"
+            "    gl_FragColor = vec4(c * contribution, 1.0);\n"
+            "}\n";
+
+        gCelBloomExtractProgram = CreateCelPostProgram(vertexSource, extractFragment, "Cel bloom bright-pass");
+        if (gCelBloomExtractProgram == 0)
+            return false;
+
+        gCelBloomExtractSceneLocation = glGetUniformLocation(gCelBloomExtractProgram, "sceneTex");
+        gCelBloomExtractTexelLocation = glGetUniformLocation(gCelBloomExtractProgram, "sourceTexelSize");
+    }
+
+    if (gCelBloomBlurProgram == 0)
+    {
+        const char* blurFragment =
+            "precision mediump float;\n"
+            "uniform sampler2D sourceTex;\n"
+            "uniform vec2 blurStep;\n"
+            "varying vec2 texcoord;\n"
+            "void main() {\n"
+            "    vec3 c = texture2D(sourceTex, texcoord).rgb * 0.19648255;\n"
+            "    c += texture2D(sourceTex, texcoord + blurStep).rgb * 0.29690696;\n"
+            "    c += texture2D(sourceTex, texcoord - blurStep).rgb * 0.29690696;\n"
+            "    c += texture2D(sourceTex, texcoord + blurStep * 2.0).rgb * 0.09447040;\n"
+            "    c += texture2D(sourceTex, texcoord - blurStep * 2.0).rgb * 0.09447040;\n"
+            "    c += texture2D(sourceTex, texcoord + blurStep * 3.0).rgb * 0.01038136;\n"
+            "    c += texture2D(sourceTex, texcoord - blurStep * 3.0).rgb * 0.01038136;\n"
+            "    gl_FragColor = vec4(c, 1.0);\n"
+            "}\n";
+
+        gCelBloomBlurProgram = CreateCelPostProgram(vertexSource, blurFragment, "Cel bloom Gaussian blur");
+        if (gCelBloomBlurProgram == 0)
+            return false;
+
+        gCelBloomBlurSourceLocation = glGetUniformLocation(gCelBloomBlurProgram, "sourceTex");
+        gCelBloomBlurStepLocation = glGetUniformLocation(gCelBloomBlurProgram, "blurStep");
+    }
+
+    if (gCelBloomFbo == 0)
+        glGenFramebuffers(1, &gCelBloomFbo);
+    if (gCelBloomTexture == 0)
+        glGenTextures(1, &gCelBloomTexture);
+    if (gCelBloomScratchTexture == 0)
+        glGenTextures(1, &gCelBloomScratchTexture);
+
+    if (gCelBloomFbo == 0 || gCelBloomTexture == 0 || gCelBloomScratchTexture == 0)
+        return false;
+
+    GLint previousFramebuffer = 0;
+    GLint previousActiveTexture = GL_TEXTURE0;
+    GLint previousTexture = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+
+    if (gCelBloomWidth != bloomWidth || gCelBloomHeight != bloomHeight)
+    {
+        glBindTexture(GL_TEXTURE_2D, gCelBloomTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bloomWidth, bloomHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+        glBindTexture(GL_TEXTURE_2D, gCelBloomScratchTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bloomWidth, bloomHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+        gCelBloomWidth = bloomWidth;
+        gCelBloomHeight = bloomHeight;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, gCelBloomFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gCelBloomTexture, 0);
+    GLenum statusA = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gCelBloomScratchTexture, 0);
+    GLenum statusB = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+
+    gCelBloomReady = (statusA == GL_FRAMEBUFFER_COMPLETE && statusB == GL_FRAMEBUFFER_COMPLETE);
+    if (!gCelBloomReady)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_RENDER,
+            "SHAR Android bloom framebuffer incomplete: textureA=0x%04x textureB=0x%04x",
+            (unsigned)statusA, (unsigned)statusB);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture);
+    glActiveTexture((GLenum)previousActiveTexture);
+    return gCelBloomReady;
+}
+
+static void DrawCelPostFullscreenQuad()
+{
+    glBindVertexArrayOES(0);
+    glBindBuffer(GL_ARRAY_BUFFER, gCelPostVbo);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
 static void ApplyCelPostProcess(int width, int height)
 {
     if (!IsCelShadingEnabled())
         return;
 
-    /*
-     * The game must have rendered this frame into our off-screen target.
-     * During the first frame after the menu toggle, the toggle can happen
-     * after BeginFrame(); in that case the frame was rendered to the normal
-     * framebuffer and must simply be presented unchanged.
-     */
     GLint currentFramebuffer = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFramebuffer);
     if ((GLuint)currentFramebuffer != gCelRenderFbo || !gCelRenderFboReady)
@@ -370,6 +521,8 @@ static void ApplyCelPostProcess(int width, int height)
 
     if (!EnsureCelPostProcessResources(width, height))
         return;
+
+    const bool bloomReady = EnsureCelBloomResources(width, height);
 
     GLint viewport[4];
     glGetIntegerv(GL_VIEWPORT, viewport);
@@ -382,21 +535,22 @@ static void ApplyCelPostProcess(int width, int height)
     GLint previousProgram = 0;
     GLint previousActiveTexture = GL_TEXTURE0;
     GLint previousTexture2D = 0;
+    GLint previousTextureUnit0 = 0;
+    GLint previousTextureUnit1 = 0;
     GLint previousArrayBuffer = 0;
     GLint previousVao = 0;
     GLint previousAttrib0Enabled = GL_FALSE;
     glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
     glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture2D);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureUnit0);
+    glActiveTexture(GL_TEXTURE1);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureUnit1);
+    glActiveTexture((GLenum)previousActiveTexture);
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousArrayBuffer);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING_OES, &previousVao);
     glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &previousAttrib0Enabled);
-
-    /*
-     * The source is our completed off-screen colour texture. Render the
-     * post-process into the SDL window framebuffer.
-     */
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
@@ -404,6 +558,44 @@ static void ApplyCelPostProcess(int width, int height)
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_STENCIL_TEST);
 
+    if (bloomReady)
+    {
+        // Pass 1: downsample the scene and extract only pixels above the bright threshold.
+        glBindFramebuffer(GL_FRAMEBUFFER, gCelBloomFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gCelBloomTexture, 0);
+        glViewport(0, 0, gCelBloomWidth, gCelBloomHeight);
+        glUseProgram(gCelBloomExtractProgram);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
+        glUniform1i(gCelBloomExtractSceneLocation, 0);
+        if (gCelBloomExtractTexelLocation >= 0)
+            glUniform2f(gCelBloomExtractTexelLocation, 1.0f / (float)width, 1.0f / (float)height);
+        DrawCelPostFullscreenQuad();
+
+        // Pass 2: horizontal Gaussian blur into a separate reduced-resolution texture.
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gCelBloomScratchTexture, 0);
+        glUseProgram(gCelBloomBlurProgram);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, gCelBloomTexture);
+        glUniform1i(gCelBloomBlurSourceLocation, 0);
+        if (gCelBloomBlurStepLocation >= 0)
+            glUniform2f(gCelBloomBlurStepLocation, 1.0f / (float)gCelBloomWidth, 0.0f);
+        DrawCelPostFullscreenQuad();
+
+        // Pass 3: vertical Gaussian blur back into the bloom texture.
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gCelBloomTexture, 0);
+        glUseProgram(gCelBloomBlurProgram);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, gCelBloomScratchTexture);
+        glUniform1i(gCelBloomBlurSourceLocation, 0);
+        if (gCelBloomBlurStepLocation >= 0)
+            glUniform2f(gCelBloomBlurStepLocation, 0.0f, 1.0f / (float)gCelBloomHeight);
+        DrawCelPostFullscreenQuad();
+    }
+
+    // Final pass: combine the original scene, blurred bloom, and existing stylized grade.
+    // If bloom setup failed on a device, the rest of the post-process still works without it.
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, width, height);
     glUseProgram(gCelPostProgram);
 
@@ -413,11 +605,15 @@ static void ApplyCelPostProcess(int width, int height)
     if (gCelPostTexelLocation >= 0)
         glUniform2f(gCelPostTexelLocation, 1.0f / (float)width, 1.0f / (float)height);
 
-    glBindVertexArrayOES(0);
-    glBindBuffer(GL_ARRAY_BUFFER, gCelPostVbo);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)0);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, bloomReady ? gCelBloomTexture : 0);
+    if (gCelPostBloomLocation >= 0)
+        glUniform1i(gCelPostBloomLocation, 1);
+    if (gCelPostBloomStrengthLocation >= 0)
+        glUniform1f(gCelPostBloomStrengthLocation, bloomReady ? 1.15f : 0.0f);
+
+    glActiveTexture(GL_TEXTURE0);
+    DrawCelPostFullscreenQuad();
 
     if (previousAttrib0Enabled)
         glEnableVertexAttribArray(0);
@@ -426,8 +622,14 @@ static void ApplyCelPostProcess(int width, int height)
     glBindBuffer(GL_ARRAY_BUFFER, (GLuint)previousArrayBuffer);
     glBindVertexArrayOES((GLuint)previousVao);
 
-    glBindTexture(GL_TEXTURE_2D, previousTexture2D);
-    glActiveTexture(previousActiveTexture);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previousTextureUnit0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previousTextureUnit1);
+    glActiveTexture((GLenum)previousActiveTexture);
+    if (previousActiveTexture != GL_TEXTURE0 && previousActiveTexture != GL_TEXTURE1)
+        glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture2D);
+
     glUseProgram((GLuint)previousProgram);
     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 
@@ -437,10 +639,7 @@ static void ApplyCelPostProcess(int width, int height)
     if (scissorEnabled) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
     if (stencilEnabled) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
 
-    /*
-     * Leave framebuffer 0 bound so SDL_GL_SwapWindow presents the image we
-     * just generated.
-     */
+    // Leave framebuffer 0 bound so SDL_GL_SwapWindow presents the processed scene.
 }
 
 }
