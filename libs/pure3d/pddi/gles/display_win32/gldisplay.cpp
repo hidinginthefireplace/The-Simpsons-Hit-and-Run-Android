@@ -42,6 +42,8 @@ GLint gCelBloomBlurSourceLocation = -1;
 GLint gCelBloomBlurStepLocation = -1;
 int gCelBloomWidth = 0;
 int gCelBloomHeight = 0;
+int gCelBloomFailedWidth = 0;
+int gCelBloomFailedHeight = 0;
 bool gCelBloomReady = false;
 
 int gCelPostWidth = 0;
@@ -381,6 +383,11 @@ static bool EnsureCelBloomResources(int width, int height)
     const int bloomWidth = width > 3 ? width / 4 : 1;
     const int bloomHeight = height > 3 ? height / 4 : 1;
 
+    if (gCelBloomReady && gCelBloomWidth == bloomWidth && gCelBloomHeight == bloomHeight)
+        return true;
+    if (gCelBloomFailedWidth == bloomWidth && gCelBloomFailedHeight == bloomHeight)
+        return false;
+
     static const char* vertexSource =
         "attribute vec2 position;\n"
         "varying vec2 texcoord;\n"
@@ -489,9 +496,16 @@ static bool EnsureCelBloomResources(int width, int height)
     gCelBloomReady = (statusA == GL_FRAMEBUFFER_COMPLETE && statusB == GL_FRAMEBUFFER_COMPLETE);
     if (!gCelBloomReady)
     {
+        gCelBloomFailedWidth = bloomWidth;
+        gCelBloomFailedHeight = bloomHeight;
         SDL_LogError(SDL_LOG_CATEGORY_RENDER,
             "SHAR Android bloom framebuffer incomplete: textureA=0x%04x textureB=0x%04x",
             (unsigned)statusA, (unsigned)statusB);
+    }
+    else
+    {
+        gCelBloomFailedWidth = 0;
+        gCelBloomFailedHeight = 0;
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
@@ -782,6 +796,32 @@ pglDisplay ::~pglDisplay()
         glDeleteFramebuffers(1, &gCelRenderFbo);
         gCelRenderFbo = 0;
     }
+    if (gCelBloomFbo)
+    {
+        glDeleteFramebuffers(1, &gCelBloomFbo);
+        gCelBloomFbo = 0;
+    }
+    if (gCelBloomTexture)
+    {
+        glDeleteTextures(1, &gCelBloomTexture);
+        gCelBloomTexture = 0;
+    }
+    if (gCelBloomScratchTexture)
+    {
+        glDeleteTextures(1, &gCelBloomScratchTexture);
+        gCelBloomScratchTexture = 0;
+    }
+    if (gCelBloomExtractProgram)
+    {
+        glDeleteProgram(gCelBloomExtractProgram);
+        gCelBloomExtractProgram = 0;
+    }
+    if (gCelBloomBlurProgram)
+    {
+        glDeleteProgram(gCelBloomBlurProgram);
+        gCelBloomBlurProgram = 0;
+    }
+    gCelBloomReady = false;
 #endif
 
     /* release and free the device context and rendering context */
