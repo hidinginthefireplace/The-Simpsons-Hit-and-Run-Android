@@ -848,8 +848,6 @@ static void ApplyCelPostProcess(int width, int height)
 }
 }
 
-}
-
 bool BeginCelPostProcessFrame(int width, int height)
 {
     if (!IsCelShadingEnabled())
