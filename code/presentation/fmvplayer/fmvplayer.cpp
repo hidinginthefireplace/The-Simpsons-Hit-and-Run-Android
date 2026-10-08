@@ -148,8 +148,14 @@ FMVPlayer::~FMVPlayer()
 //=============================================================================
 void FMVPlayer::LoadData( const char* fileName, bool bInInventory, void* pUserData ) 
 {
+    LOGI("FMVTRACE: LoadData ENTER file='%s' state=%d inInventory=%d",
+         fileName ? fileName : "<null>",
+         (int)GetState(),
+         bInInventory ? 1 : 0);
+
     if( GetState() == ANIM_IDLE || GetState() == ANIM_LOADING )
     {
+        LOGI("FMVTRACE: LoadData accepted initial state=%d", (int)GetState());
         GetSoundManager()->StopForMovie();
         while( !( GetSoundManager()->IsStoppedForMovie() ) )
         {
@@ -179,10 +185,21 @@ void FMVPlayer::LoadData( const char* fileName, bool bInInventory, void* pUserDa
                 GetEventManager()->TriggerEvent( EVENT_STOP_THE_MUSIC );
             }
         }
+        LOGI("FMVTRACE: Initialize allocator=%d audioIndex=%u", (int)allocator, audioIndex);
         HeapMgr()->PushHeap( allocator );
         Initialize( allocator );
+        LOGI("FMVTRACE: movie player initialized ptr=%p state=%d",
+             (void*)m_refIRadMoviePlayer,
+             m_refIRadMoviePlayer ? (int)m_refIRadMoviePlayer->GetState() : -1);
+
+        LOGI("FMVTRACE: calling radMoviePlayer::Load file='%s' audioIndex=%u",
+             fileName ? fileName : "<null>", audioIndex);
         m_refIRadMoviePlayer->Load( fileName, audioIndex );
+        LOGI("FMVTRACE: radMoviePlayer::Load returned state=%d",
+             m_refIRadMoviePlayer ? (int)m_refIRadMoviePlayer->GetState() : -1);
+
 		mDriveFinished = false;
+        LOGI("FMVTRACE: registering host-drive completion callback");
         Game::GetInstance()->GetPlatform()->GetHostDrive()->AddCompletionCallback( this, 0 );
 
         while( !mDriveFinished )
@@ -192,8 +209,17 @@ void FMVPlayer::LoadData( const char* fileName, bool bInInventory, void* pUserDa
             SoundManager::GetInstance()->Update();
             SoundManager::GetInstance()->UpdateOncePerFrame( 0, NUM_CONTEXTS, false );
         }
+        LOGI("FMVTRACE: host-drive completion received; final movie state=%d",
+             m_refIRadMoviePlayer ? (int)m_refIRadMoviePlayer->GetState() : -1);
         HeapMgr()->PopHeap(allocator);
         SetState( ANIM_LOADED );
+        LOGI("FMVTRACE: LoadData COMPLETE FMVPlayer state=%d",
+             (int)GetState());
+    }
+    else
+    {
+        LOGI("FMVTRACE: LoadData IGNORED because initial state=%d",
+             (int)GetState());
     }
 }
 
@@ -247,7 +273,10 @@ void FMVPlayer::Play()
 // NUEVA FUNCION ANDROID
 void FMVPlayer::Play()
 {
-    //LOGI("FMV: Play() state=%d player=%p", (int)GetState(), (void*)m_refIRadMoviePlayer);
+    LOGI("FMVTRACE: Play ENTER state=%d player=%p movieState=%d",
+         (int)GetState(),
+         (void*)m_refIRadMoviePlayer,
+         m_refIRadMoviePlayer ? (int)m_refIRadMoviePlayer->GetState() : -1);
 
     if(( GetState() == ANIM_LOADED ) && ( m_refIRadMoviePlayer != NULL ))
     {
@@ -287,7 +316,15 @@ void FMVPlayer::Play()
 
         m_refIRadMoviePlayer->SetVolume(mMovieVolume);
 
+        LOGI("FMVTRACE: calling moviePlayer->Play()");
         m_refIRadMoviePlayer->Play();
+        LOGI("FMVTRACE: moviePlayer->Play returned movieState=%d",
+             (int)m_refIRadMoviePlayer->GetState());
+    }
+    else
+    {
+        LOGI("FMVTRACE: Play BLOCKED state=%d player=%p",
+             (int)GetState(), (void*)m_refIRadMoviePlayer);
     }
 }
 
@@ -535,6 +572,7 @@ void FMVPlayer::UnPause()
 //=============================================================================
 void FMVPlayer::Initialize( radMemoryAllocator Allocator )
 {
+    LOGI("FMVTRACE: Initialize ENTER allocator=%d", (int)Allocator);
     //
     // Initialize the movie player.  
     //
@@ -551,6 +589,7 @@ void FMVPlayer::Initialize( radMemoryAllocator Allocator )
     //the most recent allocator you pass is the one used.
     m_refIRadMoviePlayer = ::radMoviePlayerCreate2( Allocator );
     rAssert( m_refIRadMoviePlayer != NULL );
+    LOGI("FMVTRACE: radMoviePlayerCreate2 returned ptr=%p", (void*)m_refIRadMoviePlayer);
 
 #if defined(RAD_XBOX) || defined(RAD_GAMECUBE) || defined(RAD_WIN32)
     m_refIRadMoviePlayer->Initialize(
