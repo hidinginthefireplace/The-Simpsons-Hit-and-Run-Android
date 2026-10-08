@@ -26,6 +26,7 @@
     #include <errno.h>
     #include <cstdio>
     #include <cstring>
+    #include <cstring>
 #endif
 #ifndef RAD_MOVIEPLAYER_USE_BINK
 
@@ -222,41 +223,6 @@ bool radMoviePlayer::Render( void )
 #include <SDL_system.h>
 #include <string>
 
-static bool RadIsXboxXmvFile(const char* path, unsigned int* versionOut)
-{
-    if (versionOut)
-        *versionOut = 0;
-
-    if (!path || !path[0])
-        return false;
-
-    FILE* f = fopen(path, "rb");
-    if (!f)
-        return false;
-
-    unsigned char header[20] = {};
-    size_t readCount = fread(header, 1, sizeof(header), f);
-    fclose(f);
-
-    if (readCount < sizeof(header))
-        return false;
-
-    // The XMV files used by SHAR carry the "xobX" signature at offset 12.
-    if (memcmp(header + 12, "xobX", 4) != 0)
-        return false;
-
-    if (versionOut)
-    {
-        *versionOut =
-            (unsigned int)header[16] |
-            ((unsigned int)header[17] << 8) |
-            ((unsigned int)header[18] << 16) |
-            ((unsigned int)header[19] << 24);
-    }
-
-    return true;
-}
-
 static std::string RadMakeAbsoluteGamePath(const char* path)
 {
     if (!path || !path[0]) return {};
@@ -297,6 +263,41 @@ static std::string RadMakeAbsoluteGamePath(const char* path)
 #ifdef RAD_ANDROID
 #include <SDL_system.h>
 #include <string>
+
+static bool RadIsXboxXmvFile(const char* path, unsigned int* versionOut)
+{
+    if (versionOut)
+        *versionOut = 0;
+
+    if (!path || !path[0])
+        return false;
+
+    FILE* f = fopen(path, "rb");
+    if (!f)
+        return false;
+
+    unsigned char header[20] = {};
+    size_t readCount = fread(header, 1, sizeof(header), f);
+    fclose(f);
+
+    if (readCount < sizeof(header))
+        return false;
+
+    // FFmpeg's XMV probe uses "xobX" at offset 12.
+    if (memcmp(header + 12, "xobX", 4) != 0)
+        return false;
+
+    if (versionOut)
+    {
+        *versionOut =
+            (unsigned int)header[16] |
+            ((unsigned int)header[17] << 8) |
+            ((unsigned int)header[18] << 16) |
+            ((unsigned int)header[19] << 24);
+    }
+
+    return true;
+}
 
 static std::string RadMakeAbsoluteGamePath(const char* path)
 {
