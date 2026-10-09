@@ -1147,6 +1147,16 @@ void SHAR_BindShadowMapPrototypeViewport()
     glDisable(GL_SCISSOR_TEST);
 }
 
+void SHAR_ApplyShadowMapPrototypeViewportOverride()
+{
+    // SetupHardwareProjection may run again after tView::BeginRender. Keep
+    // its display-sized viewport from overriding the smaller shadow target.
+    if (!gSHARShadowMapPassActive)
+        return;
+    glViewport(0, 0, gSHARShadowMapWidth, gSHARShadowMapHeight);
+    glDisable(GL_SCISSOR_TEST);
+}
+
 void SHAR_EndShadowMapPrototype()
 {
     if (!gSHARShadowMapPassActive)
