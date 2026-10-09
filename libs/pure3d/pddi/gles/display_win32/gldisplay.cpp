@@ -60,6 +60,9 @@ bool gSHARShadowMapFrameValid = false;
 bool gSHARShadowMapInverseCameraVPValid = false;
 bool gSHARShadowMapLightVPValid = false;
 bool gSHARShadowSourceLightValid = false;
+bool gSHARShadowMapPassStartedLogged = false;
+bool gSHARShadowMapStatusLogged = false;
+bool gSHARShadowMapLastLoggedValid = false;
 float gSHARShadowSourceDirection[3] = { 0.0f, -1.0f, 0.0f };
 float gSHARShadowLightVP[16] = { 0.0f };
 float gSHARShadowInverseCameraVP[16] = { 0.0f };
@@ -971,6 +974,9 @@ void SHAR_ResetShadowMapPrototypeSourceLight()
     gSHARShadowSourceLightValid = false;
     gSHARShadowMapFrameValid = false;
     gSHARShadowMapLightVPValid = false;
+    gSHARShadowMapPassStartedLogged = false;
+    gSHARShadowMapStatusLogged = false;
+    gSHARShadowMapLastLoggedValid = false;
     gSHARShadowSourceLightName[0] = '\0';
 }
 
@@ -1140,8 +1146,12 @@ bool SHAR_BeginShadowMapPrototype(int width, int height)
     glClearDepthf(1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     gSHARShadowMapPassActive = true;
-    SDL_Log("SHAR ShadowMapProto: beginning depth pass using source light \"%s\"",
-        gSHARShadowSourceLightName);
+    if (!gSHARShadowMapPassStartedLogged)
+    {
+        SDL_Log("SHAR ShadowMapProto: beginning depth pass using source light \"%s\"",
+            gSHARShadowSourceLightName);
+        gSHARShadowMapPassStartedLogged = true;
+    }
     return true;
 }
 
@@ -1188,8 +1198,14 @@ void SHAR_EndShadowMapPrototype()
     gSHARShadowMapFrameValid =
         gSHARShadowMapReady && gSHARShadowSourceLightValid &&
         gSHARShadowMapInverseCameraVPValid && gSHARShadowMapLightVPValid;
-    SDL_Log("SHAR ShadowMapProto: depth pass %s",
-        gSHARShadowMapFrameValid ? "complete" : "not ready for sampling");
+    if (!gSHARShadowMapStatusLogged ||
+        gSHARShadowMapLastLoggedValid != gSHARShadowMapFrameValid)
+    {
+        SDL_Log("SHAR ShadowMapProto: depth pass %s",
+            gSHARShadowMapFrameValid ? "complete" : "not ready for sampling");
+        gSHARShadowMapStatusLogged = true;
+        gSHARShadowMapLastLoggedValid = gSHARShadowMapFrameValid;
+    }
 }
 
 void SHAR_SetShadowMapPrototypeLightViewProjection(const float* matrix16)
