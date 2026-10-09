@@ -39,6 +39,8 @@ GLint gCelPostBloomLocation = -1;
 GLint gCelPostBloomStrengthLocation = -1;
 GLint gCelPostDepthLocation = -1;
 GLint gCelPostDepthAvailableLocation = -1;
+GLint gCelPostAoLocation = -1;
+GLint gCelPostAoStrengthLocation = -1;
 
 GLuint gCelBloomExtractProgram = 0;
 GLuint gCelBloomBlurProgram = 0;
@@ -54,6 +56,22 @@ int gCelBloomHeight = 0;
 int gCelBloomFailedWidth = 0;
 int gCelBloomFailedHeight = 0;
 bool gCelBloomReady = false;
+
+GLuint gCelAoProgram = 0;
+GLuint gCelAoBlurProgram = 0;
+GLuint gCelAoFbo = 0;
+GLuint gCelAoTexture = 0;
+GLuint gCelAoFilteredTexture = 0;
+GLint gCelAoDepthLocation = -1;
+GLint gCelAoTexelLocation = -1;
+GLint gCelAoBlurTextureLocation = -1;
+GLint gCelAoBlurDepthLocation = -1;
+GLint gCelAoBlurStepLocation = -1;
+int gCelAoWidth = 0;
+int gCelAoHeight = 0;
+int gCelAoFailedWidth = 0;
+int gCelAoFailedHeight = 0;
+bool gCelAoReady = false;
 
 int gCelPostWidth = 0;
 int gCelPostHeight = 0;
@@ -309,6 +327,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform float bloomStrength;\n"
             "uniform sampler2D depthTex;\n"
             "uniform float depthTextureAvailable;\n"
+            "uniform sampler2D aoTex;\n"
+            "uniform float aoStrength;\n"
             "uniform vec2 texelSize;\n"
             "varying vec2 texcoord;\n"
             "\n"
@@ -352,21 +372,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "\n"
             "    // Retain the existing full-scene toon edge darkening.\n"
             "    toonColour = mix(toonColour, toonColour * 0.35, edge);\n"
+            "    // Blend the half-resolution, depth-aware AO mask only when available.\n"
+            "    float aoValue = texture2D(aoTex, texcoord).r;\n"
+            "    toonColour *= (1.0 - clamp(aoValue * aoStrength, 0.0, 0.35));\n"
             "\n"
-            "    // Subtle atmospheric fog enhancement. Use the upper part of the\n"
-            "    // completed scene as a cheap sky-colour reference.\n"
-            "    // Average a small band of upper-scene colours instead of sampling one\n"
-            "    // screen point, reducing fog tint changes as scenery moves past it.\n"
-            "    vec3 fogColour = vec3(0.0);\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.20, 0.88)).rgb;\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.50, 0.88)).rgb;\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.80, 0.88)).rgb;\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.20, 0.96)).rgb;\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.50, 0.96)).rgb;\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.80, 0.96)).rgb;\n"
-            "    fogColour /= 6.0;\n"
-            "    float fogAmount = 0.08 * smoothstep(0.55, 1.0, texcoord.y);\n"
-            "    toonColour = mix(toonColour, fogColour, fogAmount);\n"
             "\n"
             "    // Add the blurred bright-pass texture produced by the multi-pass bloom pipeline.\n"
             "    vec3 bloomGlow = texture2D(bloomTex, texcoord).rgb;\n"
@@ -436,6 +445,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostBloomStrengthLocation = glGetUniformLocation(gCelPostProgram, "bloomStrength");
         gCelPostDepthLocation = glGetUniformLocation(gCelPostProgram, "depthTex");
         gCelPostDepthAvailableLocation = glGetUniformLocation(gCelPostProgram, "depthTextureAvailable");
+        gCelPostAoLocation = glGetUniformLocation(gCelPostProgram, "aoTex");
+        gCelPostAoStrengthLocation = glGetUniformLocation(gCelPostProgram, "aoStrength");
 
         glGenTextures(1, &gCelPostTexture);
 
@@ -617,6 +628,169 @@ static bool EnsureCelBloomResources(int width, int height)
     return gCelBloomReady;
 }
 
+static bool EnsureCelAoResources(int width, int height)
+{
+    if (width <= 0 || height <= 0)
+        return false;
+
+    const int aoWidth = width > 1 ? width / 2 : 1;
+    const int aoHeight = height > 1 ? height / 2 : 1;
+
+    if (gCelAoReady && gCelAoWidth == aoWidth && gCelAoHeight == aoHeight)
+        return true;
+    if (gCelAoFailedWidth == aoWidth && gCelAoFailedHeight == aoHeight)
+        return false;
+
+    static const char* vertexSource =
+        "attribute vec2 position;\n"
+        "varying vec2 texcoord;\n"
+        "void main() {\n"
+        "    texcoord = position * 0.5 + 0.5;\n"
+        "    gl_Position = vec4(position, 0.0, 1.0);\n"
+        "}\n";
+
+    if (gCelAoProgram == 0)
+    {
+        const char* aoFragment =
+            "precision mediump float;\n"
+            "uniform sampler2D depthTex;\n"
+            "uniform vec2 sourceTexelSize;\n"
+            "varying vec2 texcoord;\n"
+            "void main() {\n"
+            "    float d = texture2D(depthTex, texcoord).r;\n"
+            "    vec2 nearOffset = sourceTexelSize * 2.0;\n"
+            "    float dL = texture2D(depthTex, texcoord - vec2(nearOffset.x, 0.0)).r;\n"
+            "    float dR = texture2D(depthTex, texcoord + vec2(nearOffset.x, 0.0)).r;\n"
+            "    float dD = texture2D(depthTex, texcoord - vec2(0.0, nearOffset.y)).r;\n"
+            "    float dU = texture2D(depthTex, texcoord + vec2(0.0, nearOffset.y)).r;\n"
+            "    vec3 surfaceNormal = normalize(vec3(dL - dR, dD - dU, 0.025));\n"
+            "    float surfaceWeight = clamp(surfaceNormal.z, 0.20, 1.0);\n"
+            "    vec2 aoOffset = sourceTexelSize * 4.0;\n"
+            "    float occlusion = 0.0;\n"
+            "    occlusion += smoothstep(0.0015, 0.018, d - texture2D(depthTex, texcoord + vec2(-aoOffset.x, 0.0)).r);\n"
+            "    occlusion += smoothstep(0.0015, 0.018, d - texture2D(depthTex, texcoord + vec2( aoOffset.x, 0.0)).r);\n"
+            "    occlusion += smoothstep(0.0015, 0.018, d - texture2D(depthTex, texcoord + vec2(0.0, -aoOffset.y)).r);\n"
+            "    occlusion += smoothstep(0.0015, 0.018, d - texture2D(depthTex, texcoord + vec2(0.0,  aoOffset.y)).r);\n"
+            "    occlusion += smoothstep(0.0015, 0.018, d - texture2D(depthTex, texcoord + vec2(-aoOffset.x, -aoOffset.y)).r);\n"
+            "    occlusion += smoothstep(0.0015, 0.018, d - texture2D(depthTex, texcoord + vec2( aoOffset.x, -aoOffset.y)).r);\n"
+            "    occlusion += smoothstep(0.0015, 0.018, d - texture2D(depthTex, texcoord + vec2(-aoOffset.x,  aoOffset.y)).r);\n"
+            "    occlusion += smoothstep(0.0015, 0.018, d - texture2D(depthTex, texcoord + vec2( aoOffset.x,  aoOffset.y)).r);\n"
+            "    float distanceFade = 1.0 - smoothstep(0.93, 0.988, d);\n"
+            "    float ao = clamp((occlusion / 8.0) * surfaceWeight * distanceFade, 0.0, 1.0);\n"
+            "    gl_FragColor = vec4(ao, ao, ao, 1.0);\n"
+            "}\n";
+
+        gCelAoProgram = CreateCelPostProgram(vertexSource, aoFragment, "Cel half-resolution ambient occlusion");
+        if (gCelAoProgram == 0)
+            return false;
+
+        gCelAoDepthLocation = glGetUniformLocation(gCelAoProgram, "depthTex");
+        gCelAoTexelLocation = glGetUniformLocation(gCelAoProgram, "sourceTexelSize");
+    }
+
+    if (gCelAoBlurProgram == 0)
+    {
+        const char* blurFragment =
+            "precision mediump float;\n"
+            "uniform sampler2D aoTex;\n"
+            "uniform sampler2D depthTex;\n"
+            "uniform vec2 blurStep;\n"
+            "varying vec2 texcoord;\n"
+            "void main() {\n"
+            "    float centreDepth = texture2D(depthTex, texcoord).r;\n"
+            "    float centreAo = texture2D(aoTex, texcoord).r;\n"
+            "    vec2 off1 = blurStep;\n"
+            "    float depthL = texture2D(depthTex, texcoord - off1).r;\n"
+            "    float depthR = texture2D(depthTex, texcoord + off1).r;\n"
+            "    float depthD = texture2D(depthTex, texcoord - vec2(off1.x, off1.y)).r;\n"
+            "    float depthU = texture2D(depthTex, texcoord + vec2(off1.x, off1.y)).r;\n"
+            "    float weightL = 1.0 - smoothstep(0.0015, 0.020, abs(depthL - centreDepth));\n"
+            "    float weightR = 1.0 - smoothstep(0.0015, 0.020, abs(depthR - centreDepth));\n"
+            "    float weightD = 1.0 - smoothstep(0.0015, 0.020, abs(depthD - centreDepth));\n"
+            "    float weightU = 1.0 - smoothstep(0.0015, 0.020, abs(depthU - centreDepth));\n"
+            "    float sum = centreAo * 0.50;\n"
+            "    float totalWeight = 0.50;\n"
+            "    sum += texture2D(aoTex, texcoord - off1).r * weightL * 0.125; totalWeight += weightL * 0.125;\n"
+            "    sum += texture2D(aoTex, texcoord + off1).r * weightR * 0.125; totalWeight += weightR * 0.125;\n"
+            "    sum += texture2D(aoTex, texcoord - vec2(off1.x, off1.y)).r * weightD * 0.125; totalWeight += weightD * 0.125;\n"
+            "    sum += texture2D(aoTex, texcoord + vec2(off1.x, off1.y)).r * weightU * 0.125; totalWeight += weightU * 0.125;\n"
+            "    float ao = sum / max(totalWeight, 0.001);\n"
+            "    gl_FragColor = vec4(ao, ao, ao, 1.0);\n"
+            "}\n";
+
+        gCelAoBlurProgram = CreateCelPostProgram(vertexSource, blurFragment, "Cel ambient occlusion edge-aware smoothing");
+        if (gCelAoBlurProgram == 0)
+            return false;
+
+        gCelAoBlurTextureLocation = glGetUniformLocation(gCelAoBlurProgram, "aoTex");
+        gCelAoBlurDepthLocation = glGetUniformLocation(gCelAoBlurProgram, "depthTex");
+        gCelAoBlurStepLocation = glGetUniformLocation(gCelAoBlurProgram, "blurStep");
+    }
+
+    if (gCelAoFbo == 0)
+        glGenFramebuffers(1, &gCelAoFbo);
+    if (gCelAoTexture == 0)
+        glGenTextures(1, &gCelAoTexture);
+    if (gCelAoFilteredTexture == 0)
+        glGenTextures(1, &gCelAoFilteredTexture);
+
+    if (gCelAoFbo == 0 || gCelAoTexture == 0 || gCelAoFilteredTexture == 0)
+        return false;
+
+    GLint previousFramebuffer = 0;
+    GLint previousActiveTexture = GL_TEXTURE0;
+    GLint previousTexture = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+
+    if (gCelAoWidth != aoWidth || gCelAoHeight != aoHeight)
+    {
+        glBindTexture(GL_TEXTURE_2D, gCelAoTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, aoWidth, aoHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+        glBindTexture(GL_TEXTURE_2D, gCelAoFilteredTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, aoWidth, aoHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+        gCelAoWidth = aoWidth;
+        gCelAoHeight = aoHeight;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, gCelAoFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gCelAoTexture, 0);
+    GLenum statusA = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gCelAoFilteredTexture, 0);
+    GLenum statusB = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+
+    gCelAoReady = (statusA == GL_FRAMEBUFFER_COMPLETE && statusB == GL_FRAMEBUFFER_COMPLETE);
+    if (!gCelAoReady)
+    {
+        gCelAoFailedWidth = aoWidth;
+        gCelAoFailedHeight = aoHeight;
+        SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+            "SHAR Android AO framebuffer incomplete: textureA=0x%04x textureB=0x%04x",
+            (unsigned)statusA, (unsigned)statusB);
+    }
+    else
+    {
+        gCelAoFailedWidth = 0;
+        gCelAoFailedHeight = 0;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture);
+    glActiveTexture((GLenum)previousActiveTexture);
+    return gCelAoReady;
+}
+
 static void DrawCelPostFullscreenQuad()
 {
     glBindVertexArrayOES(0);
@@ -640,6 +814,7 @@ static void ApplyCelPostProcess(int width, int height)
         return;
 
     const bool bloomReady = EnsureCelBloomResources(width, height);
+    const bool aoReady = gCelDepthTextureActive && EnsureCelAoResources(width, height);
 
     GLint viewport[4];
     glGetIntegerv(GL_VIEWPORT, viewport);
@@ -667,6 +842,9 @@ static void ApplyCelPostProcess(int width, int height)
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureUnit1);
     glActiveTexture(GL_TEXTURE2);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureUnit2);
+    GLint previousTextureUnit3 = 0;
+    glActiveTexture(GL_TEXTURE3);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureUnit3);
     glActiveTexture((GLenum)previousActiveTexture);
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousArrayBuffer);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING_OES, &previousVao);
@@ -677,6 +855,35 @@ static void ApplyCelPostProcess(int width, int height)
     glDisable(GL_CULL_FACE);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_STENCIL_TEST);
+
+    if (aoReady)
+    {
+        // Pass 1: estimate depth-based occlusion at half resolution.
+        glBindFramebuffer(GL_FRAMEBUFFER, gCelAoFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gCelAoTexture, 0);
+        glViewport(0, 0, gCelAoWidth, gCelAoHeight);
+        glUseProgram(gCelAoProgram);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, gCelRenderDepthTexture);
+        glUniform1i(gCelAoDepthLocation, 0);
+        if (gCelAoTexelLocation >= 0)
+            glUniform2f(gCelAoTexelLocation, 1.0f / (float)width, 1.0f / (float)height);
+        DrawCelPostFullscreenQuad();
+
+        // Pass 2: restrained edge-aware smoothing; depth discontinuities stay sharp.
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gCelAoFilteredTexture, 0);
+        glUseProgram(gCelAoBlurProgram);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, gCelAoTexture);
+        glUniform1i(gCelAoBlurTextureLocation, 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, gCelRenderDepthTexture);
+        glUniform1i(gCelAoBlurDepthLocation, 1);
+        if (gCelAoBlurStepLocation >= 0)
+            glUniform2f(gCelAoBlurStepLocation, 1.0f / (float)gCelAoWidth, 1.0f / (float)gCelAoHeight);
+        DrawCelPostFullscreenQuad();
+        glActiveTexture(GL_TEXTURE0);
+    }
 
     if (bloomReady)
     {
@@ -739,6 +946,13 @@ static void ApplyCelPostProcess(int width, int height)
     if (gCelPostDepthAvailableLocation >= 0)
         glUniform1f(gCelPostDepthAvailableLocation, gCelDepthTextureActive ? 1.0f : 0.0f);
 
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, aoReady ? gCelAoFilteredTexture : 0);
+    if (gCelPostAoLocation >= 0)
+        glUniform1i(gCelPostAoLocation, 3);
+    if (gCelPostAoStrengthLocation >= 0)
+        glUniform1f(gCelPostAoStrengthLocation, aoReady ? 0.28f : 0.0f);
+
     glActiveTexture(GL_TEXTURE0);
     DrawCelPostFullscreenQuad();
 
@@ -755,10 +969,13 @@ static void ApplyCelPostProcess(int width, int height)
     glBindTexture(GL_TEXTURE_2D, (GLuint)previousTextureUnit1);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, (GLuint)previousTextureUnit2);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previousTextureUnit3);
     glActiveTexture((GLenum)previousActiveTexture);
     if (previousActiveTexture != GL_TEXTURE0 &&
         previousActiveTexture != GL_TEXTURE1 &&
-        previousActiveTexture != GL_TEXTURE2)
+        previousActiveTexture != GL_TEXTURE2 &&
+        previousActiveTexture != GL_TEXTURE3)
     {
         glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture2D);
     }
@@ -946,6 +1163,12 @@ pglDisplay ::~pglDisplay()
         gCelBloomBlurProgram = 0;
     }
     gCelBloomReady = false;
+    if (gCelAoFbo) { glDeleteFramebuffers(1, &gCelAoFbo); gCelAoFbo = 0; }
+    if (gCelAoTexture) { glDeleteTextures(1, &gCelAoTexture); gCelAoTexture = 0; }
+    if (gCelAoFilteredTexture) { glDeleteTextures(1, &gCelAoFilteredTexture); gCelAoFilteredTexture = 0; }
+    if (gCelAoProgram) { glDeleteProgram(gCelAoProgram); gCelAoProgram = 0; }
+    if (gCelAoBlurProgram) { glDeleteProgram(gCelAoBlurProgram); gCelAoBlurProgram = 0; }
+    gCelAoReady = false;
 #endif
 
     /* release and free the device context and rendering context */
