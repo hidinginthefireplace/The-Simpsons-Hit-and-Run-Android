@@ -16,6 +16,10 @@
 #include <p3d/utility.hpp>
 #include <pddi/pddiext.hpp>
 
+#if defined(RAD_ANDROID)
+#include <android/log.h>
+#endif
+
 tLightLoader::tLightLoader() : tSimpleChunkHandler(Pure3D::Light::LIGHT)
 {
 }
@@ -233,6 +237,48 @@ tEntity* tLightLoader::LoadObject(tChunkFile* f, tEntityStore* store)
         
     };
     
+#if defined(RAD_ANDROID)
+    // Log original light chunks before tLightsChooser can replace them with
+    // synthetic per-object directional lights. Log every source directional
+    // light, plus any point/spot light marked as a shadow caster.
+    static unsigned loggedSourceLightCount = 0;
+    if (light != NULL && (type == 2 || light->IsShadowCaster()) &&
+        loggedSourceLightCount < 256)
+    {
+        ++loggedSourceLightCount;
+        const rmt::Vector& loadedPos = light->GetPosition();
+        rmt::Vector loadedDir(0.0f, 0.0f, 0.0f);
+        tDirectionalLight* directional = dynamic_cast<tDirectionalLight*>(light);
+        tSpotLight* spot = dynamic_cast<tSpotLight*>(light);
+        if (directional != NULL)
+            loadedDir = directional->GetDirection();
+        else if (spot != NULL)
+            loadedDir = spot->GetDirection();
+
+        const tColour loadedColour = light->GetColour();
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            "SHAR-SourceLight",
+            "Loaded source light chunk: ptr=%p asset_name=\"%s\" type=%lu position=(%.3f, %.3f, %.3f) direction=(%.4f, %.4f, %.4f) rgb=(%u, %u, %u) enabled=%d shadow_caster=%d illumination=%d decay_type=%d",
+            (const void*)light,
+            name,
+            type,
+            loadedPos.x,
+            loadedPos.y,
+            loadedPos.z,
+            loadedDir.x,
+            loadedDir.y,
+            loadedDir.z,
+            (unsigned)loadedColour.Red(),
+            (unsigned)loadedColour.Green(),
+            (unsigned)loadedColour.Blue(),
+            light->IsEnabled() ? 1 : 0,
+            light->IsShadowCaster() ? 1 : 0,
+            (int)light->GetIlluminationType(),
+            (int)light->GetDecayType());
+    }
+#endif
+
     return light;
 }
 
