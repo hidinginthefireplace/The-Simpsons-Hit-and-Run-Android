@@ -11,6 +11,7 @@
 //========================================
 // System Includes
 //========================================
+#include <string.h>
 #include <p3d/camera.hpp>
 #include <p3d/matrixstack.hpp>
 #include <p3d/utility.hpp>
@@ -22,6 +23,7 @@
 // Project Includes
 //========================================
 #include <render/DSG/StaticPhysDSG.h>
+#include <render/DSG/DirectionalShadowExperiment.h>
 #include <render/Particles/particlemanager.h>
 #include <render/breakables/breakablesmanager.h>
 #include <render/IntersectManager/IntersectManager.h>
@@ -520,6 +522,19 @@ void StaticPhysDSG::DisplaySimpleShadow()
 	
     if ( mpShadow != NULL && mpShadowMatrix != NULL )
     {
+        // Only add directional extensions to dedicated tree shadow assets;
+        // streetlamp light-pool drawables must retain their original shape.
+        const char* shadowName = mpShadow->GetName();
+        if (shadowName != NULL &&
+            (strstr(shadowName, "treeshadow") != NULL ||
+             strstr(shadowName, "deadtree_shadow") != NULL))
+        {
+            const rmt::Vector groundNormal(0.0f, 1.0f, 0.0f);
+            DirectionalShadowExperiment::Draw(
+                mpShadowMatrix->Row(3), groundNormal,
+                6.2f, 1.35f, 34, 0.25f);
+        }
+
 
 	// Create a camera that pushes the shadow a meter towards
 	// the camera
