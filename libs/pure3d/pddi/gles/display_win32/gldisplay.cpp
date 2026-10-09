@@ -58,6 +58,99 @@ bool gCelBloomReady = false;
 int gCelPostWidth = 0;
 int gCelPostHeight = 0;
 
+static bool gShadowDiagDepthProbeRan = false;
+
+// One-time, non-rendering capability probe. It creates a tiny temporary FBO
+// after the GLES context is ready, tests whether a sampleable depth texture can
+// be attached alongside a colour texture, and restores all bindings afterward.
+// This runs regardless of the cel-shading toggle.
+static void RunShadowDiagnosticDepthProbe()
+{
+    if (gShadowDiagDepthProbeRan)
+        return;
+    gShadowDiagDepthProbeRan = true;
+
+    const char* vendor = (const char*)glGetString(GL_VENDOR);
+    const char* renderer = (const char*)glGetString(GL_RENDERER);
+    const char* version = (const char*)glGetString(GL_VERSION);
+    SDL_Log("SHAR ShadowDiag: GL vendor=%s renderer=%s version=%s",
+        vendor ? vendor : "unknown",
+        renderer ? renderer : "unknown",
+        version ? version : "unknown");
+
+    int depthBits = 0;
+    int stencilBits = 0;
+    SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthBits);
+    SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &stencilBits);
+    SDL_Log("SHAR ShadowDiag: default framebuffer requested/actual depth-bits=%d stencil-bits=%d",
+        depthBits, stencilBits);
+
+    const bool depthTextureExtension =
+        SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
+    SDL_Log("SHAR ShadowDiag: GL_OES_depth_texture=%s",
+        depthTextureExtension ? "available" : "unavailable");
+
+    if (!depthTextureExtension)
+    {
+        SDL_Log("SHAR ShadowDiag: sampleable depth-texture FBO probe skipped because the extension is unavailable");
+        return;
+    }
+
+    GLint previousFramebuffer = 0;
+    GLint previousTexture = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+
+    GLuint probeFramebuffer = 0;
+    GLuint probeColourTexture = 0;
+    GLuint probeDepthTexture = 0;
+    glGenFramebuffers(1, &probeFramebuffer);
+    glGenTextures(1, &probeColourTexture);
+    glGenTextures(1, &probeDepthTexture);
+
+    if (probeFramebuffer != 0 && probeColourTexture != 0 && probeDepthTexture != 0)
+    {
+        glBindTexture(GL_TEXTURE_2D, probeColourTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 16, 16, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+        glBindTexture(GL_TEXTURE_2D, probeDepthTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, 16, 16, 0,
+            GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, probeFramebuffer);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+            GL_TEXTURE_2D, probeColourTexture, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+            GL_TEXTURE_2D, probeDepthTexture, 0);
+
+        const GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        SDL_Log("SHAR ShadowDiag: 16x16 colour + sampleable-depth FBO status=0x%04x (%s)",
+            (unsigned)status,
+            status == GL_FRAMEBUFFER_COMPLETE ? "complete" : "incomplete");
+    }
+    else
+    {
+        SDL_Log("SHAR ShadowDiag: depth-texture FBO probe resource allocation failed");
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture);
+    if (probeFramebuffer != 0)
+        glDeleteFramebuffers(1, &probeFramebuffer);
+    if (probeColourTexture != 0)
+        glDeleteTextures(1, &probeColourTexture);
+    if (probeDepthTexture != 0)
+        glDeleteTextures(1, &probeDepthTexture);
+}
+
 static GLuint CompileCelPostShader(GLenum type, const char* source)
 {
     GLuint shader = glCreateShader(type);
@@ -1214,6 +1307,10 @@ bool pglDisplay ::InitDisplay(const pddiDisplayInit* init)
 #else
     if (!gladLoadGLES2Loader((GLADloadproc)SDL_GL_GetProcAddress))
         return false;
+#endif
+
+#if defined(RAD_ANDROID)
+    RunShadowDiagnosticDepthProbe();
 #endif
 
     char* glVendor   = (char*)glGetString(GL_VENDOR);
