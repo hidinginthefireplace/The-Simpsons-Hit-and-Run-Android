@@ -477,7 +477,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "                            }\n"
             "                        }\n"
             "                        visibility /= 9.0;\n"
-            "                        // Make the prototype shadow contribution clear enough to compare in-game.\n" +
+            "                        // Make the prototype shadow contribution clear enough to compare in-game.\n"
             "                        scene.rgb *= mix(0.35, 1.0, visibility);\n"
             "                    }\n"
             "                }\n"
@@ -785,9 +785,6 @@ static void DrawCelPostFullscreenQuad()
 static void ApplyCelPostProcess(int width, int height)
 {
     const bool celEffectsEnabled = IsCelShadingEnabled();
-    const bool shadowPrototypeEnabled = celEffectsEnabled &&
-        gSHARShadowSourceLightValid &&
-        SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
     // With cel shading off, do not composite either the cel pass or its shadows.
     if (!celEffectsEnabled)
         return;
