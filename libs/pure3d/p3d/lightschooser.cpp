@@ -15,6 +15,10 @@
 #include <pddi/pddi.hpp>
 #include <radmath/trig.hpp>
 
+#if defined(RAD_ANDROID)
+#include <android/log.h>
+#endif
+
 static const int MAX_DIRECTIONAL_LIGHTS = 128;
 static const int MAX_POINT_LIGHTS = 128;
 static const int MAX_SPOT_LIGHTS = 128;
@@ -35,6 +39,64 @@ static const unsigned ANIMATED_LIGHT      = 0x08;
 
 const unsigned tLightsChooser::DEFAULT_MAX_NUM_LIGHTS = 4;
 const unsigned tLightsChooser::DEFAULT_MAX_NUM_SHADOW_CASTERS = 2;
+
+#if defined(RAD_ANDROID)
+namespace
+{
+static void LogShadowCasterSelection(
+    const char* stage,
+    unsigned callNumber,
+    const rmt::Vector& target,
+    tLightGroup* group)
+{
+    const int count = (group != NULL) ? group->GetNumLights() : 0;
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        "SHAR-ShadowChoose",
+        "Shadow-caster selection: stage=%s call=%u target=(%.3f, %.3f, %.3f) result_count=%d",
+        stage, callNumber, target.x, target.y, target.z, count);
+
+    if (group == NULL)
+        return;
+
+    for (int i = 0; i < count; ++i)
+    {
+        tLight* light = group->GetLight(i);
+        if (light == NULL)
+        {
+            __android_log_print(
+                ANDROID_LOG_INFO, "SHAR-ShadowChoose",
+                "Shadow-caster result: stage=%s call=%u index=%d light=<null>",
+                stage, callNumber, i);
+            continue;
+        }
+
+        const char* lightName = light->GetNameObject().GetText();
+        if (lightName == NULL || lightName[0] == '\0')
+            lightName = "<unnamed>";
+
+        rmt::Vector direction(0.0f, 0.0f, 0.0f);
+        tDirectionalLight* directional = dynamic_cast<tDirectionalLight*>(light);
+        if (directional != NULL)
+            direction = directional->GetDirection();
+
+        const rmt::Vector& position = light->GetPosition();
+        const tColour colour = light->GetColour();
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            "SHAR-ShadowChoose",
+            "Shadow-caster result: stage=%s call=%u index=%d ptr=%p name=\"%s\" direction=(%.4f, %.4f, %.4f) position=(%.3f, %.3f, %.3f) rgb=(%u, %u, %u) enabled=%d shadow_caster=%d illumination=%d",
+            stage, callNumber, i, (const void*)light, lightName,
+            direction.x, direction.y, direction.z,
+            position.x, position.y, position.z,
+            (unsigned)colour.Red(), (unsigned)colour.Green(), (unsigned)colour.Blue(),
+            light->IsEnabled() ? 1 : 0,
+            light->IsShadowCaster() ? 1 : 0,
+            (int)light->GetIlluminationType());
+    }
+}
+}
+#endif
 
 tLightsChooser::tLightsChooser(int maxNumLights,
                                int maxNumShadowCasters) :
@@ -92,6 +154,45 @@ void tLightsChooser::AddLight(tLight* light)
 #endif        
     lightList->SetNumLights(numLights + 1);
     lightList->SetLight(numLights, light);
+#if defined(RAD_ANDROID)
+    // Record original source lights that enter a chooser. This distinguishes
+    // merely loaded asset lights from lights actually registered for selection.
+    static unsigned loggedChooserSourceLights = 0;
+    tDirectionalLight* diagnosticDirectional = dynamic_cast<tDirectionalLight*>(light);
+    if ((diagnosticDirectional != NULL || light->IsShadowCaster()) &&
+        loggedChooserSourceLights < 256)
+    {
+        ++loggedChooserSourceLights;
+        const char* lightName = light->GetNameObject().GetText();
+        if (lightName == NULL || lightName[0] == '\0')
+            lightName = "<unnamed>";
+        const rmt::Vector& position = light->GetPosition();
+        rmt::Vector direction(0.0f, 0.0f, 0.0f);
+        const char* kind = "other";
+        if (diagnosticDirectional != NULL)
+        {
+            direction = diagnosticDirectional->GetDirection();
+            kind = "directional";
+        }
+        else if (dynamic_cast<tPointLight*>(light) != NULL)
+            kind = "point";
+        else if (dynamic_cast<tSpotLight*>(light) != NULL)
+            kind = "spot";
+        const tColour colour = light->GetColour();
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            "SHAR-ShadowChoose",
+            "Registered chooser light: ptr=%p name=\"%s\" kind=%s position=(%.3f, %.3f, %.3f) direction=(%.4f, %.4f, %.4f) rgb=(%u, %u, %u) enabled=%d shadow_caster=%d illumination=%d decay_type=%d",
+            (const void*)light, lightName, kind,
+            position.x, position.y, position.z,
+            direction.x, direction.y, direction.z,
+            (unsigned)colour.Red(), (unsigned)colour.Green(), (unsigned)colour.Blue(),
+            light->IsEnabled() ? 1 : 0,
+            light->IsShadowCaster() ? 1 : 0,
+            (int)light->GetIlluminationType(),
+            (int)light->GetDecayType());
+    }
+#endif
     mCacheSynchronizeID++; // Ivalidate Cache.
 }
     
@@ -215,8 +316,30 @@ void tLightsChooser::GetShadowCasters( tLightGroup* bestShadowCasters,
                                        tLightsChooserCache *cache, float shadowScale )
 {
     P3DASSERT( bestShadowCasters != NULL );
+#if defined(RAD_ANDROID)
+    static unsigned shadowChooserDiagnosticCalls = 0;
+    const unsigned shadowDiagnosticCall = ++shadowChooserDiagnosticCalls;
+    const bool logShadowDiagnosticCall = shadowDiagnosticCall <= 32;
+    if (logShadowDiagnosticCall)
+    {
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            "SHAR-ShadowChoose",
+            "GetShadowCasters called: call=%u target=(%.3f, %.3f, %.3f) output_slots=%d source_counts=(directional:%d point:%d spot:%d) cache_supplied=%d",
+            shadowDiagnosticCall, target.x, target.y, target.z,
+            bestShadowCasters->GetNumLights(),
+            mDirLightList->GetNumLights(),
+            mPntLightList->GetNumLights(),
+            mSptLightList->GetNumLights(),
+            cache != NULL ? 1 : 0);
+    }
+#endif
     if( bestShadowCasters->GetNumLights() == 0 )
     {
+#if defined(RAD_ANDROID)
+        if (logShadowDiagnosticCall)
+            LogShadowCasterSelection("empty-output-group", shadowDiagnosticCall, target, bestShadowCasters);
+#endif
         return;
     }
 
@@ -225,6 +348,10 @@ void tLightsChooser::GetShadowCasters( tLightGroup* bestShadowCasters,
     {
         UpdateLightGroupCount( bestShadowCasters );
         EnableLights( bestShadowCasters );
+#if defined(RAD_ANDROID)
+        if (logShadowDiagnosticCall)
+            LogShadowCasterSelection("cache", shadowDiagnosticCall, target, bestShadowCasters);
+#endif
         return;
     }
 
@@ -244,6 +371,10 @@ void tLightsChooser::GetShadowCasters( tLightGroup* bestShadowCasters,
 
     UpdateLightGroupCount( bestShadowCasters );
     EnableLights( bestShadowCasters );
+#if defined(RAD_ANDROID)
+    if (logShadowDiagnosticCall)
+        LogShadowCasterSelection("computed", shadowDiagnosticCall, target, bestShadowCasters);
+#endif
 }
 
 // Scale the colour of the shadow casters to share the requested
