@@ -1132,6 +1132,13 @@ bool SHAR_BeginShadowMapPrototype(int width, int height)
     glBindFramebuffer(GL_FRAMEBUFFER, gSHARShadowMapFbo);
     glViewport(0, 0, width, height);
     glDisable(GL_SCISSOR_TEST);
+    // Fully clear the fixed-size map even when the Android render resolution
+    // is shorter than the 512px target; tView's screen-sized scissor follows.
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDepthMask(GL_TRUE);
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClearDepthf(1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     gSHARShadowMapPassActive = true;
     SDL_Log("SHAR ShadowMapProto: beginning depth pass using source light \"%s\"",
         gSHARShadowSourceLightName);
