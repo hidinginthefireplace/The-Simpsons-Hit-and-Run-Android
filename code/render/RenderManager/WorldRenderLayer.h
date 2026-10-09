@@ -27,6 +27,10 @@
 //class tShadowGenerator;    // VolShadows
 
 class ZoneAnimationController;
+#if defined(RAD_ANDROID)
+class tView;
+class tVectorCamera;
+#endif
 
 //========================================================================
 //
@@ -100,6 +104,11 @@ protected:
    void OnWorldRenderLayerInit();
 
    WorldScene* mpWorldScene;
+#if defined(RAD_ANDROID)
+   // Separate light-space camera/view used only by the experimental shadow map.
+   tVectorCamera* mpShadowMapCamera;
+   tView* mpShadowMapView;
+#endif
 
    ///////////////////////////////////////////////////////////////////////
    // Dynamic Loading Control Stuctures
