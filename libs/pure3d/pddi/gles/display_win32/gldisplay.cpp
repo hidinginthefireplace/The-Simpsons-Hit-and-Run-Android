@@ -816,6 +816,28 @@ static void ApplyCelPostProcess(int width, int height)
     const bool bloomReady = EnsureCelBloomResources(width, height);
     const bool aoReady = gCelDepthTextureActive && EnsureCelAoResources(width, height);
 
+    // Log AO availability only when its runtime state changes, avoiding per-frame log spam.
+    static int lastLoggedAoDiagnosticState = -1;
+    const int aoDiagnosticState = !gCelDepthTextureActive ? 0 : (aoReady ? 2 : 1);
+    if (aoDiagnosticState != lastLoggedAoDiagnosticState)
+    {
+        const char* aoStatus = !gCelDepthTextureActive
+            ? "DISABLED: sampleable depth texture unavailable"
+            : (aoReady ? "READY: AO pass will execute" : "DISABLED: AO resource setup failed");
+        SDL_Log(
+            "SHAR Android AO diagnostic: %s; depthTexture=%s; resources=%s; render=%dx%d; AO buffer=%dx%d; outputStrength=%.2f",
+            aoStatus,
+            gCelDepthTextureActive ? "available" : "unavailable",
+            aoReady ? "ready" : "not ready",
+            width,
+            height,
+            gCelAoWidth,
+            gCelAoHeight,
+            aoReady ? 0.32f : 0.0f
+        );
+        lastLoggedAoDiagnosticState = aoDiagnosticState;
+    }
+
     GLint viewport[4];
     glGetIntegerv(GL_VIEWPORT, viewport);
 
