@@ -1,9 +1,9 @@
-name: Build Shield Post-Process Cel Wind Waker Style Experiment
+name: Build Shield Post-Process Cel Fog Stability Experiment
 
 on:
   push:
     branches:
-      - android11-shield-postprocess-cel-windwaker-style-experiment
+      - android11-shield-postprocess-cel-fog-stability-pending
   workflow_dispatch:
   pull_request:
     branches:
@@ -56,9 +56,9 @@ jobs:
       - name: Upload experimental APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simpsons-Hit-and-Run-Shield-Post-Process-Cel-Wind-Waker-Style-Experiment
+          name: Simpsons-Hit-and-Run-Shield-Post-Process-Cel-Fog-Stability-Experiment
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
-# Baseline: build #2 visual enhancements @ 83e3f06030d5dcac01e69e1efaa7ad708ee29625
-# Experiment: add a very subtle single-pass bloom/highlight glow while retaining the existing cel shading and visual enhancements.
+# Experimental build: depth-weighted upper-screen fog sampling to reduce scenery-driven fog tint flicker.
+# Preserve depth-aware edge fading and existing character/vehicle outline rendering.
