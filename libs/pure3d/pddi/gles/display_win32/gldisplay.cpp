@@ -39,6 +39,35 @@ GLint gCelPostBloomLocation = -1;
 GLint gCelPostBloomStrengthLocation = -1;
 GLint gCelPostDepthLocation = -1;
 GLint gCelPostDepthAvailableLocation = -1;
+GLint gCelPostShadowDepthLocation = -1;
+GLint gCelPostInverseCameraViewProjectionLocation = -1;
+GLint gCelPostShadowViewProjectionLocation = -1;
+GLint gCelPostShadowAvailableLocation = -1;
+GLint gCelPostCelEffectsEnabledLocation = -1;
+GLint gCelPostShadowMapTexelSizeLocation = -1;
+
+static const int SHAR_SHADOW_MAP_DEFAULT_SIZE = 512;
+GLuint gSHARShadowMapFbo = 0;
+GLuint gSHARShadowMapColourTexture = 0;
+GLuint gSHARShadowMapDepthTexture = 0;
+int gSHARShadowMapWidth = 0;
+int gSHARShadowMapHeight = 0;
+int gSHARShadowMapFailedWidth = 0;
+int gSHARShadowMapFailedHeight = 0;
+bool gSHARShadowMapReady = false;
+bool gSHARShadowMapPassActive = false;
+bool gSHARShadowMapFrameValid = false;
+bool gSHARShadowMapInverseCameraVPValid = false;
+bool gSHARShadowMapLightVPValid = false;
+bool gSHARShadowSourceLightValid = false;
+float gSHARShadowSourceDirection[3] = { 0.0f, -1.0f, 0.0f };
+float gSHARShadowLightVP[16] = { 0.0f };
+float gSHARShadowInverseCameraVP[16] = { 0.0f };
+char gSHARShadowSourceLightName[96] = "<not loaded>";
+GLint gSHARShadowPreviousFramebuffer = 0;
+GLint gSHARShadowPreviousViewport[4] = { 0, 0, 0, 0 };
+GLint gSHARShadowPreviousScissorBox[4] = { 0, 0, 0, 0 };
+GLboolean gSHARShadowPreviousScissorEnabled = GL_FALSE;
 
 GLuint gCelBloomExtractProgram = 0;
 GLuint gCelBloomBlurProgram = 0;
@@ -402,6 +431,12 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform float bloomStrength;\n"
             "uniform sampler2D depthTex;\n"
             "uniform float depthTextureAvailable;\n"
+            "uniform sampler2D shadowDepthTex;\n"
+            "uniform mat4 inverseCameraViewProjection;\n"
+            "uniform mat4 shadowViewProjection;\n"
+            "uniform float shadowMapAvailable;\n"
+            "uniform float celEffectsEnabled;\n"
+            "uniform vec2 shadowMapTexelSize;\n"
             "uniform vec2 texelSize;\n"
             "varying vec2 texcoord;\n"
             "\n"
@@ -415,6 +450,38 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "\n"
             "void main() {\n"
             "    vec4 scene = texture2D(sceneTex, texcoord);\n"
+            "\n"
+            "    // Prototype: reconstruct this pixel in world space and compare\n"
+            "    // its light-space depth with the nearest recorded caster.\n"
+            "    if (shadowMapAvailable > 0.5 && depthTextureAvailable > 0.5) {\n"
+            "        float sceneDepth = texture2D(depthTex, texcoord).r;\n"
+            "        if (sceneDepth < 0.9995) {\n"
+            "            vec4 worldH = inverseCameraViewProjection * vec4(texcoord * 2.0 - 1.0, sceneDepth * 2.0 - 1.0, 1.0);\n"
+            "            if (abs(worldH.w) > 0.00001) {\n"
+            "                vec3 worldPos = worldH.xyz / worldH.w;\n"
+            "                vec4 lightH = shadowViewProjection * vec4(worldPos, 1.0);\n"
+            "                if (lightH.w > 0.00001) {\n"
+            "                    vec3 shadowCoord = (lightH.xyz / lightH.w) * 0.5 + 0.5;\n"
+            "                    if (shadowCoord.x >= 0.0 && shadowCoord.x <= 1.0 &&\n"
+            "                        shadowCoord.y >= 0.0 && shadowCoord.y <= 1.0 &&\n"
+            "                        shadowCoord.z >= 0.0 && shadowCoord.z <= 1.0) {\n"
+            "                        float visibility = 0.0;\n"
+            "                        for (int sy = -1; sy <= 1; ++sy) {\n"
+            "                            for (int sx = -1; sx <= 1; ++sx) {\n"
+            "                                vec2 tap = shadowCoord.xy + vec2(float(sx), float(sy)) * shadowMapTexelSize;\n"
+            "                                float storedDepth = texture2D(shadowDepthTex, tap).r;\n"
+            "                                visibility += (shadowCoord.z - 0.0025 <= storedDepth) ? 1.0 : 0.0;\n"
+            "                            }\n"
+            "                        }\n"
+            "                        visibility /= 9.0;\n"
+            "                        scene.rgb *= mix(0.62, 1.0, visibility);\n"
+            "                    }\n"
+            "                }\n"
+            "            }\n"
+            "        }\n"
+            "    }\n"
+            "    // When cel is off, keep the original scene colour except for shadows.\n"
+            "    if (celEffectsEnabled < 0.5) { gl_FragColor = scene; return; }\n"
             "\n"
             "    // Existing screen-space cel outline detection.\n"
             "    float centreLuma = sceneLuma(scene.rgb);\n"
@@ -515,6 +582,12 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostBloomStrengthLocation = glGetUniformLocation(gCelPostProgram, "bloomStrength");
         gCelPostDepthLocation = glGetUniformLocation(gCelPostProgram, "depthTex");
         gCelPostDepthAvailableLocation = glGetUniformLocation(gCelPostProgram, "depthTextureAvailable");
+        gCelPostShadowDepthLocation = glGetUniformLocation(gCelPostProgram, "shadowDepthTex");
+        gCelPostInverseCameraViewProjectionLocation = glGetUniformLocation(gCelPostProgram, "inverseCameraViewProjection");
+        gCelPostShadowViewProjectionLocation = glGetUniformLocation(gCelPostProgram, "shadowViewProjection");
+        gCelPostShadowAvailableLocation = glGetUniformLocation(gCelPostProgram, "shadowMapAvailable");
+        gCelPostCelEffectsEnabledLocation = glGetUniformLocation(gCelPostProgram, "celEffectsEnabled");
+        gCelPostShadowMapTexelSizeLocation = glGetUniformLocation(gCelPostProgram, "shadowMapTexelSize");
 
         glGenTextures(1, &gCelPostTexture);
 
@@ -707,7 +780,10 @@ static void DrawCelPostFullscreenQuad()
 
 static void ApplyCelPostProcess(int width, int height)
 {
-    if (!IsCelShadingEnabled())
+    const bool celEffectsEnabled = IsCelShadingEnabled();
+    const bool shadowPrototypeEnabled =
+        SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
+    if (!celEffectsEnabled && !shadowPrototypeEnabled)
         return;
 
     GLint currentFramebuffer = 0;
@@ -718,7 +794,7 @@ static void ApplyCelPostProcess(int width, int height)
     if (!EnsureCelPostProcessResources(width, height))
         return;
 
-    const bool bloomReady = EnsureCelBloomResources(width, height);
+    const bool bloomReady = celEffectsEnabled && EnsureCelBloomResources(width, height);
 
     GLint viewport[4];
     glGetIntegerv(GL_VIEWPORT, viewport);
@@ -734,6 +810,7 @@ static void ApplyCelPostProcess(int width, int height)
     GLint previousTextureUnit0 = 0;
     GLint previousTextureUnit1 = 0;
     GLint previousTextureUnit2 = 0;
+    GLint previousTextureUnit3 = 0;
     GLint previousArrayBuffer = 0;
     GLint previousVao = 0;
     GLint previousAttrib0Enabled = GL_FALSE;
@@ -746,6 +823,8 @@ static void ApplyCelPostProcess(int width, int height)
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureUnit1);
     glActiveTexture(GL_TEXTURE2);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureUnit2);
+    glActiveTexture(GL_TEXTURE3);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureUnit3);
     glActiveTexture((GLenum)previousActiveTexture);
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousArrayBuffer);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING_OES, &previousVao);
@@ -818,6 +897,34 @@ static void ApplyCelPostProcess(int width, int height)
     if (gCelPostDepthAvailableLocation >= 0)
         glUniform1f(gCelPostDepthAvailableLocation, gCelDepthTextureActive ? 1.0f : 0.0f);
 
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D,
+        (gSHARShadowMapFrameValid && gSHARShadowMapInverseCameraVPValid &&
+         gSHARShadowMapLightVPValid && gSHARShadowMapReady &&
+         gSHARShadowMapDepthTexture != 0 && gCelDepthTextureActive)
+            ? gSHARShadowMapDepthTexture : 0);
+    if (gCelPostShadowDepthLocation >= 0)
+        glUniform1i(gCelPostShadowDepthLocation, 3);
+
+    const bool shadowReady =
+        gSHARShadowMapFrameValid && gSHARShadowMapInverseCameraVPValid &&
+        gSHARShadowMapLightVPValid && gSHARShadowMapReady &&
+        gCelDepthTextureActive;
+    if (gCelPostShadowAvailableLocation >= 0)
+        glUniform1f(gCelPostShadowAvailableLocation, shadowReady ? 1.0f : 0.0f);
+    if (gCelPostInverseCameraViewProjectionLocation >= 0)
+        glUniformMatrix4fv(gCelPostInverseCameraViewProjectionLocation, 1, GL_FALSE,
+            gSHARShadowInverseCameraVP);
+    if (gCelPostShadowViewProjectionLocation >= 0)
+        glUniformMatrix4fv(gCelPostShadowViewProjectionLocation, 1, GL_FALSE,
+            gSHARShadowLightVP);
+    if (gCelPostShadowMapTexelSizeLocation >= 0)
+        glUniform2f(gCelPostShadowMapTexelSizeLocation,
+            gSHARShadowMapWidth > 0 ? 1.0f / (float)gSHARShadowMapWidth : 1.0f,
+            gSHARShadowMapHeight > 0 ? 1.0f / (float)gSHARShadowMapHeight : 1.0f);
+    if (gCelPostCelEffectsEnabledLocation >= 0)
+        glUniform1f(gCelPostCelEffectsEnabledLocation, celEffectsEnabled ? 1.0f : 0.0f);
+
     glActiveTexture(GL_TEXTURE0);
     DrawCelPostFullscreenQuad();
 
@@ -834,6 +941,8 @@ static void ApplyCelPostProcess(int width, int height)
     glBindTexture(GL_TEXTURE_2D, (GLuint)previousTextureUnit1);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, (GLuint)previousTextureUnit2);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previousTextureUnit3);
     glActiveTexture((GLenum)previousActiveTexture);
     if (previousActiveTexture != GL_TEXTURE0 &&
         previousActiveTexture != GL_TEXTURE1 &&
@@ -856,9 +965,243 @@ static void ApplyCelPostProcess(int width, int height)
 
 }
 
+// Isolated shadow-map prototype entry points.
+void SHAR_ResetShadowMapPrototypeSourceLight()
+{
+    gSHARShadowSourceLightValid = false;
+    gSHARShadowMapFrameValid = false;
+    gSHARShadowMapLightVPValid = false;
+    gSHARShadowSourceLightName[0] = '\0';
+}
+
+void SHAR_SetShadowMapPrototypeSourceLight(
+    const char* name, float directionX, float directionY, float directionZ,
+    bool enabled, bool shadowCaster, int illuminationType)
+{
+    // tLight::IlluminationType: 0 positive, 1 zero/shadow-only, 2 negative.
+    if (!enabled || !shadowCaster || illuminationType == 2)
+        return;
+
+    const float magnitude = sqrtf(directionX * directionX +
+                                  directionY * directionY +
+                                  directionZ * directionZ);
+    if (magnitude < 0.0001f)
+        return;
+
+    gSHARShadowSourceDirection[0] = directionX / magnitude;
+    gSHARShadowSourceDirection[1] = directionY / magnitude;
+    gSHARShadowSourceDirection[2] = directionZ / magnitude;
+    if (name == NULL)
+        name = "<unnamed>";
+    strncpy(gSHARShadowSourceLightName, name, sizeof(gSHARShadowSourceLightName) - 1);
+    gSHARShadowSourceLightName[sizeof(gSHARShadowSourceLightName) - 1] = '\0';
+    gSHARShadowSourceLightValid = true;
+
+    SDL_Log("SHAR ShadowMapProto: accepted flagged source light name=\"%s\" direction=(%.4f, %.4f, %.4f) illumination=%d",
+        gSHARShadowSourceLightName,
+        gSHARShadowSourceDirection[0],
+        gSHARShadowSourceDirection[1],
+        gSHARShadowSourceDirection[2],
+        illuminationType);
+}
+
+bool SHAR_GetShadowMapPrototypeDirection(float* x, float* y, float* z)
+{
+    if (!gSHARShadowSourceLightValid || x == NULL || y == NULL || z == NULL)
+        return false;
+    *x = gSHARShadowSourceDirection[0];
+    *y = gSHARShadowSourceDirection[1];
+    *z = gSHARShadowSourceDirection[2];
+    return true;
+}
+
+bool SHAR_IsShadowMapPrototypeEnabled()
+{
+    return SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
+}
+
+static bool EnsureSHARShadowMapTarget(int width, int height)
+{
+    if (width <= 0 || height <= 0)
+        return false;
+    if (gSHARShadowMapReady &&
+        gSHARShadowMapWidth == width && gSHARShadowMapHeight == height)
+        return true;
+    if (gSHARShadowMapFailedWidth == width && gSHARShadowMapFailedHeight == height)
+        return false;
+
+    if (gSHARShadowMapDepthTexture != 0)
+        glDeleteTextures(1, &gSHARShadowMapDepthTexture);
+    if (gSHARShadowMapColourTexture != 0)
+        glDeleteTextures(1, &gSHARShadowMapColourTexture);
+    if (gSHARShadowMapFbo != 0)
+        glDeleteFramebuffers(1, &gSHARShadowMapFbo);
+    gSHARShadowMapDepthTexture = 0;
+    gSHARShadowMapColourTexture = 0;
+    gSHARShadowMapFbo = 0;
+    gSHARShadowMapReady = false;
+
+    GLint previousFramebuffer = 0;
+    GLint previousActiveTexture = GL_TEXTURE0;
+    GLint previousTexture = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+
+    glGenFramebuffers(1, &gSHARShadowMapFbo);
+    glGenTextures(1, &gSHARShadowMapColourTexture);
+    glGenTextures(1, &gSHARShadowMapDepthTexture);
+    if (gSHARShadowMapFbo == 0 || gSHARShadowMapColourTexture == 0 ||
+        gSHARShadowMapDepthTexture == 0)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_RENDER, "SHAR ShadowMapProto: shadow-map resource allocation failed");
+        gSHARShadowMapFailedWidth = width;
+        gSHARShadowMapFailedHeight = height;
+        if (gSHARShadowMapFbo) glDeleteFramebuffers(1, &gSHARShadowMapFbo);
+        if (gSHARShadowMapColourTexture) glDeleteTextures(1, &gSHARShadowMapColourTexture);
+        if (gSHARShadowMapDepthTexture) glDeleteTextures(1, &gSHARShadowMapDepthTexture);
+        gSHARShadowMapFbo = gSHARShadowMapColourTexture = gSHARShadowMapDepthTexture = 0;
+        glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
+        glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture);
+        glActiveTexture((GLenum)previousActiveTexture);
+        return false;
+    }
+
+    glBindTexture(GL_TEXTURE_2D, gSHARShadowMapColourTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+    glBindTexture(GL_TEXTURE_2D, gSHARShadowMapDepthTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0,
+        GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, gSHARShadowMapFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+        gSHARShadowMapColourTexture, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+        gSHARShadowMapDepthTexture, 0);
+    const GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    gSHARShadowMapReady = status == GL_FRAMEBUFFER_COMPLETE;
+    if (gSHARShadowMapReady)
+    {
+        gSHARShadowMapWidth = width;
+        gSHARShadowMapHeight = height;
+        gSHARShadowMapFailedWidth = gSHARShadowMapFailedHeight = 0;
+        SDL_Log("SHAR ShadowMapProto: %dx%d light-space depth framebuffer ready", width, height);
+    }
+    else
+    {
+        gSHARShadowMapFailedWidth = width;
+        gSHARShadowMapFailedHeight = height;
+        SDL_LogError(SDL_LOG_CATEGORY_RENDER,
+            "SHAR ShadowMapProto: %dx%d depth framebuffer incomplete status=0x%04x",
+            width, height, (unsigned)status);
+        glDeleteFramebuffers(1, &gSHARShadowMapFbo);
+        glDeleteTextures(1, &gSHARShadowMapColourTexture);
+        glDeleteTextures(1, &gSHARShadowMapDepthTexture);
+        gSHARShadowMapFbo = gSHARShadowMapColourTexture = gSHARShadowMapDepthTexture = 0;
+        gSHARShadowMapWidth = gSHARShadowMapHeight = 0;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture);
+    glActiveTexture((GLenum)previousActiveTexture);
+    return gSHARShadowMapReady;
+}
+
+bool SHAR_BeginShadowMapPrototype(int width, int height)
+{
+    if (!SHAR_IsShadowMapPrototypeEnabled() || !gSHARShadowSourceLightValid ||
+        !EnsureSHARShadowMapTarget(width, height) || gSHARShadowMapPassActive)
+        return false;
+
+    gSHARShadowMapFrameValid = false;
+    gSHARShadowMapLightVPValid = false;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &gSHARShadowPreviousFramebuffer);
+    glGetIntegerv(GL_VIEWPORT, gSHARShadowPreviousViewport);
+    glGetIntegerv(GL_SCISSOR_BOX, gSHARShadowPreviousScissorBox);
+    gSHARShadowPreviousScissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, gSHARShadowMapFbo);
+    glViewport(0, 0, width, height);
+    glDisable(GL_SCISSOR_TEST);
+    gSHARShadowMapPassActive = true;
+    SDL_Log("SHAR ShadowMapProto: beginning depth pass using source light \"%s\"",
+        gSHARShadowSourceLightName);
+    return true;
+}
+
+void SHAR_BindShadowMapPrototypeViewport()
+{
+    if (!gSHARShadowMapPassActive)
+        return;
+    glBindFramebuffer(GL_FRAMEBUFFER, gSHARShadowMapFbo);
+    glViewport(0, 0, gSHARShadowMapWidth, gSHARShadowMapHeight);
+    glDisable(GL_SCISSOR_TEST);
+}
+
+void SHAR_EndShadowMapPrototype()
+{
+    if (!gSHARShadowMapPassActive)
+        return;
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)gSHARShadowPreviousFramebuffer);
+    glViewport(gSHARShadowPreviousViewport[0], gSHARShadowPreviousViewport[1],
+        gSHARShadowPreviousViewport[2], gSHARShadowPreviousViewport[3]);
+    glScissor(gSHARShadowPreviousScissorBox[0], gSHARShadowPreviousScissorBox[1],
+        gSHARShadowPreviousScissorBox[2], gSHARShadowPreviousScissorBox[3]);
+    if (gSHARShadowPreviousScissorEnabled)
+        glEnable(GL_SCISSOR_TEST);
+    else
+        glDisable(GL_SCISSOR_TEST);
+    gSHARShadowMapPassActive = false;
+    gSHARShadowMapFrameValid =
+        gSHARShadowMapReady && gSHARShadowSourceLightValid &&
+        gSHARShadowMapInverseCameraVPValid && gSHARShadowMapLightVPValid;
+    SDL_Log("SHAR ShadowMapProto: depth pass %s",
+        gSHARShadowMapFrameValid ? "complete" : "not ready for sampling");
+}
+
+void SHAR_SetShadowMapPrototypeLightViewProjection(const float* matrix16)
+{
+    if (matrix16 == NULL)
+    {
+        gSHARShadowMapLightVPValid = false;
+        return;
+    }
+    memcpy(gSHARShadowLightVP, matrix16, sizeof(gSHARShadowLightVP));
+    gSHARShadowMapLightVPValid = true;
+}
+
+void SHAR_SetShadowMapPrototypeInverseCameraViewProjection(const float* matrix16)
+{
+    if (matrix16 == NULL)
+    {
+        gSHARShadowMapInverseCameraVPValid = false;
+        return;
+    }
+    memcpy(gSHARShadowInverseCameraVP, matrix16, sizeof(gSHARShadowInverseCameraVP));
+    gSHARShadowMapInverseCameraVPValid = true;
+}
+
 bool BeginCelPostProcessFrame(int width, int height)
 {
-    if (!IsCelShadingEnabled())
+    // These flags are per-frame. WorldRenderLayer repopulates them once the
+    // main camera and current frame's shadow pass have been established.
+    gSHARShadowMapFrameValid = false;
+    gSHARShadowMapInverseCameraVPValid = false;
+    gSHARShadowMapLightVPValid = false;
+
+    const bool celEnabled = IsCelShadingEnabled();
+    const bool shadowPrototypeEnabled =
+        SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
+    if (!celEnabled && !shadowPrototypeEnabled)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return false;
@@ -984,6 +1327,24 @@ pglDisplay ::pglDisplay(pddiDisplayInfo* info)
 pglDisplay ::~pglDisplay()
 {
 #ifdef RAD_ANDROID
+    if (gSHARShadowMapFbo)
+    {
+        glDeleteFramebuffers(1, &gSHARShadowMapFbo);
+        gSHARShadowMapFbo = 0;
+    }
+    if (gSHARShadowMapColourTexture)
+    {
+        glDeleteTextures(1, &gSHARShadowMapColourTexture);
+        gSHARShadowMapColourTexture = 0;
+    }
+    if (gSHARShadowMapDepthTexture)
+    {
+        glDeleteTextures(1, &gSHARShadowMapDepthTexture);
+        gSHARShadowMapDepthTexture = 0;
+    }
+    gSHARShadowMapReady = false;
+    gSHARShadowMapFrameValid = false;
+
     if (gCelRenderDepth)
     {
         glDeleteRenderbuffers(1, &gCelRenderDepth);
