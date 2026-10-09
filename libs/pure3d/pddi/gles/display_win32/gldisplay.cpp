@@ -353,20 +353,6 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    // Retain the existing full-scene toon edge darkening.\n"
             "    toonColour = mix(toonColour, toonColour * 0.35, edge);\n"
             "\n"
-            "    // Subtle atmospheric fog enhancement. Use the upper part of the\n"
-            "    // completed scene as a cheap sky-colour reference.\n"
-            "    // Average a small band of upper-scene colours instead of sampling one\n"
-            "    // screen point, reducing fog tint changes as scenery moves past it.\n"
-            "    vec3 fogColour = vec3(0.0);\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.20, 0.88)).rgb;\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.50, 0.88)).rgb;\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.80, 0.88)).rgb;\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.20, 0.96)).rgb;\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.50, 0.96)).rgb;\n"
-            "    fogColour += texture2D(sceneTex, vec2(0.80, 0.96)).rgb;\n"
-            "    fogColour /= 6.0;\n"
-            "    float fogAmount = 0.08 * smoothstep(0.55, 1.0, texcoord.y);\n"
-            "    toonColour = mix(toonColour, fogColour, fogAmount);\n"
             "\n"
             "    // Add the blurred bright-pass texture produced by the multi-pass bloom pipeline.\n"
             "    vec3 bloomGlow = texture2D(bloomTex, texcoord).rgb;\n"
@@ -377,7 +363,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    bright = max(bright, max(max(leftLuma, rightLuma), max(upLuma, downLuma)) - 0.78);\n"
             "    bright = max(bright, 0.0);\n"
             "    float sunRegion = 1.0 - smoothstep(0.18, 0.70, distance(texcoord, vec2(0.5, 0.82)));\n"
-            "    float glare = bright * sunRegion * 0.08;\n"
+            "    float glare = bright * sunRegion * 0.10;\n"
             "    toonColour += vec3(glare, glare * 0.95, glare * 0.82);\n"
             "\n"
             "    // Requested colour grade: +7%% saturation, +2%% contrast, neutral brightness.\n"
@@ -730,7 +716,7 @@ static void ApplyCelPostProcess(int width, int height)
     if (gCelPostBloomLocation >= 0)
         glUniform1i(gCelPostBloomLocation, 1);
     if (gCelPostBloomStrengthLocation >= 0)
-        glUniform1f(gCelPostBloomStrengthLocation, bloomReady ? 1.15f : 0.0f);
+        glUniform1f(gCelPostBloomStrengthLocation, bloomReady ? 1.30f : 0.0f);
 
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, gCelDepthTextureActive ? gCelRenderDepthTexture : gCelPostTexture);
