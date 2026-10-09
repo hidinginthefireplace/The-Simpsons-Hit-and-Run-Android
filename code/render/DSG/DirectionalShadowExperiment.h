@@ -5,6 +5,7 @@
 #include <contexts/bootupcontext.h>
 #include <radmath/radmath.hpp>
 #include <p3d/matrixstack.hpp>
+#include <p3d/utility.hpp>
 #include <pddi/pddi.hpp>
 
 // This deliberately adds a soft directional tail to existing simple shadows.
