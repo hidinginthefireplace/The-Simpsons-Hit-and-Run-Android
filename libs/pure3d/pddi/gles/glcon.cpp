@@ -9,6 +9,9 @@
 #include <pddi/gles/gltex.hpp>
 #include <pddi/gles/glmat.hpp>
 #include <pddi/gles/glprog.hpp>
+#ifdef RAD_ANDROID
+#include <pddi/gles/shadowmapprototype.hpp>
+#endif
 
 #ifdef RAD_ANDROID
 #include <SDL_system.h>
@@ -630,6 +633,10 @@ void pglContext::SetupHardwareProjection(void)
             PDDIASSERTMSG(0, "Bad projection mode","");
             break;
     }
+
+#ifdef RAD_ANDROID
+    SHAR_ApplyShadowMapPrototypeViewportOverride();
+#endif
 
     if(currentProgram)
         currentProgram->SetProjectionMatrix(&projection);
