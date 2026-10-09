@@ -13,6 +13,7 @@
 #include <contexts/bootupcontext.h>
 #include <worldsim/character/characterrenderable.h>
 #include <worldsim/redbrick/geometryvehicle.h>
+#include <render/DSG/DirectionalShadowExperiment.h>
 #include <worldsim/redbrick/vehicle.h>
 #include <worldsim/redbrick/wheel.h>
 #include <worldsim/avatar.h>
@@ -1281,6 +1282,10 @@ void GeometryVehicle::DisplayShadow( BlobShadowParams* BlobParams )
         }
         insideColour.Set( c, c, c, c );
 		yOffset = MAX_Y_OFFSET * distanceAlpha;
+        // Extend the existing car blob shadow in a fixed world-space cast direction.
+        DirectionalShadowExperiment::Draw(
+            BlobParams->GroundPos, BlobParams->GroundNormal,
+            3.8f, 0.78f, 52, 0.35f, BlobParams->ShadowAlpha);
     }
 	const int NumPoints = 6;
 	const float BlobLength = 2.2f;
