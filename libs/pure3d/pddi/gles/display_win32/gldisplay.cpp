@@ -477,7 +477,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "                            }\n"
             "                        }\n"
             "                        visibility /= 9.0;\n"
-            "                        scene.rgb *= mix(0.62, 1.0, visibility);\n"
+            "                        // Make the prototype shadow contribution clear enough to compare in-game.\n" +
+            "                        scene.rgb *= mix(0.35, 1.0, visibility);\n"
             "                    }\n"
             "                }\n"
             "            }\n"
@@ -784,10 +785,11 @@ static void DrawCelPostFullscreenQuad()
 static void ApplyCelPostProcess(int width, int height)
 {
     const bool celEffectsEnabled = IsCelShadingEnabled();
-    const bool shadowPrototypeEnabled =
+    const bool shadowPrototypeEnabled = celEffectsEnabled &&
         gSHARShadowSourceLightValid &&
         SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
-    if (!celEffectsEnabled && !shadowPrototypeEnabled)
+    // With cel shading off, do not composite either the cel pass or its shadows.
+    if (!celEffectsEnabled)
         return;
 
     GLint currentFramebuffer = 0;
@@ -1014,7 +1016,9 @@ void SHAR_SetShadowMapPrototypeSourceLight(
 
 bool SHAR_GetShadowMapPrototypeDirection(float* x, float* y, float* z)
 {
-    if (!gSHARShadowSourceLightValid || x == NULL || y == NULL || z == NULL)
+    // Couple all shadow-map work to the existing cel-shading option.
+    if (!IsCelShadingEnabled() || !gSHARShadowSourceLightValid ||
+        x == NULL || y == NULL || z == NULL)
         return false;
     *x = gSHARShadowSourceDirection[0];
     *y = gSHARShadowSourceDirection[1];
@@ -1024,7 +1028,9 @@ bool SHAR_GetShadowMapPrototypeDirection(float* x, float* y, float* z)
 
 bool SHAR_IsShadowMapPrototypeEnabled()
 {
-    return SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
+    // The user-facing Cel Shading option controls both cel effects and shadows.
+    return IsCelShadingEnabled() &&
+        SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
 }
 
 static bool EnsureSHARShadowMapTarget(int width, int height)
@@ -1240,10 +1246,19 @@ bool BeginCelPostProcessFrame(int width, int height)
     gSHARShadowMapLightVPValid = false;
 
     const bool celEnabled = IsCelShadingEnabled();
-    const bool shadowPrototypeEnabled =
+    const bool shadowPrototypeEnabled = celEnabled &&
         gSHARShadowSourceLightValid &&
         SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
-    if (!celEnabled && !shadowPrototypeEnabled)
+    static int lastLoggedCelToggleState = -1;
+    const int celToggleState = celEnabled ? 1 : 0;
+    if (lastLoggedCelToggleState != celToggleState)
+    {
+        SDL_Log("SHAR ShadowMapProto: Cel Shading toggle=%s; shadow-map pass and shadow composite are %s",
+            celEnabled ? "ON" : "OFF",
+            (celEnabled && shadowPrototypeEnabled) ? "eligible" : "disabled");
+        lastLoggedCelToggleState = celToggleState;
+    }
+    if (!celEnabled)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return false;
