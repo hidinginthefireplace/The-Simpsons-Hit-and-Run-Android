@@ -470,7 +470,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "                            for (int sx = -1; sx <= 1; ++sx) {\n"
             "                                vec2 tap = shadowCoord.xy + vec2(float(sx), float(sy)) * shadowMapTexelSize;\n"
             "                                float storedDepth = texture2D(shadowDepthTex, tap).r;\n"
-            "                                visibility += (shadowCoord.z - 0.0025 <= storedDepth) ? 1.0 : 0.0;\n"
+            "                                visibility += (shadowCoord.z - 0.00015 <= storedDepth) ? 1.0 : 0.0;\n"
             "                            }\n"
             "                        }\n"
             "                        visibility /= 9.0;\n"
