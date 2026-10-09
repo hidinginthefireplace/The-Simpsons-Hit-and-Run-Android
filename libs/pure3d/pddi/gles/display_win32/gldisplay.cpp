@@ -1152,6 +1152,13 @@ void SHAR_BindShadowMapPrototypeViewport()
     glBindFramebuffer(GL_FRAMEBUFFER, gSHARShadowMapFbo);
     glViewport(0, 0, gSHARShadowMapWidth, gSHARShadowMapHeight);
     glDisable(GL_SCISSOR_TEST);
+
+    // tView::BeginRender clears before the viewport is overridden, and that
+    // clear may have been limited to the display-sized scissor rectangle.
+    // Clear the entire shadow depth attachment now, with scissoring disabled.
+    glDepthMask(GL_TRUE);
+    glClearDepthf(1.0f);
+    glClear(GL_DEPTH_BUFFER_BIT);
 }
 
 void SHAR_ApplyShadowMapPrototypeViewportOverride()
