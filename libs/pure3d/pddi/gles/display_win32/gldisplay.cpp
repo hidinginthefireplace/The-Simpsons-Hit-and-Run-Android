@@ -25,11 +25,20 @@ GLuint gCelPostTexture = 0;
 GLuint gCelPostVbo = 0;
 GLuint gCelRenderFbo = 0;
 GLuint gCelRenderDepth = 0;
+GLuint gCelRenderDepthTexture = 0;
+int gCelDepthTextureWidth = 0;
+int gCelDepthTextureHeight = 0;
+bool gCelDepthTextureActive = false;
+bool gCelDepthTextureFailed = false;
+bool gCelDepthExtensionChecked = false;
+bool gCelDepthTextureExtensionAvailable = false;
 bool gCelRenderFboReady = false;
 GLint gCelPostSceneLocation = -1;
 GLint gCelPostTexelLocation = -1;
 GLint gCelPostBloomLocation = -1;
 GLint gCelPostBloomStrengthLocation = -1;
+GLint gCelPostDepthLocation = -1;
+GLint gCelPostDepthAvailableLocation = -1;
 
 GLuint gCelBloomExtractProgram = 0;
 GLuint gCelBloomBlurProgram = 0;
@@ -122,19 +131,24 @@ static bool EnsureCelRenderTarget(int width, int height)
 
     if (gCelRenderFbo == 0)
         glGenFramebuffers(1, &gCelRenderFbo);
-
     if (gCelRenderDepth == 0)
         glGenRenderbuffers(1, &gCelRenderDepth);
-
     if (gCelRenderFbo == 0 || gCelRenderDepth == 0)
         return false;
 
-    /*
-     * The cel post-process texture is also the colour attachment for the
-     * off-screen game render target. It must exist before the FBO is checked.
-     */
     if (!EnsureCelPostProcessResources(width, height))
         return false;
+
+    if (!gCelDepthExtensionChecked)
+    {
+        gCelDepthTextureExtensionAvailable =
+            SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
+        gCelDepthExtensionChecked = true;
+        SDL_Log(
+            "SHAR Android depth-aware outlines: GL_OES_depth_texture %s",
+            gCelDepthTextureExtensionAvailable ? "available" : "unavailable"
+        );
+    }
 
     GLint previousFramebuffer = 0;
     GLint previousTexture2D = 0;
@@ -149,9 +163,6 @@ static bool EnsureCelRenderTarget(int width, int height)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glBindRenderbuffer(GL_RENDERBUFFER, gCelRenderDepth);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
-
     glBindFramebuffer(GL_FRAMEBUFFER, gCelRenderFbo);
     glFramebufferTexture2D(
         GL_FRAMEBUFFER,
@@ -160,30 +171,102 @@ static bool EnsureCelRenderTarget(int width, int height)
         gCelPostTexture,
         0
     );
-    glFramebufferRenderbuffer(
-        GL_FRAMEBUFFER,
-        GL_DEPTH_ATTACHMENT,
-        GL_RENDERBUFFER,
-        gCelRenderDepth
-    );
 
-    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-    gCelRenderFboReady = (status == GL_FRAMEBUFFER_COMPLETE);
-
-    if (!gCelRenderFboReady)
+    // Prefer a sampleable depth texture when the device exposes GLES 2.0's
+    // depth-texture extension. If allocation/completeness fails, fall back to
+    // the original depth renderbuffer and disable only depth-aware fading.
+    gCelDepthTextureActive = false;
+    bool depthTextureReady = false;
+    if (gCelDepthTextureExtensionAvailable && !gCelDepthTextureFailed)
     {
-        SDL_LogError(
-            SDL_LOG_CATEGORY_RENDER,
-            "SHAR Android cel render FBO incomplete: 0x%04x",
-            (unsigned)status
-        );
+        if (gCelRenderDepthTexture == 0)
+            glGenTextures(1, &gCelRenderDepthTexture);
+
+        if (gCelRenderDepthTexture != 0)
+        {
+            glBindTexture(GL_TEXTURE_2D, gCelRenderDepthTexture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+            if (gCelDepthTextureWidth != width || gCelDepthTextureHeight != height)
+            {
+                glTexImage2D(
+                    GL_TEXTURE_2D,
+                    0,
+                    GL_DEPTH_COMPONENT,
+                    width,
+                    height,
+                    0,
+                    GL_DEPTH_COMPONENT,
+                    GL_UNSIGNED_INT,
+                    NULL
+                );
+                gCelDepthTextureWidth = width;
+                gCelDepthTextureHeight = height;
+            }
+
+            glFramebufferTexture2D(
+                GL_FRAMEBUFFER,
+                GL_DEPTH_ATTACHMENT,
+                GL_TEXTURE_2D,
+                gCelRenderDepthTexture,
+                0
+            );
+            GLenum depthTextureStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            depthTextureReady = (depthTextureStatus == GL_FRAMEBUFFER_COMPLETE);
+            if (!depthTextureReady)
+            {
+                SDL_LogWarn(
+                    SDL_LOG_CATEGORY_RENDER,
+                    "SHAR Android depth texture unsupported by framebuffer (0x%04x); using depth renderbuffer",
+                    (unsigned)depthTextureStatus
+                );
+                gCelDepthTextureFailed = true;
+            }
+        }
+        else
+        {
+            gCelDepthTextureFailed = true;
+        }
+    }
+
+    if (depthTextureReady)
+    {
+        gCelDepthTextureActive = true;
+        gCelRenderFboReady = true;
     }
     else
     {
+        glBindRenderbuffer(GL_RENDERBUFFER, gCelRenderDepth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
+        glFramebufferRenderbuffer(
+            GL_FRAMEBUFFER,
+            GL_DEPTH_ATTACHMENT,
+            GL_RENDERBUFFER,
+            gCelRenderDepth
+        );
+
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        gCelRenderFboReady = (status == GL_FRAMEBUFFER_COMPLETE);
+        if (!gCelRenderFboReady)
+        {
+            SDL_LogError(
+                SDL_LOG_CATEGORY_RENDER,
+                "SHAR Android cel render FBO incomplete: 0x%04x",
+                (unsigned)status
+            );
+        }
+    }
+
+    if (gCelRenderFboReady)
+    {
         SDL_Log(
-            "SHAR Android cel render FBO ready: %dx%d",
+            "SHAR Android cel render FBO ready: %dx%d (depth texture %s)",
             width,
-            height
+            height,
+            gCelDepthTextureActive ? "enabled" : "disabled"
         );
     }
 
@@ -224,6 +307,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform sampler2D sceneTex;\n"
             "uniform sampler2D bloomTex;\n"
             "uniform float bloomStrength;\n"
+            "uniform sampler2D depthTex;\n"
+            "uniform float depthTextureAvailable;\n"
             "uniform vec2 texelSize;\n"
             "varying vec2 texcoord;\n"
             "\n"
@@ -247,6 +332,13 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float edgeStrength = max(max(abs(centreLuma - leftLuma), abs(centreLuma - rightLuma)),\n"
             "                             max(abs(centreLuma - upLuma), abs(centreLuma - downLuma)));\n"
             "    float edge = smoothstep(0.10, 0.22, edgeStrength);\n"
+            "    // Fade only this fullscreen edge-darkening pass with scene depth.\n"
+            "    // The separate character/vehicle outline renderer is not modified.\n"
+            "    if (depthTextureAvailable > 0.5) {\n"
+            "        float sceneDepth = texture2D(depthTex, texcoord).r;\n"
+            "        float distanceFade = smoothstep(0.985, 0.998, sceneDepth);\n"
+            "        edge *= mix(1.0, 0.30, distanceFade);\n"
+            "    }\n"
             "\n"
             "    // Lightweight edge smoothing: soften high-contrast edges only,\n"
             "    // avoiding the heavier full-screen FXAA experiment.\n"
@@ -342,6 +434,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostTexelLocation = glGetUniformLocation(gCelPostProgram, "texelSize");
         gCelPostBloomLocation = glGetUniformLocation(gCelPostProgram, "bloomTex");
         gCelPostBloomStrengthLocation = glGetUniformLocation(gCelPostProgram, "bloomStrength");
+        gCelPostDepthLocation = glGetUniformLocation(gCelPostProgram, "depthTex");
+        gCelPostDepthAvailableLocation = glGetUniformLocation(gCelPostProgram, "depthTextureAvailable");
 
         glGenTextures(1, &gCelPostTexture);
 
@@ -560,6 +654,7 @@ static void ApplyCelPostProcess(int width, int height)
     GLint previousTexture2D = 0;
     GLint previousTextureUnit0 = 0;
     GLint previousTextureUnit1 = 0;
+    GLint previousTextureUnit2 = 0;
     GLint previousArrayBuffer = 0;
     GLint previousVao = 0;
     GLint previousAttrib0Enabled = GL_FALSE;
@@ -570,6 +665,8 @@ static void ApplyCelPostProcess(int width, int height)
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureUnit0);
     glActiveTexture(GL_TEXTURE1);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureUnit1);
+    glActiveTexture(GL_TEXTURE2);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureUnit2);
     glActiveTexture((GLenum)previousActiveTexture);
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousArrayBuffer);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING_OES, &previousVao);
@@ -616,8 +713,8 @@ static void ApplyCelPostProcess(int width, int height)
         DrawCelPostFullscreenQuad();
     }
 
-    // Final pass: combine the original scene, blurred bloom, and existing stylized grade.
-    // If bloom setup failed on a device, the rest of the post-process still works without it.
+    // Final pass: combine scene, bloom and distance-aware screen-space outlines.
+    // If depth textures are unavailable, bloom and the rest of post-processing continue normally.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, width, height);
     glUseProgram(gCelPostProgram);
@@ -635,6 +732,13 @@ static void ApplyCelPostProcess(int width, int height)
     if (gCelPostBloomStrengthLocation >= 0)
         glUniform1f(gCelPostBloomStrengthLocation, bloomReady ? 1.15f : 0.0f);
 
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, gCelDepthTextureActive ? gCelRenderDepthTexture : gCelPostTexture);
+    if (gCelPostDepthLocation >= 0)
+        glUniform1i(gCelPostDepthLocation, 2);
+    if (gCelPostDepthAvailableLocation >= 0)
+        glUniform1f(gCelPostDepthAvailableLocation, gCelDepthTextureActive ? 1.0f : 0.0f);
+
     glActiveTexture(GL_TEXTURE0);
     DrawCelPostFullscreenQuad();
 
@@ -649,9 +753,15 @@ static void ApplyCelPostProcess(int width, int height)
     glBindTexture(GL_TEXTURE_2D, (GLuint)previousTextureUnit0);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, (GLuint)previousTextureUnit1);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)previousTextureUnit2);
     glActiveTexture((GLenum)previousActiveTexture);
-    if (previousActiveTexture != GL_TEXTURE0 && previousActiveTexture != GL_TEXTURE1)
+    if (previousActiveTexture != GL_TEXTURE0 &&
+        previousActiveTexture != GL_TEXTURE1 &&
+        previousActiveTexture != GL_TEXTURE2)
+    {
         glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture2D);
+    }
 
     glUseProgram((GLuint)previousProgram);
     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
@@ -799,6 +909,11 @@ pglDisplay ::~pglDisplay()
     {
         glDeleteRenderbuffers(1, &gCelRenderDepth);
         gCelRenderDepth = 0;
+    }
+    if (gCelRenderDepthTexture)
+    {
+        glDeleteTextures(1, &gCelRenderDepthTexture);
+        gCelRenderDepthTexture = 0;
     }
     if (gCelRenderFbo)
     {
