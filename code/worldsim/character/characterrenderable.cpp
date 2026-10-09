@@ -281,9 +281,9 @@ void CharacterRenderable::DisplayShadow( tPose* pose, const BlobShadowParams* Bl
         if (toonShadowsEnabled)
         {
             shadowScale *= 1.10f;
-            shadowFadeScale = 0.70f;
+            shadowFadeScale = 0.0f;
         }
-		const int NumBlobSlices = 16; // Keep the number even or you're in trouble.
+		const int NumBlobSlices = 32; // Keep the number even or you're in trouble.
         const int HalfCircle = NumBlobSlices >> 1; // We only keep half the circle and then mirror it. Hence the reason to keep the number of points even.
 		static float BlobPoints[ HalfCircle ][ 2 ];
         static float FadePoints[ HalfCircle ][ 2 ];
