@@ -264,6 +264,22 @@ void CharacterRenderable::DisplayShadow( tPose* pose, const BlobShadowParams* Bl
 
         const float BlobRadius = 1.0f;
         const float BlobFadeOff = 0.2f;
+        /*
+         * Stage 1 shadow comparison:
+         * Leave the original values untouched when cel shading is disabled.
+         * With cel shading enabled, very slightly widen the character contact
+         * shadow and broaden its existing outer fade band. This reuses the
+         * original ground-projected mesh rather than drawing a second shadow.
+         */
+        float shadowScale = BlobParams->ShadowScale;
+        float shadowFadeScale = 1.0f;
+#ifdef RAD_ANDROID
+        if (IsCelShadingEnabled())
+        {
+            shadowScale *= 1.10f;
+            shadowFadeScale = 1.35f;
+        }
+#endif
 		const int NumBlobSlices = 16; // Keep the number even or you're in trouble.
         const int HalfCircle = NumBlobSlices >> 1; // We only keep half the circle and then mirror it. Hence the reason to keep the number of points even.
 		static float BlobPoints[ HalfCircle ][ 2 ];
@@ -393,8 +409,8 @@ void CharacterRenderable::DisplayShadow( tPose* pose, const BlobShadowParams* Bl
             int index = i % HalfCircle;
 			int nextIndex = ( i + 1 ) % HalfCircle;
             int nextScaleIndex = ( i + 1 ) % NumBlobSlices;
-            float fadeScale = ( i < HalfCircle ) ? BlobParams->ShadowScale : -BlobParams->ShadowScale;
-            float nextFadeScale = ( nextScaleIndex < HalfCircle ) ? BlobParams->ShadowScale : -BlobParams->ShadowScale;
+            float fadeScale = ( i < HalfCircle ) ? ( shadowScale * shadowFadeScale ) : ( -shadowScale * shadowFadeScale );
+            float nextFadeScale = ( nextScaleIndex < HalfCircle ) ? ( shadowScale * shadowFadeScale ) : ( -shadowScale * shadowFadeScale );
 
             // Draw inside.
             blob->Colour( insideColour );
@@ -402,19 +418,19 @@ void CharacterRenderable::DisplayShadow( tPose* pose, const BlobShadowParams* Bl
 
             blob->Colour( insideColour );
             x0 = BlobPoints[ index ][ 0 ];
-            x0 *= BlobParams->ShadowScale;
+            x0 *= shadowScale;
             x0 *= articulated ? pointScales[ i ] : ( index == i ) ? NonArticulatedScale : -NonArticulatedScale;
             y0 = BlobPoints[ index ][ 1 ];
-            y0 *= BlobParams->ShadowScale;
+            y0 *= shadowScale;
             y0 *= articulated ? pointScales[ i ] : ( index == i ) ? NonArticulatedScale : -NonArticulatedScale;
             blob->Coord( x0, y0, 0.0f );
 
             blob->Colour( insideColour );
             x1 = BlobPoints[ nextIndex ][ 0 ];
-            x1 *= BlobParams->ShadowScale;
+            x1 *= shadowScale;
             x1 *= articulated ? pointScales[ nextScaleIndex ] : ( nextIndex == nextScaleIndex ) ? NonArticulatedScale : -NonArticulatedScale;
             y1 = BlobPoints[ nextIndex ][ 1 ];
-            y1 *= BlobParams->ShadowScale;
+            y1 *= shadowScale;
             y1 *= articulated ? pointScales[ nextScaleIndex ] : ( nextIndex == nextScaleIndex ) ? NonArticulatedScale : -NonArticulatedScale;
             blob->Coord( x1, y1, 0.0f );
 
