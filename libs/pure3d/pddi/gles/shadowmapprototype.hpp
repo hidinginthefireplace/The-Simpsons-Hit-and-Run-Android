@@ -17,6 +17,7 @@ bool SHAR_GetShadowMapPrototypeDirection(float* x, float* y, float* z);
 bool SHAR_IsShadowMapPrototypeEnabled();
 bool SHAR_BeginShadowMapPrototype(int width, int height);
 void SHAR_BindShadowMapPrototypeViewport();
+void SHAR_ApplyShadowMapPrototypeViewportOverride();
 void SHAR_EndShadowMapPrototype();
 void SHAR_SetShadowMapPrototypeLightViewProjection(const float* matrix16);
 void SHAR_SetShadowMapPrototypeInverseCameraViewProjection(const float* matrix16);
