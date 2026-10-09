@@ -250,7 +250,7 @@ void CharacterRenderable::DisplayShadow( tPose* pose, const BlobShadowParams* Bl
         else
         {
             OutsideColour.Set( 255, 255, 255, 255 );
-            const int Inside = toonShadowsEnabled ? 104 : 128;
+            const int Inside = toonShadowsEnabled ? 116 : 128;
             float shadowAlpha = BlobParams->ShadowAlpha;
             if( mFadeAlpha != 255 )
             {
@@ -280,7 +280,7 @@ void CharacterRenderable::DisplayShadow( tPose* pose, const BlobShadowParams* Bl
         float shadowFadeScale = 1.0f;
         if (toonShadowsEnabled)
         {
-            shadowScale *= 1.10f;
+            shadowScale *= 1.19f;
             shadowFadeScale = 0.0f;
         }
 		const int NumBlobSlices = 32; // Keep the number even or you're in trouble.
