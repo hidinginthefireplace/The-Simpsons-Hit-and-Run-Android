@@ -785,6 +785,7 @@ static void ApplyCelPostProcess(int width, int height)
 {
     const bool celEffectsEnabled = IsCelShadingEnabled();
     const bool shadowPrototypeEnabled =
+        gSHARShadowSourceLightValid &&
         SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
     if (!celEffectsEnabled && !shadowPrototypeEnabled)
         return;
@@ -1240,6 +1241,7 @@ bool BeginCelPostProcessFrame(int width, int height)
 
     const bool celEnabled = IsCelShadingEnabled();
     const bool shadowPrototypeEnabled =
+        gSHARShadowSourceLightValid &&
         SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
     if (!celEnabled && !shadowPrototypeEnabled)
     {
