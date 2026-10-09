@@ -15,6 +15,9 @@
 #include <p3d/error.hpp>
 #include <p3d/utility.hpp>
 #include <pddi/pddiext.hpp>
+#if defined(RAD_ANDROID)
+#include <pddi/gles/shadowmapprototype.hpp>
+#endif
 
 #if defined(RAD_ANDROID)
 #include <android/log.h>
@@ -238,6 +241,23 @@ tEntity* tLightLoader::LoadObject(tChunkFile* f, tEntityStore* store)
     };
     
 #if defined(RAD_ANDROID)
+    // The shadow-map prototype consumes the actual source-light direction,
+    // before tLightsChooser can replace it with synthetic directional lights.
+    // Only lights explicitly marked to cast shadows are eligible.
+    if (light != NULL && type == 2)
+    {
+        tDirectionalLight* prototypeLight = static_cast<tDirectionalLight*>(light);
+        const rmt::Vector& prototypeDirection = prototypeLight->GetDirection();
+        SHAR_SetShadowMapPrototypeSourceLight(
+            name,
+            prototypeDirection.x,
+            prototypeDirection.y,
+            prototypeDirection.z,
+            light->IsEnabled(),
+            light->IsShadowCaster(),
+            (int)light->GetIlluminationType());
+    }
+
     // Log original light chunks before tLightsChooser can replace them with
     // synthetic per-object directional lights. Log every source directional
     // light, plus any point/spot light marked as a shadow caster.
