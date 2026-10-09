@@ -700,20 +700,20 @@ static bool EnsureCelAoResources(int width, int height)
             "    float centreDepth = texture2D(depthTex, texcoord).r;\n"
             "    float centreAo = texture2D(aoTex, texcoord).r;\n"
             "    vec2 off1 = blurStep;\n"
-            "    float depthL = texture2D(depthTex, texcoord - off1).r;\n"
-            "    float depthR = texture2D(depthTex, texcoord + off1).r;\n"
-            "    float depthD = texture2D(depthTex, texcoord - vec2(off1.x, off1.y)).r;\n"
-            "    float depthU = texture2D(depthTex, texcoord + vec2(off1.x, off1.y)).r;\n"
+            "    float depthL = texture2D(depthTex, texcoord - vec2(off1.x, 0.0)).r;\n"
+            "    float depthR = texture2D(depthTex, texcoord + vec2(off1.x, 0.0)).r;\n"
+            "    float depthD = texture2D(depthTex, texcoord - vec2(0.0, off1.y)).r;\n"
+            "    float depthU = texture2D(depthTex, texcoord + vec2(0.0, off1.y)).r;\n"
             "    float weightL = 1.0 - smoothstep(0.0015, 0.020, abs(depthL - centreDepth));\n"
             "    float weightR = 1.0 - smoothstep(0.0015, 0.020, abs(depthR - centreDepth));\n"
             "    float weightD = 1.0 - smoothstep(0.0015, 0.020, abs(depthD - centreDepth));\n"
             "    float weightU = 1.0 - smoothstep(0.0015, 0.020, abs(depthU - centreDepth));\n"
             "    float sum = centreAo * 0.50;\n"
             "    float totalWeight = 0.50;\n"
-            "    sum += texture2D(aoTex, texcoord - off1).r * weightL * 0.125; totalWeight += weightL * 0.125;\n"
-            "    sum += texture2D(aoTex, texcoord + off1).r * weightR * 0.125; totalWeight += weightR * 0.125;\n"
-            "    sum += texture2D(aoTex, texcoord - vec2(off1.x, off1.y)).r * weightD * 0.125; totalWeight += weightD * 0.125;\n"
-            "    sum += texture2D(aoTex, texcoord + vec2(off1.x, off1.y)).r * weightU * 0.125; totalWeight += weightU * 0.125;\n"
+            "    sum += texture2D(aoTex, texcoord - vec2(off1.x, 0.0)).r * weightL * 0.125; totalWeight += weightL * 0.125;\n"
+            "    sum += texture2D(aoTex, texcoord + vec2(off1.x, 0.0)).r * weightR * 0.125; totalWeight += weightR * 0.125;\n"
+            "    sum += texture2D(aoTex, texcoord - vec2(0.0, off1.y)).r * weightD * 0.125; totalWeight += weightD * 0.125;\n"
+            "    sum += texture2D(aoTex, texcoord + vec2(0.0, off1.y)).r * weightU * 0.125; totalWeight += weightU * 0.125;\n"
             "    float ao = sum / max(totalWeight, 0.001);\n"
             "    gl_FragColor = vec4(ao, ao, ao, 1.0);\n"
             "}\n";
@@ -947,7 +947,7 @@ static void ApplyCelPostProcess(int width, int height)
         glUniform1f(gCelPostDepthAvailableLocation, gCelDepthTextureActive ? 1.0f : 0.0f);
 
     glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, aoReady ? gCelAoFilteredTexture : 0);
+    glBindTexture(GL_TEXTURE_2D, aoReady ? gCelAoFilteredTexture : gCelPostTexture);
     if (gCelPostAoLocation >= 0)
         glUniform1i(gCelPostAoLocation, 3);
     if (gCelPostAoStrengthLocation >= 0)
