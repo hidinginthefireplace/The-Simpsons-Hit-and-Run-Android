@@ -1213,6 +1213,12 @@ void GeometryVehicle::DisplayShadow( BlobShadowParams* BlobParams )
 {
     BEGIN_PROFILE("GeometryVehicle::DisplayShadow")
     rAssert(BlobParams);
+#ifdef RAD_ANDROID
+    const bool toonShadowsEnabled = IsCelShadingEnabled();
+#else
+    const bool toonShadowsEnabled = false;
+#endif
+    float toonShadowEdgeFadeScale = 1.0f;
     tColour OutsideColour, insideColour;
 
     // Hack for brightly colored shadows for special game mode
@@ -1257,8 +1263,11 @@ void GeometryVehicle::DisplayShadow( BlobShadowParams* BlobParams )
 
    		// Blobby shadow for vehicle.
         OutsideColour.Set( 255, 255, 255, 255 );
-        const int Inside = 128;
-        
+        // Match the toon character-shadow centre when cel shading is enabled.
+        // Keep the original shade and soft edge when cel shading is disabled.
+        const int Inside = toonShadowsEnabled ? 116 : 128;
+        toonShadowEdgeFadeScale = toonShadowsEnabled ? 0.0f : 1.0f;
+
         float fadeFactor = 1.0f;
         if( mVehicleOwner->mVehicleType == VT_TRAFFIC && 
             mFadeAlpha != 255 )
@@ -1405,8 +1414,8 @@ void GeometryVehicle::DisplayShadow( BlobShadowParams* BlobParams )
         inX = ( Points[ index ][ 0 ] + mShadowPointAdjustments[ adjust ][ 0 ] ) * BlobParams->ShadowScale;
         inY = ( Points[ index ][ 1 ] + mShadowPointAdjustments[ adjust ][ 1 ] ) * BlobParams->ShadowScale;
         inX *= mirrorX;
-        outX = inX + ( Fades[ index ][ 0 ] * mirrorX * BlobParams->ShadowScale );
-        outY = inY + ( Fades[ index ][ 1 ] * BlobParams->ShadowScale );
+        outX = inX + ( Fades[ index ][ 0 ] * mirrorX * BlobParams->ShadowScale * toonShadowEdgeFadeScale );
+        outY = inY + ( Fades[ index ][ 1 ] * BlobParams->ShadowScale * toonShadowEdgeFadeScale );
         blob->Colour( OutsideColour );
         blob->Coord( outX, outY, 0.0f );
         blob->Colour( insideColour );
