@@ -325,7 +325,9 @@ void WorldRenderLayer::Render()
                     mainCamera->GetFarPlane());
                 rmt::Matrix cameraView = *p3d::context->GetViewMatrix();
                 rmt::Matrix cameraViewProjection;
-                cameraViewProjection.Mult(cameraProjection, cameraView);
+                // Pure3D uses row-vector matrices; view then projection matches the GLES
+                // shader's projection * modelview order after matrix upload.
+                cameraViewProjection.Mult(cameraView, cameraProjection);
                 rmt::Matrix inverseCameraViewProjection;
                 inverseCameraViewProjection.Invert(cameraViewProjection);
                 SHAR_SetShadowMapPrototypeInverseCameraViewProjection(
@@ -415,7 +417,8 @@ void WorldRenderLayer::Render()
                             mpShadowMapCamera->GetFarPlane());
                         rmt::Matrix lightView = *p3d::context->GetViewMatrix();
                         rmt::Matrix lightViewProjection;
-                        lightViewProjection.Mult(lightProjection, lightView);
+                        // Match the renderer's row-vector convention: world * view * projection.
+                        lightViewProjection.Mult(lightView, lightProjection);
                         SHAR_SetShadowMapPrototypeLightViewProjection(
                             &lightViewProjection.m[0][0]);
 
