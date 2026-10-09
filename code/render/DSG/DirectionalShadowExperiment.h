@@ -3,6 +3,7 @@
 #define DIRECTIONAL_SHADOW_EXPERIMENT_H
 
 #include <contexts/bootupcontext.h>
+#include <radmath/radmath.hpp>
 #include <p3d/matrixstack.hpp>
 #include <pddi/pddi.hpp>
 
