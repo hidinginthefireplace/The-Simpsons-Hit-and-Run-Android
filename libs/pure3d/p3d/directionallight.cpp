@@ -25,7 +25,7 @@ struct DirectionalLightDiagnosticEntry
 };
 
 static void LogSubmittedDirectionalLight(
-    const tDirectionalLight* light,
+    tDirectionalLight* light,
     unsigned slot,
     const rmt::Vector& direction,
     bool enabled,
@@ -80,17 +80,32 @@ static void LogSubmittedDirectionalLight(
 
     if (newLight || directionChanged || stateChanged)
     {
+        const char* lightName = light->GetNameObject().GetText();
+        if (lightName == NULL || lightName[0] == '\0')
+            lightName = "<unnamed>";
+        const rmt::Vector& position = light->GetPosition();
+        const tColour colour = light->GetColour();
+
         __android_log_print(
             ANDROID_LOG_INFO,
             "SHAR-LightDiag",
-            "Submitted directional light: ptr=%p slot=%u direction=(%.4f, %.4f, %.4f) enabled=%d shadow_caster=%d",
+            "Submitted directional light: ptr=%p name=\"%s\" slot=%u direction=(%.4f, %.4f, %.4f) position=(%.3f, %.3f, %.3f) rgb=(%u, %u, %u) enabled=%d shadow_caster=%d illumination=%d animated=%d",
             (const void*)light,
+            lightName,
             slot,
             direction.x,
             direction.y,
             direction.z,
+            position.x,
+            position.y,
+            position.z,
+            (unsigned)colour.Red(),
+            (unsigned)colour.Green(),
+            (unsigned)colour.Blue(),
             enabled ? 1 : 0,
-            shadowCaster ? 1 : 0);
+            shadowCaster ? 1 : 0,
+            (int)light->GetIlluminationType(),
+            light->IsAnimated() ? 1 : 0);
 
         entry.light = light;
         entry.x = direction.x;
