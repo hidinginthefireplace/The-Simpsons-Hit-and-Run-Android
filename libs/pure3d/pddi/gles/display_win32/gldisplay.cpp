@@ -64,6 +64,8 @@ GLuint gCelAoTexture = 0;
 GLuint gCelAoFilteredTexture = 0;
 GLint gCelAoDepthLocation = -1;
 GLint gCelAoTexelLocation = -1;
+GLint gCelAoClipPlanesLocation = -1;
+GLint gCelAoPerspectiveLocation = -1;
 GLint gCelAoBlurTextureLocation = -1;
 GLint gCelAoBlurDepthLocation = -1;
 GLint gCelAoBlurStepLocation = -1;
@@ -75,6 +77,9 @@ bool gCelAoReady = false;
 
 int gCelPostWidth = 0;
 int gCelPostHeight = 0;
+float gCelCameraNearPlane = 0.1f;
+float gCelCameraFarPlane = 1000.0f;
+bool gCelCameraPerspective = true;
 
 static GLuint CompileCelPostShader(GLenum type, const char* source)
 {
@@ -347,7 +352,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    // Dark pixels indicate stronger computed occlusion; a magenta screen means AO is unavailable.\n"
             "    float aoDiagnosticSample = texture2D(aoTex, texcoord).r;\n"
             "    if (aoStrength > 0.001) {\n"
-            "        float aoDiagnosticValue = 1.0 - clamp(aoDiagnosticSample, 0.0, 1.0);\n"
+            "        float aoDiagnosticValue = 1.0 - clamp(aoDiagnosticSample * 2.5, 0.0, 1.0);\n"
             "        gl_FragColor = vec4(vec3(aoDiagnosticValue), 1.0);\n"
             "    } else {\n"
             "        gl_FragColor = vec4(1.0, 0.0, 1.0, 1.0);\n"
@@ -666,37 +671,75 @@ static bool EnsureCelAoResources(int width, int height)
             "precision mediump float;\n"
             "uniform sampler2D depthTex;\n"
             "uniform vec2 sourceTexelSize;\n"
+            "uniform vec2 cameraClipPlanes;\n"
+            "uniform float perspectiveDepth;\n"
             "varying vec2 texcoord;\n"
+            "\n"
+            "float linearViewDepth(float depthValue) {\n"
+            "    float nearPlane = max(cameraClipPlanes.x, 0.001);\n"
+            "    float farPlane = max(cameraClipPlanes.y, nearPlane + 0.01);\n"
+            "    float hardwareDepth = clamp(depthValue, 0.0, 1.0);\n"
+            "    if (perspectiveDepth > 0.5) {\n"
+            "        return (nearPlane * farPlane) / max(farPlane - hardwareDepth * (farPlane - nearPlane), 0.0001);\n"
+            "    }\n"
+            "    return nearPlane + hardwareDepth * (farPlane - nearPlane);\n"
+            "}\n"
+            "\n"
             "void main() {\n"
-            "    float d = texture2D(depthTex, texcoord).r;\n"
-            "    vec2 nearOffset = sourceTexelSize * 2.0;\n"
-            "    float dL = texture2D(depthTex, texcoord - vec2(nearOffset.x, 0.0)).r;\n"
-            "    float dR = texture2D(depthTex, texcoord + vec2(nearOffset.x, 0.0)).r;\n"
-            "    float dD = texture2D(depthTex, texcoord - vec2(0.0, nearOffset.y)).r;\n"
-            "    float dU = texture2D(depthTex, texcoord + vec2(0.0, nearOffset.y)).r;\n"
-            "    vec3 surfaceNormal = normalize(vec3(dL - dR, dD - dU, 0.025));\n"
-            "    float surfaceWeight = clamp(surfaceNormal.z, 0.65, 1.0);\n"
-            "    vec2 aoOffset = sourceTexelSize * 8.0;\n"
+            "    float centreDepth = linearViewDepth(texture2D(depthTex, texcoord).r);\n"
+            "    vec2 gradientOffset = sourceTexelSize * 2.0;\n"
+            "    float depthL = linearViewDepth(texture2D(depthTex, texcoord - vec2(gradientOffset.x, 0.0)).r);\n"
+            "    float depthR = linearViewDepth(texture2D(depthTex, texcoord + vec2(gradientOffset.x, 0.0)).r);\n"
+            "    float depthD = linearViewDepth(texture2D(depthTex, texcoord - vec2(0.0, gradientOffset.y)).r);\n"
+            "    float depthU = linearViewDepth(texture2D(depthTex, texcoord + vec2(0.0, gradientOffset.y)).r);\n"
+            "\n"
+            "    // Approximate the local depth slope so a slanted wall is not mistaken for an occluder.\n"
+            "    float gradientX = (depthR - depthL) * 0.25;\n"
+            "    float gradientY = (depthU - depthD) * 0.25;\n"
+            "    float radiusPixels = 8.0;\n"
+            "    vec2 aoOffset = sourceTexelSize * radiusPixels;\n"
+            "    float depthBias = max(0.01, centreDepth * 0.0005);\n"
+            "    float depthFull = depthBias * 4.0;\n"
             "    float occlusion = 0.0;\n"
-            "    occlusion += smoothstep(0.0003, 0.006, d - texture2D(depthTex, texcoord + vec2(-aoOffset.x, 0.0)).r);\n"
-            "    occlusion += smoothstep(0.0003, 0.006, d - texture2D(depthTex, texcoord + vec2( aoOffset.x, 0.0)).r);\n"
-            "    occlusion += smoothstep(0.0003, 0.006, d - texture2D(depthTex, texcoord + vec2(0.0, -aoOffset.y)).r);\n"
-            "    occlusion += smoothstep(0.0003, 0.006, d - texture2D(depthTex, texcoord + vec2(0.0,  aoOffset.y)).r);\n"
-            "    occlusion += smoothstep(0.0003, 0.006, d - texture2D(depthTex, texcoord + vec2(-aoOffset.x, -aoOffset.y)).r);\n"
-            "    occlusion += smoothstep(0.0003, 0.006, d - texture2D(depthTex, texcoord + vec2( aoOffset.x, -aoOffset.y)).r);\n"
-            "    occlusion += smoothstep(0.0003, 0.006, d - texture2D(depthTex, texcoord + vec2(-aoOffset.x,  aoOffset.y)).r);\n"
-            "    occlusion += smoothstep(0.0003, 0.006, d - texture2D(depthTex, texcoord + vec2( aoOffset.x,  aoOffset.y)).r);\n"
-            "    // Diagnostic: remove distance fade and inspect occlusion at every depth.\n"
-            "    float ao = clamp((occlusion / 8.0) * surfaceWeight, 0.0, 1.0);\n"
+            "    float sampleDepth;\n"
+            "    float expectedDepth;\n"
+            "\n"
+            "    sampleDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2(-aoOffset.x, 0.0)).r);\n"
+            "    expectedDepth = max(0.001, centreDepth - gradientX * radiusPixels);\n"
+            "    occlusion += smoothstep(depthBias, depthFull, expectedDepth - sampleDepth);\n"
+            "    sampleDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2( aoOffset.x, 0.0)).r);\n"
+            "    expectedDepth = centreDepth + gradientX * radiusPixels;\n"
+            "    occlusion += smoothstep(depthBias, depthFull, expectedDepth - sampleDepth);\n"
+            "    sampleDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2(0.0, -aoOffset.y)).r);\n"
+            "    expectedDepth = max(0.001, centreDepth - gradientY * radiusPixels);\n"
+            "    occlusion += smoothstep(depthBias, depthFull, expectedDepth - sampleDepth);\n"
+            "    sampleDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2(0.0,  aoOffset.y)).r);\n"
+            "    expectedDepth = centreDepth + gradientY * radiusPixels;\n"
+            "    occlusion += smoothstep(depthBias, depthFull, expectedDepth - sampleDepth);\n"
+            "    sampleDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2(-aoOffset.x, -aoOffset.y)).r);\n"
+            "    expectedDepth = max(0.001, centreDepth - (gradientX + gradientY) * radiusPixels);\n"
+            "    occlusion += smoothstep(depthBias, depthFull, expectedDepth - sampleDepth);\n"
+            "    sampleDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2( aoOffset.x, -aoOffset.y)).r);\n"
+            "    expectedDepth = max(0.001, centreDepth + (gradientX - gradientY) * radiusPixels);\n"
+            "    occlusion += smoothstep(depthBias, depthFull, expectedDepth - sampleDepth);\n"
+            "    sampleDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2(-aoOffset.x,  aoOffset.y)).r);\n"
+            "    expectedDepth = max(0.001, centreDepth + (-gradientX + gradientY) * radiusPixels);\n"
+            "    occlusion += smoothstep(depthBias, depthFull, expectedDepth - sampleDepth);\n"
+            "    sampleDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2( aoOffset.x,  aoOffset.y)).r);\n"
+            "    expectedDepth = centreDepth + (gradientX + gradientY) * radiusPixels;\n"
+            "    occlusion += smoothstep(depthBias, depthFull, expectedDepth - sampleDepth);\n"
+            "\n"
+            "    float ao = clamp(occlusion / 8.0, 0.0, 1.0);\n"
             "    gl_FragColor = vec4(ao, ao, ao, 1.0);\n"
             "}\n";
-
         gCelAoProgram = CreateCelPostProgram(vertexSource, aoFragment, "Cel half-resolution ambient occlusion");
         if (gCelAoProgram == 0)
             return false;
 
         gCelAoDepthLocation = glGetUniformLocation(gCelAoProgram, "depthTex");
         gCelAoTexelLocation = glGetUniformLocation(gCelAoProgram, "sourceTexelSize");
+        gCelAoClipPlanesLocation = glGetUniformLocation(gCelAoProgram, "cameraClipPlanes");
+        gCelAoPerspectiveLocation = glGetUniformLocation(gCelAoProgram, "perspectiveDepth");
     }
 
     if (gCelAoBlurProgram == 0)
@@ -901,6 +944,10 @@ static void ApplyCelPostProcess(int width, int height)
         glUniform1i(gCelAoDepthLocation, 0);
         if (gCelAoTexelLocation >= 0)
             glUniform2f(gCelAoTexelLocation, 1.0f / (float)width, 1.0f / (float)height);
+        if (gCelAoClipPlanesLocation >= 0)
+            glUniform2f(gCelAoClipPlanesLocation, gCelCameraNearPlane, gCelCameraFarPlane);
+        if (gCelAoPerspectiveLocation >= 0)
+            glUniform1f(gCelAoPerspectiveLocation, gCelCameraPerspective ? 1.0f : 0.0f);
         DrawCelPostFullscreenQuad();
 
         // Pass 2: restrained edge-aware smoothing; depth discontinuities stay sharp.
@@ -1025,6 +1072,16 @@ static void ApplyCelPostProcess(int width, int height)
     // Leave framebuffer 0 bound so SDL_GL_SwapWindow presents the processed scene.
 }
 
+}
+
+void SetCelPostProcessCameraDepthRange(float nearPlane, float farPlane, bool perspective)
+{
+    if (nearPlane > 0.0001f && farPlane > nearPlane)
+    {
+        gCelCameraNearPlane = nearPlane;
+        gCelCameraFarPlane = farPlane;
+        gCelCameraPerspective = perspective;
+    }
 }
 
 bool BeginCelPostProcessFrame(int width, int height)

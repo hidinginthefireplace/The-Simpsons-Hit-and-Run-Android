@@ -631,6 +631,14 @@ void pglContext::SetupHardwareProjection(void)
             break;
     }
 
+#ifdef RAD_ANDROID
+    SetCelPostProcessCameraDepthRange(
+        state.viewState->camera.nearPlane,
+        state.viewState->camera.farPlane,
+        state.viewState->projectionMode == PDDI_PROJECTION_PERSPECTIVE
+    );
+#endif
+
     if(currentProgram)
         currentProgram->SetProjectionMatrix(&projection);
 }
