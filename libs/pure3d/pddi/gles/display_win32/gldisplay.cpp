@@ -664,7 +664,7 @@ static bool EnsureCelAoResources(int width, int height)
             "    float dD = texture2D(depthTex, texcoord - vec2(0.0, nearOffset.y)).r;\n"
             "    float dU = texture2D(depthTex, texcoord + vec2(0.0, nearOffset.y)).r;\n"
             "    vec3 surfaceNormal = normalize(vec3(dL - dR, dD - dU, 0.025));\n"
-            "    float surfaceWeight = clamp(surfaceNormal.z, 0.20, 1.0);\n"
+            "    float surfaceWeight = clamp(surfaceNormal.z, 0.65, 1.0);\n"
             "    vec2 aoOffset = sourceTexelSize * 4.0;\n"
             "    float occlusion = 0.0;\n"
             "    occlusion += smoothstep(0.0015, 0.018, d - texture2D(depthTex, texcoord + vec2(-aoOffset.x, 0.0)).r);\n"
@@ -951,7 +951,7 @@ static void ApplyCelPostProcess(int width, int height)
     if (gCelPostAoLocation >= 0)
         glUniform1i(gCelPostAoLocation, 3);
     if (gCelPostAoStrengthLocation >= 0)
-        glUniform1f(gCelPostAoStrengthLocation, aoReady ? 0.28f : 0.0f);
+        glUniform1f(gCelPostAoStrengthLocation, aoReady ? 0.32f : 0.0f);
 
     glActiveTexture(GL_TEXTURE0);
     DrawCelPostFullscreenQuad();
