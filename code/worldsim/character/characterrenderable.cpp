@@ -222,6 +222,11 @@ void CharacterRenderable::DisplayShadow( tPose* pose, const BlobShadowParams* Bl
 {
 	if( BlobParams )
 	{
+#ifdef RAD_ANDROID
+        const bool toonShadowsEnabled = IsCelShadingEnabled();
+#else
+        const bool toonShadowsEnabled = false;
+#endif
         BEGIN_PROFILE("Char Blobby Shadow");
         if( !mHaveShadowJoints )
         {
@@ -245,7 +250,7 @@ void CharacterRenderable::DisplayShadow( tPose* pose, const BlobShadowParams* Bl
         else
         {
             OutsideColour.Set( 255, 255, 255, 255 );
-            const int Inside = 128;
+            const int Inside = toonShadowsEnabled ? 104 : 128;
             float shadowAlpha = BlobParams->ShadowAlpha;
             if( mFadeAlpha != 255 )
             {
@@ -265,21 +270,19 @@ void CharacterRenderable::DisplayShadow( tPose* pose, const BlobShadowParams* Bl
         const float BlobRadius = 1.0f;
         const float BlobFadeOff = 0.2f;
         /*
-         * Stage 1 shadow comparison:
-         * Leave the original values untouched when cel shading is disabled.
-         * With cel shading enabled, very slightly widen the character contact
-         * shadow and broaden its existing outer fade band. This reuses the
-         * original ground-projected mesh rather than drawing a second shadow.
+         * Toon character-shadow experiment:
+         * Keep the original shadow when cel shading is off. When it is on,
+         * widen the solid centre slightly and tighten the outer fade band so
+         * the shadow reads as a flatter, more graphic shape. This reuses the
+         * original ground-projected mesh and adds no extra shadow pass.
          */
         float shadowScale = BlobParams->ShadowScale;
         float shadowFadeScale = 1.0f;
-#ifdef RAD_ANDROID
-        if (IsCelShadingEnabled())
+        if (toonShadowsEnabled)
         {
             shadowScale *= 1.10f;
-            shadowFadeScale = 1.35f;
+            shadowFadeScale = 0.70f;
         }
-#endif
 		const int NumBlobSlices = 16; // Keep the number even or you're in trouble.
         const int HalfCircle = NumBlobSlices >> 1; // We only keep half the circle and then mirror it. Hence the reason to keep the number of points even.
 		static float BlobPoints[ HalfCircle ][ 2 ];
