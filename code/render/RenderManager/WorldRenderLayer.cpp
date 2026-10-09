@@ -48,8 +48,13 @@
 #include <render/animentitydsgmanager/animentitydsgmanager.h>
 
 #include <p3d/camera.hpp>
+#include <p3d/vectorcamera.hpp>
+#include <p3d/context.hpp>
 #include <p3d/shadow.hpp>
 #include <p3d/view.hpp>
+#if defined(RAD_ANDROID)
+#include <pddi/gles/shadowmapprototype.hpp>
+#endif
 
 #include <events/eventmanager.h>
 #include <events/eventenum.h>
@@ -117,8 +122,35 @@ static unsigned char gWashColourB = DEFAULT_B;
 //========================================================================
 WorldRenderLayer::WorldRenderLayer()
 {
+#if defined(RAD_ANDROID)
+   mpShadowMapCamera = NULL;
+   mpShadowMapView = NULL;
+#endif
    mQdDump = false;
    OnWorldRenderLayerInit();
+
+#if defined(RAD_ANDROID)
+   // This camera/view are retained for the lifetime of the world-render layer.
+   // The shadow map is a separate pass and does not replace the active game view.
+   mpShadowMapCamera = new tVectorCamera;
+   if (mpShadowMapCamera != NULL)
+   {
+      mpShadowMapCamera->AddRef();
+      mpShadowMapCamera->SetFOV(rmt::DegToRadian(90.0f), 1.0f);
+      mpShadowMapCamera->SetNearPlane(1.0f);
+      mpShadowMapCamera->SetFarPlane(300.0f);
+   }
+   mpShadowMapView = new tView;
+   if (mpShadowMapView != NULL)
+   {
+      mpShadowMapView->AddRef();
+      mpShadowMapView->SetCamera(mpShadowMapCamera);
+      mpShadowMapView->SetWindow(0.0f, 0.0f, 1.0f, 1.0f);
+      mpShadowMapView->SetClearMask(PDDI_BUFFER_ALL);
+      mpShadowMapView->SetClearColour(tColour(0, 0, 0));
+      mpShadowMapView->SetClearDepth(1.0f);
+   }
+#endif
    //mpShadowGenerator = NULL;    // VolShadows
 
 #ifdef DEBUGWATCH
@@ -156,6 +188,19 @@ WorldRenderLayer::WorldRenderLayer()
 WorldRenderLayer::~WorldRenderLayer()
 {
    NullifyGuts();
+#if defined(RAD_ANDROID)
+   if (mpShadowMapView != NULL)
+   {
+      mpShadowMapView->SetCamera(NULL);
+      mpShadowMapView->Release();
+      mpShadowMapView = NULL;
+   }
+   if (mpShadowMapCamera != NULL)
+   {
+      mpShadowMapCamera->Release();
+      mpShadowMapCamera = NULL;
+   }
+#endif
    //delete mpShadowGenerator;    // VolShadows
    
 #ifdef DEBUGWATCH
@@ -266,6 +311,28 @@ void WorldRenderLayer::Render()
             mpView[ view ]->BeginRender();
             END_PROFILE( "View Begin Render" );
 
+#if defined(RAD_ANDROID)
+            // Cache the current camera's inverse view-projection for depth
+            // reconstruction in the final screen-space shadow composite.
+            if (mirrorPass == 0 && mpView[view]->GetCamera() != NULL)
+            {
+                tCamera* mainCamera = mpView[view]->GetCamera();
+                rmt::Matrix cameraProjection;
+                cameraProjection.SetPerspective(
+                    mainCamera->GetFieldOfView(),
+                    mainCamera->GetAspectRatio(),
+                    mainCamera->GetNearPlane(),
+                    mainCamera->GetFarPlane());
+                rmt::Matrix cameraView = *p3d::context->GetViewMatrix();
+                rmt::Matrix cameraViewProjection;
+                cameraViewProjection.Mult(cameraProjection, cameraView);
+                rmt::Matrix inverseCameraViewProjection;
+                inverseCameraViewProjection.Invert(cameraViewProjection);
+                SHAR_SetShadowMapPrototypeInverseCameraViewProjection(
+                    &inverseCameraViewProjection.m[0][0]);
+            }
+#endif
+
             int i;
             
             if(!mMirror)
@@ -293,6 +360,84 @@ void WorldRenderLayer::Render()
             //p3d::inventory->SelectSection("Default");
 
             mpWorldScene->RenderOpaque();
+
+#if defined(RAD_ANDROID)
+            // First light-space shadow-map prototype: render the visible opaque
+            // world geometry and the engine's existing shadow-caster list into
+            // a depth texture. The main view is restored without clearing its
+            // colour/depth buffer afterward.
+            if (mirrorPass == 0 &&
+                mpShadowMapCamera != NULL &&
+                mpShadowMapView != NULL &&
+                mpView[view]->GetCamera() != NULL)
+            {
+                float lightX = 0.0f;
+                float lightY = -1.0f;
+                float lightZ = 0.0f;
+                if (SHAR_GetShadowMapPrototypeDirection(&lightX, &lightY, &lightZ))
+                {
+                    tCamera* mainCamera = mpView[view]->GetCamera();
+                    const rmt::Matrix& mainCameraToWorld = mainCamera->GetCameraToWorldMatrix();
+                    const rmt::Vector& cameraPosition = mainCameraToWorld.Row(3);
+                    const rmt::Vector& cameraForward = mainCameraToWorld.Row(2);
+
+                    const float focusX = cameraPosition.x + cameraForward.x * 38.0f;
+                    const float focusY = cameraPosition.y + cameraForward.y * 38.0f;
+                    const float focusZ = cameraPosition.z + cameraForward.z * 38.0f;
+                    const rmt::Vector lightDirection(lightX, lightY, lightZ);
+                    const rmt::Vector lightEye(
+                        focusX - lightX * 120.0f,
+                        focusY - lightY * 120.0f,
+                        focusZ - lightZ * 120.0f);
+
+                    mpShadowMapCamera->SetFOV(rmt::DegToRadian(90.0f), 1.0f);
+                    mpShadowMapCamera->SetNearPlane(1.0f);
+                    mpShadowMapCamera->SetFarPlane(300.0f);
+                    mpShadowMapCamera->SetPosition(lightEye);
+                    mpShadowMapCamera->SetDirection(lightDirection);
+                    mpShadowMapCamera->SetUpVector(rmt::Vector(0.0f, 1.0f, 0.0f));
+
+                    if (SHAR_BeginShadowMapPrototype(512, 512))
+                    {
+                        mpShadowMapView->BeginRender();
+                        SHAR_BindShadowMapPrototypeViewport();
+
+                        p3d::pddi->EnableZBuffer(true);
+                        p3d::pddi->SetZWrite(true);
+                        p3d::pddi->SetZCompare(PDDI_COMPARE_LESSEQUAL);
+                        p3d::pddi->SetColourWrite(false, false, false, false);
+
+                        rmt::Matrix lightProjection;
+                        lightProjection.SetPerspective(
+                            mpShadowMapCamera->GetFieldOfView(),
+                            mpShadowMapCamera->GetAspectRatio(),
+                            mpShadowMapCamera->GetNearPlane(),
+                            mpShadowMapCamera->GetFarPlane());
+                        rmt::Matrix lightView = *p3d::context->GetViewMatrix();
+                        rmt::Matrix lightViewProjection;
+                        lightViewProjection.Mult(lightProjection, lightView);
+                        SHAR_SetShadowMapPrototypeLightViewProjection(
+                            &lightViewProjection.m[0][0]);
+
+                        mpWorldScene->RenderOpaque();
+                        mpWorldScene->RenderShadowCasters();
+
+                        p3d::pddi->SetColourWrite(true, true, true, true);
+                        p3d::pddi->SetZWrite(true);
+                        p3d::pddi->SetZCompare(PDDI_COMPARE_LESSEQUAL);
+                        mpShadowMapView->EndRender();
+                        SHAR_EndShadowMapPrototype();
+
+                        // Re-activate the normal view without clearing the
+                        // scene already rendered into the scene framebuffer.
+                        const unsigned mainClearMask = mpView[view]->GetClearMask();
+                        mpView[view]->SetClearMask(0);
+                        mpView[view]->BeginRender();
+                        mpView[view]->SetClearMask(mainClearMask);
+                    }
+                }
+            }
+#endif
 
             BEGIN_PROFILE( "Render coins" );
             GetCoinManager()->Render();
@@ -1049,6 +1194,10 @@ MEMTRACK_POP_GROUP( "WorldRenderLayer" );
 //************************************************************************
 void WorldRenderLayer::DoPreStaticLoad()
 {
+#if defined(RAD_ANDROID)
+   // Do not carry a flagged light direction from a previous world into this load.
+   SHAR_ResetShadowMapPrototypeSourceLight();
+#endif
    if( !IsGutsSetup() )
       SetUpGuts();
 
