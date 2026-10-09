@@ -1,4 +1,5 @@
 #include <worldsim/character/characterrenderable.h>
+#include <render/DSG/DirectionalShadowExperiment.h>
 #include <mission/gameplaymanager.h>
 #include <p3d/texture.hpp>
 #include <p3d/shader.hpp>
@@ -223,6 +224,13 @@ void CharacterRenderable::DisplayShadow( tPose* pose, const BlobShadowParams* Bl
 	if( BlobParams )
 	{
         BEGIN_PROFILE("Char Blobby Shadow");
+        // Experimental fixed-direction shadow tail. Keep the original blob shadow below.
+        if (::GetGameplayManager()->GetGameType() != GameplayManager::GT_SUPERSPRINT)
+        {
+            DirectionalShadowExperiment::Draw(
+                BlobParams->GroundPos, BlobParams->GroundNormal,
+                1.75f, 0.32f, 46, 0.10f, BlobParams->ShadowAlpha);
+        }
         if( !mHaveShadowJoints )
         {
             mHaveShadowJoints = true;
