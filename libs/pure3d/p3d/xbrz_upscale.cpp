@@ -124,6 +124,16 @@ namespace
         return true;
     }
 
+    // Transparent xBRZ processing is limited to the front-end P3D asset parse
+    // path for this diagnostic stage. Keep world/effect texture alpha behavior
+    // unchanged until the GUI result is validated.
+    bool AllowsFrontendAlpha(const char* diagnosticPath)
+    {
+        return diagnosticPath != NULL &&
+               strstr(diagnosticPath, "IMAGE_FACTORY_PARSE") == diagnosticPath &&
+               strstr(diagnosticPath, "file=frontend.p3d") != NULL;
+    }
+
     bool WriteArgbMip(tTexture* texture, int mip, int expectedWidth,
                       int expectedHeight, const std::vector<uint32_t>& pixels)
     {
@@ -187,6 +197,7 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
     if (diagnosticName == NULL || diagnosticName[0] == '\0')
         diagnosticName = "(unnamed)";
     const char* diagnosticPath = loadPath ? loadPath : "unspecified";
+    const bool allowAlphaUpscaling = AllowsFrontendAlpha(diagnosticPath);
     __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG", "[XBRZ-DIAG] CANDIDATE path=%s name=%s size=%dx%d depth=%d pixelFormat=%d alphaDepth=%d sourceLastMip=%d\n",
                 diagnosticPath, diagnosticName, width, height, source->GetDepth(),
                 (int)source->GetPixelFormat(), source->GetAlphaDepth(), lastSourceMip);
@@ -216,12 +227,19 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
         }
         if (!IsFullyOpaque(sourcePixels))
         {
-            // Diagnostic: keep alpha-bearing textures (foliage, lights, decals)
-            // unchanged until their alpha behavior can be validated independently.
-            __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG", "[XBRZ-DIAG] SKIP_BASE_ALPHA path=%s name=%s size=%dx%d\n",
+            if (!allowAlphaUpscaling)
+            {
+                // Keep alpha-bearing world/effect textures unchanged in this
+                // GUI-first experiment.
+                __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG", "[XBRZ-DIAG] SKIP_BASE_ALPHA path=%s name=%s size=%dx%d\n",
+                            diagnosticPath, diagnosticName, width, height);
+                target->Release();
+                return NULL;
+            }
+            // xBRZ's ARGB mode blends colors with their alpha and preserves the
+            // channel in the scaled image. Limit this to frontend.p3d for now.
+            __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG", "[XBRZ-DIAG] ALPHA_ENABLED path=%s name=%s size=%dx%d\n",
                         diagnosticPath, diagnosticName, width, height);
-            target->Release();
-            return NULL;
         }
 
         xbrz::scale(2, sourcePixels.data(), scaledPixels.data(),
@@ -252,7 +270,7 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
                 target->Release();
                 return NULL;
             }
-            if (!IsFullyOpaque(sourcePixels))
+            if (!allowAlphaUpscaling && !IsFullyOpaque(sourcePixels))
             {
                 __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG", "[XBRZ-DIAG] SKIP_MIP_ALPHA path=%s name=%s mip=%d\n",
                             diagnosticPath, diagnosticName, mip);
