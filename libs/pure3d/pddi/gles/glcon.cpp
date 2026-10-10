@@ -23,6 +23,17 @@ static pglContext* gCelShadingContext = nullptr;
 static bool gCelShadingConfigurationLoaded = false;
 static float gFrameSharpenStrength = 0.4f;
 
+static bool gCRTConfigurationLoaded = false;
+static bool gCRTEnabled = false;
+static float gCRTScanlineStrength = 0.35f;
+static float gCRTCurvature = 0.15f;
+static float gCRTGlowStrength = 0.10f;
+static float gCRTCornerDarkening = 0.05f;
+static float gCRTOverscan = 0.0f;
+static float gCRTBrightness = 1.0f;
+static float gCRTContrast = 1.0f;
+
+static const char* CRT_CONFIGURATION_FILE_NAME = "Simpsons_crt_configuration.txt";
 static const char* CEL_SHADING_CONFIGURATION_FILE_NAME = "Simpsons_cel_shading.txt";
 
 static bool ParseCelShadingBool(const char* value, bool defaultValue)
@@ -127,6 +138,112 @@ static void LoadCelShadingConfiguration()
     }
 
     fclose(file);
+}
+
+
+static bool ParseCRTFloatSetting(char* line, const char* key, float* target, float minimum, float maximum)
+{
+    char* value = strstr(line, key);
+    if (value == nullptr)
+        return false;
+    value += strlen(key);
+    char* end = value + strlen(value);
+    while (end > value && (end[-1] == '\n' || end[-1] == '\r' || end[-1] == ' ' || end[-1] == '\t'))
+        --end;
+    *end = '\0';
+    char* parseEnd = nullptr;
+    const float parsed = strtof(value, &parseEnd);
+    if (parseEnd != value && isfinite(parsed))
+        *target = fmaxf(minimum, fminf(maximum, parsed));
+    return true;
+}
+
+static void WriteCRTConfiguration()
+{
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if (storagePath == nullptr || storagePath[0] == '\0')
+        return;
+    char filePath[512];
+    snprintf(filePath, sizeof(filePath), "%s/%s", storagePath, CRT_CONFIGURATION_FILE_NAME);
+    FILE* file = fopen(filePath, "w");
+    if (file == nullptr)
+        return;
+    fprintf(file, "# Simpsons Hit & Run Android - CRT filter (GLES2 CRT-Geom-style)
+");
+    fprintf(file, "# Changes are read on game startup; 0/off bypasses the CRT pass.
+");
+    fprintf(file, "crt_enabled=%d
+", gCRTEnabled ? 1 : 0);
+    fprintf(file, "scanline_strength=%.2f
+", gCRTScanlineStrength);
+    fprintf(file, "curvature=%.2f
+", gCRTCurvature);
+    fprintf(file, "glow_strength=%.2f
+", gCRTGlowStrength);
+    fprintf(file, "corner_darkening=%.2f
+", gCRTCornerDarkening);
+    fprintf(file, "overscan=%.2f
+", gCRTOverscan);
+    fprintf(file, "brightness=%.2f
+", gCRTBrightness);
+    fprintf(file, "contrast=%.2f
+", gCRTContrast);
+    fclose(file);
+}
+
+static void LoadCRTConfiguration()
+{
+    if (gCRTConfigurationLoaded)
+        return;
+    gCRTConfigurationLoaded = true;
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if (storagePath == nullptr || storagePath[0] == '\0')
+        return;
+    char filePath[512];
+    snprintf(filePath, sizeof(filePath), "%s/%s", storagePath, CRT_CONFIGURATION_FILE_NAME);
+    FILE* file = fopen(filePath, "r");
+    if (file == nullptr)
+    {
+        // First run: create a user-editable file, with the CRT effect disabled by default.
+        WriteCRTConfiguration();
+        return;
+    }
+    char line[256];
+    while (fgets(line, sizeof(line), file) != nullptr)
+    {
+        char* enabled = strstr(line, "crt_enabled=");
+        if (enabled != nullptr)
+        {
+            enabled += strlen("crt_enabled=");
+            while (*enabled == ' ' || *enabled == '\t')
+                ++enabled;
+            gCRTEnabled = (*enabled == '1' || strncmp(enabled, "true", 4) == 0 || strncmp(enabled, "on", 2) == 0);
+            continue;
+        }
+        ParseCRTFloatSetting(line, "scanline_strength=", &gCRTScanlineStrength, 0.0f, 1.0f);
+        ParseCRTFloatSetting(line, "curvature=", &gCRTCurvature, 0.0f, 0.5f);
+        ParseCRTFloatSetting(line, "glow_strength=", &gCRTGlowStrength, 0.0f, 1.0f);
+        ParseCRTFloatSetting(line, "corner_darkening=", &gCRTCornerDarkening, 0.0f, 1.0f);
+        ParseCRTFloatSetting(line, "overscan=", &gCRTOverscan, 0.0f, 0.05f);
+        ParseCRTFloatSetting(line, "brightness=", &gCRTBrightness, 0.5f, 1.5f);
+        ParseCRTFloatSetting(line, "contrast=", &gCRTContrast, 0.5f, 1.5f);
+    }
+    fclose(file);
+}
+
+void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature,
+                               float* glowStrength, float* cornerDarkening, float* overscan,
+                               float* brightness, float* contrast)
+{
+    LoadCRTConfiguration();
+    if (enabled) *enabled = gCRTEnabled;
+    if (scanlineStrength) *scanlineStrength = gCRTScanlineStrength;
+    if (curvature) *curvature = gCRTCurvature;
+    if (glowStrength) *glowStrength = gCRTGlowStrength;
+    if (cornerDarkening) *cornerDarkening = gCRTCornerDarkening;
+    if (overscan) *overscan = gCRTOverscan;
+    if (brightness) *brightness = gCRTBrightness;
+    if (contrast) *contrast = gCRTContrast;
 }
 
 bool IsCelShadingEnabled()
