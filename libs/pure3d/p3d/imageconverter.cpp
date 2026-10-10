@@ -84,6 +84,20 @@ tTexture* tImageConverter::ImageToTexture(tImage* image, bool linear)
         }
     }
 
+#ifdef RAD_ANDROID
+    // Trace the sprite/image conversion path separately. This path is currently
+    // kept at native resolution because it previously caused UI layout problems.
+    if (texture != NULL)
+    {
+        const char* diagnosticName = image->GetNameDangerous();
+        if (diagnosticName == NULL || diagnosticName[0] == '\0')
+            diagnosticName = "(unnamed)";
+        p3d::printf("[XBRZ-DIAG] IMAGE_TO_TEXTURE_BYPASS name=%s size=%dx%d depth=%d alpha=%d alphaDepth=%d\\n",
+                    diagnosticName, image->GetWidth(), image->GetHeight(),
+                    image->GetDepth(), image->HasAlpha() ? 1 : 0, image->GetAlphaDepth());
+    }
+#endif
+
 // Diagnostic: image-to-texture conversions also back sprite sections whose
 // UVs are generated from the source image dimensions. Do not upscale here;
 // keep xBRZ limited to complete, regular game textures in the texture loader.
