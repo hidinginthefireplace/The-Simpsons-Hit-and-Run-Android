@@ -19,6 +19,7 @@
 bool IsCelShadingEnabled();
 float GetFrameSharpenStrength();
 void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature, float* glowStrength, float* cornerDarkening, float* overscan, float* brightness, float* contrast);
+void GetCRTPiFilterConfiguration(bool* enabled, float* scanlineStrength, float* scanlineGapBrightness, float* maskStrength, float* bloomFactor, float* curvature, float* brightness, float* contrast);
 
 namespace
 {
@@ -61,9 +62,9 @@ GLint gCRTSceneLocation = -1;
 GLint gCRTTexelLocation = -1;
 GLint gCRTScanlineLocation = -1;
 GLint gCRTCurvatureLocation = -1;
-GLint gCRTGlowLocation = -1;
-GLint gCRTCornersLocation = -1;
-GLint gCRTOverscanLocation = -1;
+GLint gCRTBloomFactorLocation = -1;
+GLint gCRTMaskStrengthLocation = -1;
+GLint gCRTScanlineGapLocation = -1;
 GLint gCRTBrightnessLocation = -1;
 GLint gCRTContrastLocation = -1;
 int gCRTWidth = 0;
@@ -922,13 +923,14 @@ static void ApplyFrameSharpening(int width, int height)
 }
 
 
-static void ApplyCRTFilter(int width, int height)
+static void ApplyCRTPiFilter(int width, int height)
 {
     bool enabled = false;
-    float scanlineStrength = 0.35f, curvature = 0.15f, glowStrength = 0.10f;
-    float cornerDarkening = 0.05f, overscan = 0.0f, brightness = 1.0f, contrast = 1.0f;
-    GetCRTFilterConfiguration(&enabled, &scanlineStrength, &curvature, &glowStrength,
-                              &cornerDarkening, &overscan, &brightness, &contrast);
+    float scanlineStrength = 0.70f, scanlineGapBrightness = 0.12f;
+    float maskStrength = 0.30f, bloomFactor = 1.50f, curvature = 0.0f;
+    float brightness = 1.0f, contrast = 1.0f;
+    GetCRTPiFilterConfiguration(&enabled, &scanlineStrength, &scanlineGapBrightness,
+                                &maskStrength, &bloomFactor, &curvature, &brightness, &contrast);
     // When disabled, return before allocating resources or issuing any CRT draw calls.
     if (!enabled || width <= 0 || height <= 0)
         return;
@@ -943,34 +945,50 @@ static void ApplyCRTFilter(int width, int height)
         const char* fragmentSource =
             "precision mediump float;\n"
             "uniform sampler2D frameTex; uniform vec2 texelSize;\n"
-            "uniform float scanlineStrength; uniform float curvature; uniform float glowStrength;\n"
-            "uniform float cornerDarkening; uniform float overscan; uniform float brightness; uniform float contrast;\n"
+            "uniform float scanlineStrength; uniform float scanlineGapBrightness;\n"
+            "uniform float maskStrength; uniform float bloomFactor; uniform float curvature;\n"
+            "uniform float brightness; uniform float contrast;\n"
             "varying vec2 texcoord;\n"
+            "float scanWeight(float distanceFromLine, float weight, float gap) {\n"
+            " return max(1.0 - distanceFromLine * distanceFromLine * weight, gap);\n"
+            "}\n"
             "void main() {\n"
-            " vec2 uv=(texcoord-0.5)*(1.0+clamp(overscan,0.0,0.05)*2.0)+0.5;\n"
-            " vec2 p=uv*2.0-1.0; float curve=clamp(curvature,0.0,0.5);\n"
-            " uv=(p*(1.0+curve*vec2(p.y*p.y,p.x*p.x)))*0.5+0.5;\n"
-            " if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }\n"
-            " vec3 color=texture2D(frameTex,uv).rgb;\n"
-            " vec3 glow=(texture2D(frameTex,uv+vec2(texelSize.x*1.5,0.0)).rgb+texture2D(frameTex,uv-vec2(texelSize.x*1.5,0.0)).rgb+texture2D(frameTex,uv+vec2(0.0,texelSize.y*1.5)).rgb+texture2D(frameTex,uv-vec2(0.0,texelSize.y*1.5)).rgb)*0.25;\n"
-            " color+=max(glow-vec3(0.68),vec3(0.0))*clamp(glowStrength,0.0,1.0)*0.35;\n"
-            " float scan=0.5+0.5*cos((uv.y/texelSize.y)*3.14159265);\n"
-            " color*=1.0-clamp(scanlineStrength,0.0,1.0)*(0.22*(1.0-scan));\n"
-            " float edge=clamp(length((uv*2.0-1.0)*vec2(0.82,1.0)),0.0,1.4);\n"
-            " color*=1.0-clamp(cornerDarkening,0.0,1.0)*smoothstep(0.55,1.15,edge);\n"
-            " color=(color-vec3(0.5))*clamp(contrast,0.5,1.5)+vec3(0.5);\n"
-            " color*=clamp(brightness,0.5,1.5); gl_FragColor=vec4(clamp(color,0.0,1.0),1.0);\n"
+            " vec2 uv = texcoord;\n"
+            " float curve = clamp(curvature, 0.0, 0.5);\n"
+            " vec2 p = uv * 2.0 - 1.0;\n"
+            " uv = (p * (1.0 + curve * vec2(p.y * p.y, p.x * p.x))) * 0.5 + 0.5;\n"
+            " if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { gl_FragColor = vec4(0.0,0.0,0.0,1.0); return; }\n"
+            " vec2 pixel = uv / texelSize;\n"
+            " float centreY = floor(pixel.y) + 0.5;\n"
+            " float dy = pixel.y - centreY;\n"
+            " float weight = mix(1.0, 6.0, clamp(scanlineStrength, 0.0, 1.0));\n"
+            " float gap = clamp(scanlineGapBrightness, 0.02, 1.0);\n"
+            " float scan = (scanWeight(dy, weight, gap) + scanWeight(dy - 0.3333333, weight, gap) + scanWeight(dy + 0.3333333, weight, gap)) * 0.3333333;\n"
+            " float yOffset = sign(dy) * dy * dy * dy * dy * 8.0;\n"
+            " vec2 sampleUV = vec2(uv.x, (centreY + yOffset) * texelSize.y);\n"
+            " vec3 colour = texture2D(frameTex, sampleUV).rgb;\n"
+            " colour = pow(max(colour, vec3(0.0)), vec3(2.4));\n"
+            " colour *= scan * clamp(bloomFactor, 0.0, 3.0);\n"
+            " colour = pow(max(colour, vec3(0.0)), vec3(1.0 / 2.2));\n"
+            " float maskPhase = mod(floor(gl_FragCoord.x), 2.0);\n"
+            " float maskDarkness = clamp(maskStrength, 0.0, 0.75);\n"
+            " vec3 maskA = vec3(1.0 - maskDarkness, 1.0, 1.0 - maskDarkness);\n"
+            " vec3 maskB = vec3(1.0, 1.0 - maskDarkness, 1.0);\n"
+            " colour *= mix(maskA, maskB, maskPhase);\n"
+            " colour = (colour - vec3(0.5)) * clamp(contrast, 0.5, 1.5) + vec3(0.5);\n"
+            " colour *= clamp(brightness, 0.5, 1.5);\n"
+            " gl_FragColor = vec4(clamp(colour, 0.0, 1.0), 1.0);\n"
             "}\n";
-        gCRTProgram = CreateCelPostProgram(vertexSource, fragmentSource, "CRT-Geom-style fullscreen filter");
+        gCRTProgram = CreateCelPostProgram(vertexSource, fragmentSource, "CRT-Pi-style fullscreen filter");
         if (gCRTProgram != 0)
         {
             gCRTSceneLocation = glGetUniformLocation(gCRTProgram, "frameTex");
             gCRTTexelLocation = glGetUniformLocation(gCRTProgram, "texelSize");
             gCRTScanlineLocation = glGetUniformLocation(gCRTProgram, "scanlineStrength");
             gCRTCurvatureLocation = glGetUniformLocation(gCRTProgram, "curvature");
-            gCRTGlowLocation = glGetUniformLocation(gCRTProgram, "glowStrength");
-            gCRTCornersLocation = glGetUniformLocation(gCRTProgram, "cornerDarkening");
-            gCRTOverscanLocation = glGetUniformLocation(gCRTProgram, "overscan");
+            gCRTBloomFactorLocation = glGetUniformLocation(gCRTProgram, "bloomFactor");
+            gCRTMaskStrengthLocation = glGetUniformLocation(gCRTProgram, "maskStrength");
+            gCRTScanlineGapLocation = glGetUniformLocation(gCRTProgram, "scanlineGapBrightness");
             gCRTBrightnessLocation = glGetUniformLocation(gCRTProgram, "brightness");
             gCRTContrastLocation = glGetUniformLocation(gCRTProgram, "contrast");
             const GLfloat quad[] = {-1.0f,-1.0f, 1.0f,-1.0f, -1.0f,1.0f, 1.0f,1.0f};
@@ -1023,9 +1041,9 @@ static void ApplyCRTFilter(int width, int height)
     if (gCRTTexelLocation>=0) glUniform2f(gCRTTexelLocation,1.0f/(float)width,1.0f/(float)height);
     if (gCRTScanlineLocation>=0) glUniform1f(gCRTScanlineLocation,scanlineStrength);
     if (gCRTCurvatureLocation>=0) glUniform1f(gCRTCurvatureLocation,curvature);
-    if (gCRTGlowLocation>=0) glUniform1f(gCRTGlowLocation,glowStrength);
-    if (gCRTCornersLocation>=0) glUniform1f(gCRTCornersLocation,cornerDarkening);
-    if (gCRTOverscanLocation>=0) glUniform1f(gCRTOverscanLocation,overscan);
+    if (gCRTBloomFactorLocation>=0) glUniform1f(gCRTBloomFactorLocation,bloomFactor);
+    if (gCRTMaskStrengthLocation>=0) glUniform1f(gCRTMaskStrengthLocation,maskStrength);
+    if (gCRTScanlineGapLocation>=0) glUniform1f(gCRTScanlineGapLocation,scanlineGapBrightness);
     if (gCRTBrightnessLocation>=0) glUniform1f(gCRTBrightnessLocation,brightness);
     if (gCRTContrastLocation>=0) glUniform1f(gCRTContrastLocation,contrast);
     glBindBuffer(GL_ARRAY_BUFFER,gCRTVbo);
@@ -1597,7 +1615,7 @@ void pglDisplay::SwapBuffers(void)
 {
 #ifdef RAD_ANDROID
     ApplyFrameSharpening(winWidth, winHeight);
-    ApplyCRTFilter(winWidth, winHeight);
+    ApplyCRTPiFilter(winWidth, winHeight);
 #endif
     SDL_GL_SwapWindow(win);
     reset = false;
