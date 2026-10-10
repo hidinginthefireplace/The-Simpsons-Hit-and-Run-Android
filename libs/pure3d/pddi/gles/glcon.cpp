@@ -376,6 +376,8 @@ static void ApplyCelShadingState()
 void SetCelShadingEnabled(bool enabled)
 {
     LoadCelShadingConfiguration();
+    // Preserve a legacy sharpening value before rewriting the old combined file.
+    LoadSharpeningConfiguration();
     gCelShadingEnabled = enabled;
     WriteCelShadingConfiguration();
     ApplyCelShadingState();
