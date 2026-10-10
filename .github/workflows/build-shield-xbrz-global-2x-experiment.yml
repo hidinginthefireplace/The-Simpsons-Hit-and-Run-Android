@@ -1,0 +1,86 @@
+name: Build Shield Global xBRZ 2x Texture Experiment
+
+on:
+  push:
+    branches:
+      - android11-shield-xbrz-global-2x-experiment
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Install Android build dependencies
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "cmake;4.1.2" "ndk;28.2.13676358"
+
+      - name: Install FFmpeg Prefab dependency
+        run: |
+          mkdir -p "$HOME/.m2/repository"
+          curl -fL --retry 3 -o /tmp/ffmpeg-prefab.tar.xz "https://github.com/leleliu008/ndk-pkg-prefab-aar-maven-repo/releases/download/2023.08.14.00.12/2023.08.14.00.12-com-fpliu-ndk-pkg-prefab-android-21-ffmpeg-6.0.tar.xz"
+          tar -xJf /tmp/ffmpeg-prefab.tar.xz --strip-components=1 -C "$HOME/.m2/repository"
+
+      - name: Build release APK
+        working-directory: android-project
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleRelease
+
+      - name: Sign release APK
+        working-directory: android-project
+        run: |
+          APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          KEYSTORE="$RUNNER_TEMP/release.keystore"
+          keytool -genkeypair -v \
+            -keystore "$KEYSTORE" \
+            -storepass android \
+            -keypass android \
+            -alias androidrelease \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Simpsons Hit and Run Android, OU=Build, O=Community, C=US"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
+            --ks "$KEYSTORE" \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out app/build/outputs/apk/release/app-release.apk \
+            "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+          rm -f "$APK"
+
+      - name: Upload xBRZ 2x experimental APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Simpsons-Hit-and-Run-xBRZ-Global-2x-Experiment
+          path: android-project/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+# Stable baseline: sharpen selected tree-shadow and bee-shadow textures only while
+# cel shading is enabled. Original alpha is restored when cel shading is disabled.
+# No experimental mesh replacement or temporary shadow diagnostic logging is enabled.
+# Original P3D/BMP assets are unchanged.
+
+# Experimental behavior: xBRZ 2x is attempted across GUI, world, character,
+# vehicle, and effects texture-loading paths, independently of cel shading.
+# DXT1/DXT3/DXT5 are decoded before scaling; unsupported formats and textures
+# beyond the scaler's existing safety limits retain their original data.
+# This workflow is isolated on android11-shield-xbrz-global-2x-experiment.
