@@ -75,4 +75,5 @@ jobs:
           if-no-files-found: error
 
 # Diagnostic only: highlight any object using the shared treeshadowsmall drawable in bright magenta.
-# Marker footprint is enlarged to make detection obvious. Character and vehicle toon-shadow code is unchanged.
+# Marker footprint is enlarged to make detection obvious.
+# Diagnostic run intentionally does not modify the working character/vehicle toon-shadow implementation. Character and vehicle toon-shadow code is unchanged.
