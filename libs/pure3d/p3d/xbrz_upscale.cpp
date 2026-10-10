@@ -3,6 +3,7 @@
 // check fails. The returned texture is owned by the caller and replaces source.
 #include <p3d/texture.hpp>
 #include <p3d/context.hpp>
+#include <p3d/utility.hpp> // p3d::printf for xBRZ diagnostic logging
 #include <pddi/pddi.hpp>
 #include <pddi/pddienum.hpp>
 #include <p3d/xbrz/xbrz.h>
