@@ -559,6 +559,14 @@ tLoadStatus tImageHandler::Load(tFile* file, tEntityStore* store)
         if(texture)
         {
             texture->SetName(name);
+#ifdef RAD_ANDROID
+            tTexture* upscaledTexture = CreateXbrz2xTexture(texture);
+            if (upscaledTexture != NULL)
+            {
+                texture->Release();
+                texture = upscaledTexture;
+            }
+#endif
             store->Store(texture);
             status = LOAD_OK;
         }
@@ -620,7 +628,8 @@ void tImageHandler::SetNativeResolution( const int nativeX, const int nativeY )
 //-------------------------------------------------------------------
 // tImageFactory
 tImageFactory::tImageFactory() :
-    nHandler(0), ignoreExt(false), autoStore(false), hasAlpha(false), desiredDepth(32),
+    nHandler(0), ignoreExt(false), autoStore(false), hasAlpha(false),
+    deferXbrzUpscale(false), desiredDepth(32),
     alphaDepthHint(8), nMipHint(0), typeHint(PDDI_TEXTYPE_RGB), usageHint(PDDI_USAGE_STATIC)
 {
     converter = new tImageConverter;
@@ -771,6 +780,17 @@ tTexture* tImageFactory::LoadAsTexture(char* filename, char* inventoryName)
         if(texture)
         {
             inventoryName ? texture->SetName(inventoryName) : texture->SetName(file->GetFilename());
+#ifdef RAD_ANDROID
+            if (!deferXbrzUpscale)
+            {
+                tTexture* upscaledTexture = CreateXbrz2xTexture(texture);
+                if (upscaledTexture != NULL)
+                {
+                    texture->Release();
+                    texture = upscaledTexture;
+                }
+            }
+#endif
             if(autoStore)
             {
                 p3d::inventory->Store(texture);
@@ -805,6 +825,17 @@ tTexture* tImageFactory::ParseAsTexture( tFile* file, char* inventoryName, const
     if(texture)
     {
         inventoryName ? texture->SetName(inventoryName) : texture->SetName(file->GetFilename());
+#ifdef RAD_ANDROID
+            if (!deferXbrzUpscale)
+            {
+                tTexture* upscaledTexture = CreateXbrz2xTexture(texture);
+                if (upscaledTexture != NULL)
+                {
+                    texture->Release();
+                    texture = upscaledTexture;
+                }
+            }
+#endif
         if(autoStore)
         {
             p3d::inventory->Store(texture);

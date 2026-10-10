@@ -113,6 +113,7 @@ class tImageFactory
 
         void SetAutoStore(bool store)        { autoStore = store; }
         bool GetAutoStore(void) const        { return autoStore; }
+        void SetDeferXbrzUpscale(bool defer)   { deferXbrzUpscale = defer; }
 
         void SetAlpha(bool alpha)            { hasAlpha = alpha; }
         bool GetAlpha(void) const            { return hasAlpha; }
@@ -134,6 +135,7 @@ class tImageFactory
         bool ignoreExt;
         bool autoStore;
         bool hasAlpha;
+        bool deferXbrzUpscale;
         int desiredDepth;
         bool fullName;
 

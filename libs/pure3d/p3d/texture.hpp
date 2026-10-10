@@ -55,6 +55,8 @@ protected:
 // Runtime alpha remapping for selected tree-shadow and bee-shadow textures. Original data is kept in
 // memory and restored whenever cel shading is disabled.
 void UpdateSelectedShadowAlphaForCelState();
+// Creates a replacement texture at 2x dimensions, or returns NULL to retain source.
+tTexture* CreateXbrz2xTexture(tTexture* source);
 #endif
 
 class tImageFactory;

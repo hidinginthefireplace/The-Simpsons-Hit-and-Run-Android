@@ -84,6 +84,17 @@ tTexture* tImageConverter::ImageToTexture(tImage* image, bool linear)
         }
     }
 
+#ifdef RAD_ANDROID
+    if (texture != NULL)
+    {
+        tTexture* upscaledTexture = CreateXbrz2xTexture(texture);
+        if (upscaledTexture != NULL)
+        {
+            texture->Release();
+            texture = upscaledTexture;
+        }
+    }
+#endif
     return texture;
 }
 

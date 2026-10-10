@@ -103,6 +103,12 @@ set(P3D_SOURCES
 	"p3d/vertexlist.cpp"
 	"p3d/view.cpp"
 )
+if(ANDROID)
+    list(APPEND P3D_SOURCES
+        "p3d/xbrz/xbrz.cpp"
+        "p3d/xbrz_upscale.cpp"
+    )
+endif()
 if (WIN32)
 	list(APPEND P3D_SOURCES "p3d/platform/win32/plat_filemap.cpp")
 endif()

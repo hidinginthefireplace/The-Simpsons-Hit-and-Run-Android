@@ -458,6 +458,9 @@ tTexture* tTextureLoader::LoadTexture(tChunkFile* f)
 
     imageFactory->SetDesiredDepth(bpp);
     imageFactory->SetTextureHints(alphaDepth, numMipMaps, textureType, usage);
+#ifdef RAD_ANDROID
+    imageFactory->SetDeferXbrzUpscale(true);
+#endif
 
     tTexture* texture = NULL;
 
@@ -495,11 +498,20 @@ tTexture* tTextureLoader::LoadTexture(tChunkFile* f)
         }
         f->EndChunk();
     }
+#ifdef RAD_ANDROID
+    imageFactory->SetDeferXbrzUpscale(false);
+#endif
     if (texture != NULL)
     {
         texture->SetName(name);
         texture->SetPriority(priority);
 #ifdef RAD_ANDROID
+        tTexture* upscaledTexture = CreateXbrz2xTexture(texture);
+        if (upscaledTexture != NULL)
+        {
+            texture->Release();
+            texture = upscaledTexture;
+        }
         RegisterSelectedShadowTexture(texture, name);
 #endif
     }
