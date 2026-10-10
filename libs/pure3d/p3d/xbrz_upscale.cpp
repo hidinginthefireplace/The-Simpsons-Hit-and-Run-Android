@@ -8,6 +8,7 @@
 #endif // RAD_ANDROID
 #include <pddi/pddi.hpp>
 #include <pddi/pddienum.hpp>
+#include <pddi/gles/decompress.hpp>
 #include <p3d/xbrz/xbrz.h>
 #include <vector>
 #include <cstring>
@@ -60,21 +61,98 @@ namespace
             texture->Unlock(mip);
             return false;
         }
-        // GLES stores RGB888 textures in a 32-bit backing buffer, but the
-        // upper byte is not an alpha channel. Accept it only as 4 bytes/pixel,
-        // then explicitly force alpha opaque before passing pixels to xBRZ.
-        // Compressed formats (DXT1/3/5) remain rejected here.
-        const bool rgb888 = lock->format == PDDI_PIXEL_RGB888;
-        if (lock->format != PDDI_PIXEL_ARGB8888 && !rgb888)
+        if (lock->width != expectedWidth || lock->height != expectedHeight)
         {
-            LogReadMipFailure(diagnosticPath, diagnosticName, mip, "FORMAT",
+            LogReadMipFailure(diagnosticPath, diagnosticName, mip, "DIMENSIONS",
                               lock, expectedWidth, expectedHeight);
             texture->Unlock(mip);
             return false;
         }
-        if (lock->width != expectedWidth || lock->height != expectedHeight)
+
+        // Support the compressed formats used by the existing GLES backend.
+        // Lock() exposes DXT data as block-compressed bytes, not 4 bytes/pixel.
+        // Decode only the formats the renderer itself knows how to decode;
+        // unsupported DXT2/DXT4 and other formats still fall back unchanged.
+        const bool dxt1 = lock->format == PDDI_PIXEL_DXT1;
+        const bool dxt3 = lock->format == PDDI_PIXEL_DXT3;
+        const bool dxt5 = lock->format == PDDI_PIXEL_DXT5;
+        if (dxt1 || dxt3 || dxt5)
         {
-            LogReadMipFailure(diagnosticPath, diagnosticName, mip, "DIMENSIONS",
+            const size_t blocksWide = ((size_t)expectedWidth + 3U) / 4U;
+            const size_t blocksHigh = ((size_t)expectedHeight + 3U) / 4U;
+            const size_t blockBytes = dxt1 ? 8U : 16U;
+            const size_t compressedRowBytes = blocksWide * blockBytes;
+            if (lock->pitch <= 0 ||
+                (size_t)lock->pitch < compressedRowBytes)
+            {
+                LogReadMipFailure(diagnosticPath, diagnosticName, mip,
+                                  "COMPRESSED_PITCH_TOO_SMALL",
+                                  lock, expectedWidth, expectedHeight);
+                texture->Unlock(mip);
+                return false;
+            }
+
+            // The decoder expects tightly packed block rows. Copy using the
+            // pitch reported by the backend so padding cannot corrupt a row.
+            std::vector<uint8_t> compressed(compressedRowBytes * blocksHigh);
+            const uint8_t* compressedRow = (const uint8_t*)lock->bits;
+            for (size_t y = 0; y < blocksHigh; ++y)
+            {
+                memcpy(compressed.data() + y * compressedRowBytes,
+                       compressedRow + y * (size_t)lock->pitch,
+                       compressedRowBytes);
+            }
+
+            std::vector<unsigned char> rgba(
+                (size_t)expectedWidth * (size_t)expectedHeight * 4U);
+            if (dxt1)
+            {
+                BlockDecompressImageBC1((uint32_t)expectedWidth,
+                                        (uint32_t)expectedHeight,
+                                        compressed.data(), rgba.data());
+            }
+            else if (dxt3)
+            {
+                BlockDecompressImageBC2((uint32_t)expectedWidth,
+                                        (uint32_t)expectedHeight,
+                                        compressed.data(), rgba.data());
+            }
+            else
+            {
+                BlockDecompressImageBC3((uint32_t)expectedWidth,
+                                        (uint32_t)expectedHeight,
+                                        compressed.data(), rgba.data());
+            }
+
+            // decompress.hpp returns bytes in RGBA order. Convert to the
+            // canonical numeric 0xAARRGGBB format used by xBRZ and retain the
+            // original alpha channel (including DXT1 transparent pixels).
+            pixels.resize((size_t)expectedWidth * (size_t)expectedHeight);
+            for (size_t i = 0; i < pixels.size(); ++i)
+            {
+                const uint32_t r = rgba[i * 4U + 0U];
+                const uint32_t g = rgba[i * 4U + 1U];
+                const uint32_t b = rgba[i * 4U + 2U];
+                const uint32_t a = rgba[i * 4U + 3U];
+                pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
+            }
+            texture->Unlock(mip);
+            __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+                "[XBRZ-DIAG] FORMAT_DECODED path=%s name=%s mip=%d codec=%s size=%dx%d",
+                diagnosticPath ? diagnosticPath : "unspecified",
+                diagnosticName ? diagnosticName : "(unnamed)", mip,
+                dxt1 ? "DXT1" : (dxt3 ? "DXT3" : "DXT5"),
+                expectedWidth, expectedHeight);
+            return true;
+        }
+
+        // GLES stores RGB888 textures in a 32-bit backing buffer, but the
+        // upper byte is not an alpha channel. Accept it only as 4 bytes/pixel,
+        // then explicitly force alpha opaque before passing pixels to xBRZ.
+        const bool rgb888 = lock->format == PDDI_PIXEL_RGB888;
+        if (lock->format != PDDI_PIXEL_ARGB8888 && !rgb888)
+        {
+            LogReadMipFailure(diagnosticPath, diagnosticName, mip, "FORMAT",
                               lock, expectedWidth, expectedHeight);
             texture->Unlock(mip);
             return false;
@@ -132,72 +210,19 @@ namespace
         return true;
     }
 
-    // Match the source container filename (not just a generic load path), so
-    // this diagnostic build upscales only known front-end/UI asset containers.
-    // World and effect containers remain untouched until the GUI pass is validated.
-    bool PathHasFilename(const char* diagnosticPath, const char* expectedFilename)
+    // Global experiment policy: any texture-loading path may attempt xBRZ.
+    // The scaler's dimension, memory, format, and allocation guards still apply;
+    // anything unsupported is left as the original texture.
+    bool AllowsXbrzUpscaling(const char* diagnosticPath)
     {
-        if (diagnosticPath == NULL || expectedFilename == NULL)
-            return false;
-
-        const char* file = strstr(diagnosticPath, "file=");
-        if (file == NULL)
-            return false;
-        file += 5;
-
-        const char* end = file;
-        while (*end != '\0' && *end != ' ' && *end != '\t' &&
-               *end != '\r' && *end != '\n')
-        {
-            ++end;
-        }
-
-        const char* basename = file;
-        for (const char* p = file; p < end; ++p)
-        {
-            if (*p == '/' || *p == '\\')
-                basename = p + 1;
-        }
-
-        const size_t basenameLength = (size_t)(end - basename);
-        if (basenameLength != strlen(expectedFilename))
-            return false;
-
-        for (size_t i = 0; i < basenameLength; ++i)
-        {
-            if (tolower((unsigned char)basename[i]) !=
-                tolower((unsigned char)expectedFilename[i]))
-                return false;
-        }
-        return true;
+        return diagnosticPath != NULL && diagnosticPath[0] != '\0';
     }
 
-    bool IsScroobySpriteSectionPath(const char* diagnosticPath)
+    // Alpha-bearing textures are included in this experiment. The ARGB-aware
+    // scaler handles alpha, while DXT1/3/5 inputs are decoded before scaling.
+    bool AllowsAlphaUpscaling(const char* diagnosticPath)
     {
-        return diagnosticPath != NULL &&
-               strcmp(diagnosticPath, "SCROOBY_SPRITE_SECTION") == 0;
-    }
-
-    bool AllowsGuiUpscaling(const char* diagnosticPath)
-    {
-        // Explicit call from tSprite::BuildTexture for Scrooby/UI image sections.
-        if (IsScroobySpriteSectionPath(diagnosticPath))
-            return true;
-
-        return PathHasFilename(diagnosticPath, "frontend.p3d") ||
-               PathHasFilename(diagnosticPath, "backend.p3d") ||
-               PathHasFilename(diagnosticPath, "bootup.p3d") ||
-               PathHasFilename(diagnosticPath, "language.p3d") ||
-               PathHasFilename(diagnosticPath, "loading1.p3d") ||
-               PathHasFilename(diagnosticPath, "licensep.p3d");
-    }
-
-    // Alpha-aware xBRZ is safe to try for the explicit Scrooby sprite-section
-    // route and frontend.p3d. World/effect texture paths remain excluded.
-    bool AllowsFrontendAlpha(const char* diagnosticPath)
-    {
-        return IsScroobySpriteSectionPath(diagnosticPath) ||
-               PathHasFilename(diagnosticPath, "frontend.p3d");
+        return diagnosticPath != NULL && diagnosticPath[0] != '\0';
     }
 
     bool WriteArgbMip(tTexture* texture, int mip, int expectedWidth,
@@ -283,9 +308,10 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
     const char* diagnosticName = source->GetNameDangerous();
     if (diagnosticName == NULL || diagnosticName[0] == '\0')
         diagnosticName = "(unnamed)";
-    // Keep this experiment limited to known GUI/start-up P3D containers and
-    // the explicit Scrooby sprite-section path.
-    if (!AllowsGuiUpscaling(diagnosticPath))
+    // Global xBRZ 2x experiment: include GUI, world, character, vehicle,
+    // and effects textures on all supported loading paths. Unsupported formats
+    // and textures over the existing safety limits retain their original data.
+    if (!AllowsXbrzUpscaling(diagnosticPath))
     {
         __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
             "[XBRZ-DIAG] SKIP_EARLY path=%s reason=PATH_NOT_ALLOWED name=%s size=%dx%d",
@@ -293,7 +319,7 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
         return NULL;
     }
 
-    const bool allowAlphaUpscaling = AllowsFrontendAlpha(diagnosticPath);
+    const bool allowAlphaUpscaling = AllowsAlphaUpscaling(diagnosticPath);
     __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG", "[XBRZ-DIAG] CANDIDATE path=%s name=%s size=%dx%d depth=%d pixelFormat=%d alphaDepth=%d sourceLastMip=%d\n",
                 diagnosticPath, diagnosticName, width, height, source->GetDepth(),
                 (int)source->GetPixelFormat(), source->GetAlphaDepth(), lastSourceMip);
