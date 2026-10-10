@@ -239,10 +239,26 @@ namespace
 
 tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
 {
-    if (source == NULL || source->GetTexture() == NULL ||
-        source->HasOriginalSize())
+    const char* diagnosticPath = loadPath ? loadPath : "unspecified";
+    if (source == NULL)
     {
-        // Never upscale a texture object twice.
+        __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+            "[XBRZ-DIAG] SKIP_EARLY path=%s reason=SOURCE_NULL", diagnosticPath);
+        return NULL;
+    }
+    if (source->GetTexture() == NULL)
+    {
+        __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+            "[XBRZ-DIAG] SKIP_EARLY path=%s reason=TEXTURE_NULL name=%s",
+            diagnosticPath, source->GetNameDangerous() ? source->GetNameDangerous() : "(unnamed)");
+        return NULL;
+    }
+    if (source->HasOriginalSize())
+    {
+        __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+            "[XBRZ-DIAG] SKIP_EARLY path=%s reason=ALREADY_UPSCALED name=%s original=%dx%d",
+            diagnosticPath, source->GetNameDangerous() ? source->GetNameDangerous() : "(unnamed)",
+            source->GetOriginalWidth(), source->GetOriginalHeight());
         return NULL;
     }
     const int width = source->GetWidth();
@@ -252,7 +268,12 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
         width > MAX_XBRZ_TEXTURE_DIMENSION / 2 ||
         height > MAX_XBRZ_TEXTURE_DIMENSION / 2 ||
         lastSourceMip < 0 || lastSourceMip > 12)
+    {
+        __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+            "[XBRZ-DIAG] SKIP_EARLY path=%s reason=INVALID_DIM_OR_MIP size=%dx%d sourceLastMip=%d",
+            diagnosticPath, width, height, lastSourceMip);
         return NULL;
+    }
 
     const int targetWidth = width * 2;
     const int targetHeight = height * 2;
@@ -262,11 +283,15 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
     const char* diagnosticName = source->GetNameDangerous();
     if (diagnosticName == NULL || diagnosticName[0] == '\0')
         diagnosticName = "(unnamed)";
-    const char* diagnosticPath = loadPath ? loadPath : "unspecified";
-    // Keep this experiment limited to known GUI/start-up P3D containers.
-    // The source filename is supplied by both image-factory and chunk paths.
+    // Keep this experiment limited to known GUI/start-up P3D containers and
+    // the explicit Scrooby sprite-section path.
     if (!AllowsGuiUpscaling(diagnosticPath))
+    {
+        __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+            "[XBRZ-DIAG] SKIP_EARLY path=%s reason=PATH_NOT_ALLOWED name=%s size=%dx%d",
+            diagnosticPath, diagnosticName, width, height);
         return NULL;
+    }
 
     const bool allowAlphaUpscaling = AllowsFrontendAlpha(diagnosticPath);
     __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG", "[XBRZ-DIAG] CANDIDATE path=%s name=%s size=%dx%d depth=%d pixelFormat=%d alphaDepth=%d sourceLastMip=%d\n",
@@ -279,6 +304,9 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
         target->GetTexture() == NULL ||
         target->GetWidth() != targetWidth || target->GetHeight() != targetHeight)
     {
+        __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+            "[XBRZ-DIAG] SKIP_EARLY path=%s reason=TARGET_CREATE_FAILED source=%dx%d target=%dx%d",
+            diagnosticPath, width, height, targetWidth, targetHeight);
         target->Release();
         return NULL;
     }
@@ -317,6 +345,9 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
                     width, height, xbrz::ColorFormat::ARGB_UNBUFFERED);
         if (!WriteArgbMip(target, 0, targetWidth, targetHeight, scaledPixels))
         {
+            __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+                "[XBRZ-DIAG] SKIP_BASE_WRITE path=%s name=%s target=%dx%d",
+                diagnosticPath, diagnosticName, targetWidth, targetHeight);
             target->Release();
             return NULL;
         }

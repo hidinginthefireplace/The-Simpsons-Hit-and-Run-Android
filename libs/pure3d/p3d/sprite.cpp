@@ -14,6 +14,9 @@
 #include <constants/chunkids.hpp>
 #include <p3d/shader.hpp>
 #include <p3d/targa.hpp>
+#ifdef RAD_ANDROID
+#include <android/log.h>
+#endif
 
 static const int IMAGE_VERSION = 14000;
 
@@ -521,6 +524,17 @@ void tSprite::BuildTexture(int texNum, tRect& src, int newX, int newY, tImage* i
     // Scrooby UI sprites are assembled from cropped image sections. Upscale only
     // this explicit sprite-section path, not every texture converted by Pure3D.
     // Linear sprites use pixel-space UVs and must keep their original resolution.
+    if (textures[texNum] != NULL)
+    {
+        const char* spriteImageName = image->GetNameDangerous();
+        if (spriteImageName == NULL || spriteImageName[0] == '\0')
+            spriteImageName = "(unnamed)";
+        __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+            "[XBRZ-DIAG] SPRITE_SECTION_CALL name=%s section=%d size=%dx%d depth=%d alpha=%d alphaDepth=%d linear=%d",
+            spriteImageName, texNum, buffer->GetWidth(), buffer->GetHeight(),
+            buffer->GetDepth(), buffer->HasAlpha() ? 1 : 0,
+            buffer->GetAlphaDepth(), linear ? 1 : 0);
+    }
     if (!linear && textures[texNum] != NULL)
     {
         tTexture* upscaledTexture =
@@ -529,6 +543,15 @@ void tSprite::BuildTexture(int texNum, tRect& src, int newX, int newY, tImage* i
         {
             textures[texNum]->Release();
             textures[texNum] = upscaledTexture;
+            __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+                "[XBRZ-DIAG] SPRITE_SECTION_REPLACED section=%d size=%dx%d",
+                texNum, textures[texNum]->GetWidth(), textures[texNum]->GetHeight());
+        }
+        else
+        {
+            __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+                "[XBRZ-DIAG] SPRITE_SECTION_UNCHANGED section=%d source=%dx%d",
+                texNum, textures[texNum]->GetWidth(), textures[texNum]->GetHeight());
         }
     }
 #endif
