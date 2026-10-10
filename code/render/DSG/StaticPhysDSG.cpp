@@ -43,12 +43,13 @@ bool IsCelShadingEnabled();
 // collision
 const float STAT_PHYS_MASS_IMPULSE_PARTICLE_BIAS = 10.0f;
 
+static const float SMALL_TREE_TOON_SHADOW_FALLBACK_RADIUS_X = 1.15f;
+static const float SMALL_TREE_TOON_SHADOW_FALLBACK_RADIUS_Z = 1.15f;
+
 #ifdef RAD_ANDROID
 namespace
 {
     const int SMALL_TREE_TOON_SHADOW_SLICES = 32;
-    const float SMALL_TREE_TOON_SHADOW_FALLBACK_RADIUS_X = 1.15f;
-    const float SMALL_TREE_TOON_SHADOW_FALLBACK_RADIUS_Z = 1.15f;
 
     bool IsSmallTreeShadowTarget(const char* objectName, const char* shadowName)
     {
