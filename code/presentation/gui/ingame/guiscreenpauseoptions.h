@@ -52,10 +52,6 @@ protected:
 	void InitOutro();
 
 private:
-#ifdef RAD_ANDROID
-    void SetGraphicsSettingsMode( bool enabled, bool resetSelection = true );
-    bool m_graphicsSettingsMode;
-#endif
     CGuiMenu* m_pMenu;
 
 };
