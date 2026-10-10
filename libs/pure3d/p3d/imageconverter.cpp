@@ -92,7 +92,7 @@ tTexture* tImageConverter::ImageToTexture(tImage* image, bool linear)
         const char* diagnosticName = image->GetNameDangerous();
         if (diagnosticName == NULL || diagnosticName[0] == '\0')
             diagnosticName = "(unnamed)";
-        p3d::printf("[XBRZ-DIAG] IMAGE_TO_TEXTURE_BYPASS name=%s size=%dx%d depth=%d alpha=%d alphaDepth=%d\\n",
+        p3d::printf("[XBRZ-DIAG] IMAGE_TO_TEXTURE_BYPASS name=%s size=%dx%d depth=%d alpha=%d alphaDepth=%d\n",
                     diagnosticName, image->GetWidth(), image->GetHeight(),
                     image->GetDepth(), image->HasAlpha() ? 1 : 0, image->GetAlphaDepth());
     }
