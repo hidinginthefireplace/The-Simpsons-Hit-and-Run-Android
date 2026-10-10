@@ -27,8 +27,9 @@ namespace
             if (lock != NULL) texture->Unlock(mip);
             return false;
         }
-        if ((lock->format != PDDI_PIXEL_ARGB8888 &&
-             lock->format != PDDI_PIXEL_RGB888) ||
+        // Diagnostic safety gate: do not process RGB888/no-alpha textures yet.
+        // They remain unchanged until their exact lock-buffer semantics are verified.
+        if (lock->format != PDDI_PIXEL_ARGB8888 ||
             lock->width != expectedWidth || lock->height != expectedHeight ||
             lock->pitch == 0 ||
             (lock->pitch < 0 ? -lock->pitch : lock->pitch) < expectedWidth * 4)
@@ -51,10 +52,6 @@ namespace
                     (((packed & lock->rgbaMask[1]) >> lock->rgbaLShift[1]) << lock->rgbaRShift[1]) |
                     (((packed & lock->rgbaMask[2]) >> lock->rgbaLShift[2]) << lock->rgbaRShift[2]) |
                     (((packed & lock->rgbaMask[3]) >> lock->rgbaLShift[3]) << lock->rgbaRShift[3]);
-                if (lock->format == PDDI_PIXEL_RGB888)
-                {
-                    canonical |= 0xff000000U;
-                }
                 pixels[(size_t)y * (size_t)expectedWidth + (size_t)x] = canonical;
             }
             row += lock->pitch;
