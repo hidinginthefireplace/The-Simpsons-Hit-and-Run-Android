@@ -84,17 +84,9 @@ tTexture* tImageConverter::ImageToTexture(tImage* image, bool linear)
         }
     }
 
-#ifdef RAD_ANDROID
-    if (texture != NULL)
-    {
-        tTexture* upscaledTexture = CreateXbrz2xTexture(texture);
-        if (upscaledTexture != NULL)
-        {
-            texture->Release();
-            texture = upscaledTexture;
-        }
-    }
-#endif
+// Diagnostic: image-to-texture conversions also back sprite sections whose
+// UVs are generated from the source image dimensions. Do not upscale here;
+// keep xBRZ limited to complete, regular game textures in the texture loader.
     return texture;
 }
 
