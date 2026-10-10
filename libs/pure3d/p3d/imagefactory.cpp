@@ -560,7 +560,10 @@ tLoadStatus tImageHandler::Load(tFile* file, tEntityStore* store)
         {
             texture->SetName(name);
 #ifdef RAD_ANDROID
-            tTexture* upscaledTexture = CreateXbrz2xTexture(texture, "IMAGE_HANDLER_LOAD");
+            char diagnosticPath[256];
+            snprintf(diagnosticPath, sizeof(diagnosticPath), "IMAGE_HANDLER_LOAD file=%s",
+                     file->GetFilename() ? file->GetFilename() : "(unknown)");
+            tTexture* upscaledTexture = CreateXbrz2xTexture(texture, diagnosticPath);
             if (upscaledTexture != NULL)
             {
                 texture->Release();
@@ -783,7 +786,10 @@ tTexture* tImageFactory::LoadAsTexture(char* filename, char* inventoryName)
 #ifdef RAD_ANDROID
             if (!deferXbrzUpscale)
             {
-                tTexture* upscaledTexture = CreateXbrz2xTexture(texture, "IMAGE_FACTORY_LOAD");
+                char diagnosticPath[256];
+                snprintf(diagnosticPath, sizeof(diagnosticPath), "IMAGE_FACTORY_LOAD file=%s",
+                         file->GetFilename() ? file->GetFilename() : "(unknown)");
+                tTexture* upscaledTexture = CreateXbrz2xTexture(texture, diagnosticPath);
                 if (upscaledTexture != NULL)
                 {
                     texture->Release();
@@ -828,7 +834,10 @@ tTexture* tImageFactory::ParseAsTexture( tFile* file, char* inventoryName, const
 #ifdef RAD_ANDROID
             if (!deferXbrzUpscale)
             {
-                tTexture* upscaledTexture = CreateXbrz2xTexture(texture, "IMAGE_FACTORY_PARSE");
+                char diagnosticPath[256];
+                snprintf(diagnosticPath, sizeof(diagnosticPath), "IMAGE_FACTORY_PARSE file=%s",
+                         file->GetFilename() ? file->GetFilename() : "(unknown)");
+                tTexture* upscaledTexture = CreateXbrz2xTexture(texture, diagnosticPath);
                 if (upscaledTexture != NULL)
                 {
                     texture->Release();

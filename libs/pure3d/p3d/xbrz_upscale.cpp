@@ -20,23 +20,72 @@ namespace
     const int MAX_XBRZ_TEXTURE_DIMENSION = 4096;
     const size_t MAX_XBRZ_TEXTURE_PIXELS = (size_t)8 * 1024 * 1024;
 
+    void LogReadMipFailure(const char* diagnosticPath, const char* diagnosticName,
+                        int mip, const char* reason, const pddiLockInfo* lock,
+                        int expectedWidth, int expectedHeight)
+    {
+        __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG",
+            "[XBRZ-DIAG] READ_FAIL path=%s name=%s mip=%d reason=%s expected=%dx%d lockFormat=%d lockSize=%dx%d pitch=%d bitsPresent=%d native=%d alphaMask=%08x shiftsR=%d/%d shiftsG=%d/%d shiftsB=%d/%d shiftsA=%d/%d",
+            diagnosticPath ? diagnosticPath : "unspecified",
+            diagnosticName ? diagnosticName : "(unnamed)", mip, reason,
+            expectedWidth, expectedHeight,
+            lock ? (int)lock->format : -1,
+            lock ? lock->width : -1, lock ? lock->height : -1,
+            lock ? lock->pitch : 0, lock && lock->bits ? 1 : 0,
+            lock ? (lock->native ? 1 : 0) : 0,
+            lock ? lock->rgbaMask[3] : 0,
+            lock ? lock->rgbaLShift[0] : 0, lock ? lock->rgbaRShift[0] : 0,
+            lock ? lock->rgbaLShift[1] : 0, lock ? lock->rgbaRShift[1] : 0,
+            lock ? lock->rgbaLShift[2] : 0, lock ? lock->rgbaRShift[2] : 0,
+            lock ? lock->rgbaLShift[3] : 0, lock ? lock->rgbaRShift[3] : 0);
+    }
+
     bool ReadArgbMip(tTexture* texture, int mip, int expectedWidth,
-                     int expectedHeight, std::vector<uint32_t>& pixels)
+                     int expectedHeight, std::vector<uint32_t>& pixels,
+                     const char* diagnosticPath, const char* diagnosticName)
     {
         pixels.resize((size_t)expectedWidth * (size_t)expectedHeight);
         pddiLockInfo* lock = texture->Lock(mip);
-        if (lock == NULL || lock->bits == NULL)
+        if (lock == NULL)
         {
-            if (lock != NULL) texture->Unlock(mip);
+            LogReadMipFailure(diagnosticPath, diagnosticName, mip, "LOCK_NULL",
+                              lock, expectedWidth, expectedHeight);
+            return false;
+        }
+        if (lock->bits == NULL)
+        {
+            LogReadMipFailure(diagnosticPath, diagnosticName, mip, "BITS_NULL",
+                              lock, expectedWidth, expectedHeight);
+            texture->Unlock(mip);
             return false;
         }
         // Diagnostic safety gate: do not process RGB888/no-alpha textures yet.
         // They remain unchanged until their exact lock-buffer semantics are verified.
-        if (lock->format != PDDI_PIXEL_ARGB8888 ||
-            lock->width != expectedWidth || lock->height != expectedHeight ||
-            lock->pitch == 0 ||
-            (lock->pitch < 0 ? -lock->pitch : lock->pitch) < expectedWidth * 4)
+        if (lock->format != PDDI_PIXEL_ARGB8888)
         {
+            LogReadMipFailure(diagnosticPath, diagnosticName, mip, "FORMAT",
+                              lock, expectedWidth, expectedHeight);
+            texture->Unlock(mip);
+            return false;
+        }
+        if (lock->width != expectedWidth || lock->height != expectedHeight)
+        {
+            LogReadMipFailure(diagnosticPath, diagnosticName, mip, "DIMENSIONS",
+                              lock, expectedWidth, expectedHeight);
+            texture->Unlock(mip);
+            return false;
+        }
+        if (lock->pitch == 0)
+        {
+            LogReadMipFailure(diagnosticPath, diagnosticName, mip, "ZERO_PITCH",
+                              lock, expectedWidth, expectedHeight);
+            texture->Unlock(mip);
+            return false;
+        }
+        if ((lock->pitch < 0 ? -lock->pitch : lock->pitch) < expectedWidth * 4)
+        {
+            LogReadMipFailure(diagnosticPath, diagnosticName, mip, "PITCH_TOO_SMALL",
+                              lock, expectedWidth, expectedHeight);
             texture->Unlock(mip);
             return false;
         }
@@ -158,7 +207,7 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
         std::vector<uint32_t> scaledPixels;
         sourcePixels.resize((size_t)width * (size_t)height);
         scaledPixels.resize(targetPixels);
-        if (!ReadArgbMip(source, 0, width, height, sourcePixels))
+        if (!ReadArgbMip(source, 0, width, height, sourcePixels, diagnosticPath, diagnosticName))
         {
             __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG", "[XBRZ-DIAG] SKIP_BASE_READ path=%s name=%s size=%dx%d\n",
                         diagnosticPath, diagnosticName, width, height);
@@ -196,7 +245,7 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
                 target->Release();
                 return NULL;
             }
-            if (!ReadArgbMip(source, mip, mipWidth, mipHeight, sourcePixels))
+            if (!ReadArgbMip(source, mip, mipWidth, mipHeight, sourcePixels, diagnosticPath, diagnosticName))
             {
                 __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG", "[XBRZ-DIAG] SKIP_MIP_READ path=%s name=%s mip=%d\n",
                             diagnosticPath, diagnosticName, mip);
