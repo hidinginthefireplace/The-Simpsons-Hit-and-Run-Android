@@ -10,27 +10,6 @@
 #include "p3d/chunkfile.hpp"
 #include "p3d/texture.hpp"
 #include <string.h>
-#ifdef RAD_ANDROID
-#include <android/log.h>
-#include <ctype.h>
-
-static bool IsSimpleCircleShadowDiagnosticName(const char* value)
-{
-    if (value == NULL)
-    {
-        return false;
-    }
-
-    char lowerName[256];
-    size_t i = 0;
-    for (; value[i] != '\0' && i < sizeof(lowerName) - 1; ++i)
-    {
-        lowerName[i] = (char)tolower((unsigned char)value[i]);
-    }
-    lowerName[i] = '\0';
-    return strstr(lowerName, "simplecircleshadow") != NULL;
-}
-#endif
 
 tShader::tShader()
 {
@@ -195,15 +174,6 @@ tEntity* tShaderLoader::LoadObject(tChunkFile* f, tEntityStore* store)
                     }
 
                     shader->SetTexture(param, tex);
-#ifdef RAD_ANDROID
-                    if (IsSimpleCircleShadowDiagnosticName(name) ||
-                        IsSimpleCircleShadowDiagnosticName(shaderName))
-                    {
-                        __android_log_print(ANDROID_LOG_INFO, "SHR-CircleShadow",
-                            "TEXTURE_PARAM material=%s shaderType=%s param=%u texture=%s resolved=%d",
-                            name, shaderName, param, texName, tex != NULL ? 1 : 0);
-                    }
-#endif
                 }
                 break;
 
@@ -304,15 +274,6 @@ tEntity* tShaderLoader::LoadObject(tChunkFile* f, tEntityStore* store)
     }
     shader->mTranslucent = HasTranslucency;
     shader->SetName(name);
-#ifdef RAD_ANDROID
-    if (IsSimpleCircleShadowDiagnosticName(name) ||
-        IsSimpleCircleShadowDiagnosticName(shaderName))
-    {
-        __android_log_print(ANDROID_LOG_INFO, "SHR-CircleShadow",
-            "SHADER material=%s shaderType=%s translucent=%d",
-            name, shaderName, HasTranslucency ? 1 : 0);
-    }
-#endif
     return shader;
 }
 

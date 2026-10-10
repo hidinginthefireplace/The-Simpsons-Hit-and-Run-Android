@@ -16,7 +16,6 @@
 #include <constants/srrchunks.h> // For SetChunk.
 
 #ifdef RAD_ANDROID
-#include <android/log.h>
 #include <ctype.h>
 #include <vector>
 #include <mutex>
@@ -31,7 +30,6 @@ namespace
         tTexture* texture;
         std::vector< std::vector<unsigned char> > originalAlpha;
         bool sharpened;
-        char name[128];
     };
 
     std::vector<SelectedShadowAlphaState*> gSelectedShadowAlphaStates;
@@ -261,23 +259,14 @@ namespace
         SelectedShadowAlphaState* state = new SelectedShadowAlphaState;
         state->texture = texture;
         state->sharpened = false;
-        strncpy(state->name, name, sizeof(state->name) - 1);
-        state->name[sizeof(state->name) - 1] = '\0';
 
         if (!CaptureSelectedShadowAlpha(state))
         {
-            __android_log_print(ANDROID_LOG_WARN, "SHR-ShadowAlpha",
-                "SKIP name=%s reason=unsupported-format-or-lock",
-                state->name);
             delete state;
             return;
         }
 
         gSelectedShadowAlphaStates.push_back(state);
-        __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowAlpha",
-            "TRACK name=%s size=%dx%d mips=%d",
-            state->name, texture->GetWidth(), texture->GetHeight(),
-            texture->GetNumMipMaps() + 1);
     }
 }
 
@@ -297,15 +286,6 @@ void UpdateSelectedShadowAlphaForCelState()
         if (WriteSelectedShadowAlpha(state, celEnabled))
         {
             state->sharpened = celEnabled;
-            __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowAlpha",
-                "%s name=%s thresholdPercent=72 opacityCeiling=200",
-                celEnabled ? "SHARPEN" : "RESTORE", state->name);
-        }
-        else
-        {
-            __android_log_print(ANDROID_LOG_WARN, "SHR-ShadowAlpha",
-                "UPDATE_FAILED name=%s cel=%d", state->name,
-                celEnabled ? 1 : 0);
         }
     }
 }

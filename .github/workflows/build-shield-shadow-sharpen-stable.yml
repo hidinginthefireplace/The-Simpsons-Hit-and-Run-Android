@@ -1,9 +1,9 @@
-name: Build Shield Shadow Alpha Sharpen Experiment (Levels 1-7)
+name: Build Shield Shadow Sharpen Stable Baseline
 
 on:
   push:
     branches:
-      - android11-shield-all-shadow-alpha-sharpen
+      - android11-shield-shadow-sharpen-stable
   workflow_dispatch:
 
 permissions:
@@ -67,14 +67,14 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
           rm -f "$APK"
 
-      - name: Upload shadow alpha-sharpen APK
+      - name: Upload stable baseline APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simpsons-Hit-and-Run-Shadow-Alpha-Sharpen-Levels-1-7
+          name: Simpsons-Hit-and-Run-Shadow-Sharpen-Stable-Baseline
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
-# Experiment: sharpen selected tree-shadow and bee-shadow textures only while
+# Stable baseline: sharpen selected tree-shadow and bee-shadow textures only while
 # cel shading is enabled. Original alpha is restored when cel shading is disabled.
-# SimpleCircleShadow shader/mesh bindings are logged for diagnosis; mesh replacement
-# is intentionally not part of this build. Original P3D/BMP assets are unchanged.
+# No experimental mesh replacement or temporary shadow diagnostic logging is enabled.
+# Original P3D/BMP assets are unchanged.
