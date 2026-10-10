@@ -19,6 +19,7 @@
 #include <android/log.h>
 #include <ctype.h>
 #include <vector>
+#include <mutex>
 #include <string.h>
 
 bool IsCelShadingEnabled();
@@ -34,6 +35,7 @@ namespace
     };
 
     std::vector<TreeShadowAlphaState*> gTreeShadowAlphaStates;
+    std::mutex gTreeShadowAlphaMutex;
 
     bool IsTreeShadowTextureName(const char* name)
     {
@@ -221,6 +223,7 @@ namespace
 
     void RemoveTreeShadowAlphaState(tTexture* texture)
     {
+        std::lock_guard<std::mutex> guard(gTreeShadowAlphaMutex);
         for (std::vector<TreeShadowAlphaState*>::iterator it =
                  gTreeShadowAlphaStates.begin();
              it != gTreeShadowAlphaStates.end(); ++it)
@@ -241,6 +244,7 @@ namespace
             return;
         }
 
+        std::lock_guard<std::mutex> guard(gTreeShadowAlphaMutex);
         for (size_t i = 0; i < gTreeShadowAlphaStates.size(); ++i)
         {
             if (gTreeShadowAlphaStates[i] != NULL &&
@@ -275,6 +279,7 @@ namespace
 
 void UpdateTreeShadowAlphaForCelState()
 {
+    std::lock_guard<std::mutex> guard(gTreeShadowAlphaMutex);
     const bool celEnabled = IsCelShadingEnabled();
 
     for (size_t i = 0; i < gTreeShadowAlphaStates.size(); ++i)
