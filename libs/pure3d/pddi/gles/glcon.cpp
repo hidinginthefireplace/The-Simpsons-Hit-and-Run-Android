@@ -168,26 +168,16 @@ static void WriteCRTConfiguration()
     FILE* file = fopen(filePath, "w");
     if (file == nullptr)
         return;
-    fprintf(file, "# Simpsons Hit & Run Android - CRT filter (GLES2 CRT-Geom-style)
-");
-    fprintf(file, "# Changes are read on game startup; 0/off bypasses the CRT pass.
-");
-    fprintf(file, "crt_enabled=%d
-", gCRTEnabled ? 1 : 0);
-    fprintf(file, "scanline_strength=%.2f
-", gCRTScanlineStrength);
-    fprintf(file, "curvature=%.2f
-", gCRTCurvature);
-    fprintf(file, "glow_strength=%.2f
-", gCRTGlowStrength);
-    fprintf(file, "corner_darkening=%.2f
-", gCRTCornerDarkening);
-    fprintf(file, "overscan=%.2f
-", gCRTOverscan);
-    fprintf(file, "brightness=%.2f
-", gCRTBrightness);
-    fprintf(file, "contrast=%.2f
-", gCRTContrast);
+    fprintf(file, "# Simpsons Hit & Run Android - CRT filter (GLES2 CRT-Geom-style)\n");
+    fprintf(file, "# Changes are read on game startup; 0/off bypasses the CRT pass.\n");
+    fprintf(file, "crt_enabled=%d\n", gCRTEnabled ? 1 : 0);
+    fprintf(file, "scanline_strength=%.2f\n", gCRTScanlineStrength);
+    fprintf(file, "curvature=%.2f\n", gCRTCurvature);
+    fprintf(file, "glow_strength=%.2f\n", gCRTGlowStrength);
+    fprintf(file, "corner_darkening=%.2f\n", gCRTCornerDarkening);
+    fprintf(file, "overscan=%.2f\n", gCRTOverscan);
+    fprintf(file, "brightness=%.2f\n", gCRTBrightness);
+    fprintf(file, "contrast=%.2f\n", gCRTContrast);
     fclose(file);
 }
 
