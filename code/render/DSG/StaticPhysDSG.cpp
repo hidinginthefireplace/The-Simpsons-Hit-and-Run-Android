@@ -660,17 +660,26 @@ void StaticPhysDSG::RecomputeShadowPositionNoIntersect( float height, const rmt:
 void StaticPhysDSG::DisplaySimpleShadow()
 {
 #ifdef RAD_ANDROID
-    static int shadowDisplayLogCount = 0;
-    if (shadowDisplayLogCount < 180)
+    // Keep independent caps for cel ON and cel OFF. The previous global cap
+    // was consumed during level loading before the user could toggle cel shading.
+    static int shadowDisplayCelOnLogCount = 0;
+    static int shadowDisplayCelOffLogCount = 0;
+    const bool celEnabledForTrace = IsCelShadingEnabled();
+    int* displayLogCount = celEnabledForTrace
+        ? &shadowDisplayCelOnLogCount
+        : &shadowDisplayCelOffLogCount;
+    if (*displayLogCount < 60)
     {
         __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowTrace",
-            "DISPLAY_SHADOW[%d] drawable=%s toonTreeMatch=%d cel=%d matrix=%d",
-            shadowDisplayLogCount,
+            "DISPLAY_SHADOW_%s[%d] owner=%s drawable=%s toonTreeMatch=%d cel=%d matrix=%d",
+            celEnabledForTrace ? "ON" : "OFF",
+            *displayLogCount,
+            (GetName() != NULL) ? GetName() : "<null>",
             (mpShadow != NULL && mpShadow->GetName() != NULL) ? mpShadow->GetName() : "<null>",
             mUseToonSmallTreeShadow ? 1 : 0,
-            IsCelShadingEnabled() ? 1 : 0,
+            celEnabledForTrace ? 1 : 0,
             mpShadowMatrix != NULL ? 1 : 0);
-        ++shadowDisplayLogCount;
+        ++(*displayLogCount);
     }
 #endif
     p3d::pddi->SetZWrite(false);
