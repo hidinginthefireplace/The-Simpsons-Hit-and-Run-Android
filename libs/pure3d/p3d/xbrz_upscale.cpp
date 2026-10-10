@@ -109,7 +109,7 @@ namespace
     }
 }
 
-tTexture* CreateXbrz2xTexture(tTexture* source)
+tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
 {
     if (source == NULL || source->GetTexture() == NULL ||
         source->HasOriginalSize())
@@ -131,6 +131,14 @@ tTexture* CreateXbrz2xTexture(tTexture* source)
     const size_t targetPixels = (size_t)targetWidth * (size_t)targetHeight;
     if (targetPixels > MAX_XBRZ_TEXTURE_PIXELS) return NULL;
 
+    const char* diagnosticName = source->GetNameDangerous();
+    if (diagnosticName == NULL || diagnosticName[0] == '\0')
+        diagnosticName = "(unnamed)";
+    const char* diagnosticPath = loadPath ? loadPath : "unspecified";
+    p3d::printf("[XBRZ-DIAG] CANDIDATE path=%s name=%s size=%dx%d depth=%d pixelFormat=%d alphaDepth=%d sourceLastMip=%d\n",
+                diagnosticPath, diagnosticName, width, height, source->GetDepth(),
+                (int)source->GetPixelFormat(), source->GetAlphaDepth(), lastSourceMip);
+
     tTexture* target = new tTexture;
     if (!target->Create(targetWidth, targetHeight, 32, 8,
                        lastSourceMip + 1, PDDI_TEXTYPE_RGB, PDDI_USAGE_STATIC) ||
@@ -147,11 +155,19 @@ tTexture* CreateXbrz2xTexture(tTexture* source)
         std::vector<uint32_t> scaledPixels;
         sourcePixels.resize((size_t)width * (size_t)height);
         scaledPixels.resize(targetPixels);
-        if (!ReadArgbMip(source, 0, width, height, sourcePixels) ||
-            !IsFullyOpaque(sourcePixels))
+        if (!ReadArgbMip(source, 0, width, height, sourcePixels))
+        {
+            p3d::printf("[XBRZ-DIAG] SKIP_BASE_READ path=%s name=%s size=%dx%d\n",
+                        diagnosticPath, diagnosticName, width, height);
+            target->Release();
+            return NULL;
+        }
+        if (!IsFullyOpaque(sourcePixels))
         {
             // Diagnostic: keep alpha-bearing textures (foliage, lights, decals)
             // unchanged until their alpha behavior can be validated independently.
+            p3d::printf("[XBRZ-DIAG] SKIP_BASE_ALPHA path=%s name=%s size=%dx%d\n",
+                        diagnosticPath, diagnosticName, width, height);
             target->Release();
             return NULL;
         }
@@ -170,12 +186,31 @@ tTexture* CreateXbrz2xTexture(tTexture* source)
         {
             const int mipWidth = width >> mip;
             const int mipHeight = height >> mip;
-            if (mipWidth <= 0 || mipHeight <= 0 ||
-                !ReadArgbMip(source, mip, mipWidth, mipHeight, sourcePixels) ||
-                !IsFullyOpaque(sourcePixels) ||
-                !WriteArgbMip(target, mip + 1, mipWidth, mipHeight, sourcePixels))
+            if (mipWidth <= 0 || mipHeight <= 0)
             {
-                // Reject the replacement as a whole if any source mip contains alpha.
+                p3d::printf("[XBRZ-DIAG] SKIP_MIP_DIM path=%s name=%s mip=%d\n",
+                            diagnosticPath, diagnosticName, mip);
+                target->Release();
+                return NULL;
+            }
+            if (!ReadArgbMip(source, mip, mipWidth, mipHeight, sourcePixels))
+            {
+                p3d::printf("[XBRZ-DIAG] SKIP_MIP_READ path=%s name=%s mip=%d\n",
+                            diagnosticPath, diagnosticName, mip);
+                target->Release();
+                return NULL;
+            }
+            if (!IsFullyOpaque(sourcePixels))
+            {
+                p3d::printf("[XBRZ-DIAG] SKIP_MIP_ALPHA path=%s name=%s mip=%d\n",
+                            diagnosticPath, diagnosticName, mip);
+                target->Release();
+                return NULL;
+            }
+            if (!WriteArgbMip(target, mip + 1, mipWidth, mipHeight, sourcePixels))
+            {
+                p3d::printf("[XBRZ-DIAG] SKIP_MIP_WRITE path=%s name=%s mip=%d\n",
+                            diagnosticPath, diagnosticName, mip);
                 target->Release();
                 return NULL;
             }
@@ -191,6 +226,8 @@ tTexture* CreateXbrz2xTexture(tTexture* source)
     target->SetName(source->GetNameDangerous());
     target->SetPriority(source->GetPriority());
     target->SetOriginalSize(width, height);
+    p3d::printf("[XBRZ-DIAG] UPSCALED path=%s name=%s from=%dx%d to=%dx%d\n",
+                diagnosticPath, diagnosticName, width, height, targetWidth, targetHeight);
     return target;
 }
 #endif // RAD_ANDROID
