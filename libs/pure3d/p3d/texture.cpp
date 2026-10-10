@@ -506,7 +506,7 @@ tTexture* tTextureLoader::LoadTexture(tChunkFile* f)
         texture->SetName(name);
         texture->SetPriority(priority);
 #ifdef RAD_ANDROID
-        tTexture* upscaledTexture = CreateXbrz2xTexture(texture);
+        tTexture* upscaledTexture = CreateXbrz2xTexture(texture, "P3D_TEXTURE_CHUNK");
         if (upscaledTexture != NULL)
         {
             texture->Release();
