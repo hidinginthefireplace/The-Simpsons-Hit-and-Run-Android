@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# Keep only the latest build running for this experimental branch.
+concurrency:
+  group: crt-pi-android-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
