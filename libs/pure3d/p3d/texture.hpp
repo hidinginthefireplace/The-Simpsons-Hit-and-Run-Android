@@ -64,7 +64,7 @@ protected:
 // memory and restored whenever cel shading is disabled.
 void UpdateSelectedShadowAlphaForCelState();
 // Creates a replacement texture at 2x dimensions, or returns NULL to retain source.
-tTexture* CreateXbrz2xTexture(tTexture* source);
+tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath = "unspecified");
 #endif
 
 class tImageFactory;
