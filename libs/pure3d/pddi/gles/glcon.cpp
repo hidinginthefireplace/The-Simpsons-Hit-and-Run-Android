@@ -13,12 +13,15 @@
 #ifdef RAD_ANDROID
 #include <SDL_system.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
 static bool gCelShadingEnabled = false;
 static bool gCelShadingObjectEnabled = false;
 static bool gCelShadingOutlinePass = false;
 static pglContext* gCelShadingContext = nullptr;
 static bool gCelShadingConfigurationLoaded = false;
+static float gFrameSharpenStrength = 0.4f;
 
 static const char* CEL_SHADING_CONFIGURATION_FILE_NAME = "Simpsons_cel_shading.txt";
 
@@ -59,6 +62,7 @@ static void WriteCelShadingConfiguration()
     fprintf(file, "# Restart the game after changing this file.\n");
     fprintf(file, "\n");
     fprintf(file, "cel_shading=%s\n", gCelShadingEnabled ? "true" : "false");
+    fprintf(file, "sharpen=%.2f\n", gFrameSharpenStrength);
 
     fclose(file);
 }
@@ -90,6 +94,21 @@ static void LoadCelShadingConfiguration()
     char line[256];
     while (fgets(line, sizeof(line), file) != nullptr)
     {
+        char* sharpenKey = strstr(line, "sharpen=");
+        if (sharpenKey != nullptr)
+        {
+            sharpenKey += strlen("sharpen=");
+            char* sharpenEnd = sharpenKey + strlen(sharpenKey);
+            while (sharpenEnd > sharpenKey && (sharpenEnd[-1] == '\n' || sharpenEnd[-1] == '\r' || sharpenEnd[-1] == ' ' || sharpenEnd[-1] == '\t'))
+                --sharpenEnd;
+            *sharpenEnd = '\0';
+            char* parseEnd = nullptr;
+            const float parsed = strtof(sharpenKey, &parseEnd);
+            if (parseEnd != sharpenKey && isfinite(parsed))
+                gFrameSharpenStrength = fmaxf(0.0f, fminf(1.0f, parsed));
+            continue;
+        }
+
         char* key = strstr(line, "cel_shading=");
         if (key == nullptr)
             continue;
@@ -105,7 +124,6 @@ static void LoadCelShadingConfiguration()
         *end = '\0';
 
         gCelShadingEnabled = ParseCelShadingBool(key, gCelShadingEnabled);
-        break;
     }
 
     fclose(file);
@@ -116,6 +134,7 @@ bool IsCelShadingEnabled()
     LoadCelShadingConfiguration();
     return gCelShadingEnabled;
 }
+float GetFrameSharpenStrength() { LoadCelShadingConfiguration(); return gFrameSharpenStrength; }
 bool IsCelShadingObjectEnabled() { return gCelShadingObjectEnabled; }
 bool IsCelShadingOutlinePass() { return gCelShadingOutlinePass; }
 
