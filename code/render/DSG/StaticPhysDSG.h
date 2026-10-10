@@ -88,6 +88,13 @@ protected:
 	// place it in the world
 	rmt::Matrix*		mpShadowMatrix;
 
+    // Android toon-shadow experiment: cache geometry bounds for small-tree shadows.
+    bool mUseToonSmallTreeShadow;
+    float mToonSmallTreeShadowCenterX;
+    float mToonSmallTreeShadowCenterZ;
+    float mToonSmallTreeShadowRadiusX;
+    float mToonSmallTreeShadowRadiusZ;
+
 	rmt::Matrix*	CreateShadowMatrix( const rmt::Vector& objectPosition );
     bool ComputeShadowMatrix( const rmt::Vector& in_position, rmt::Matrix* out_pMatrix );
 
