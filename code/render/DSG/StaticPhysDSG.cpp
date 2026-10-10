@@ -562,9 +562,13 @@ void StaticPhysDSG::SetShadow( tDrawable* ipShadow )
             ipShadow->GetBoundingBox( &shadowBounds );
 
             const float radiusX = ( shadowBounds.high.x - shadowBounds.low.x ) * 0.5f;
+            const float localHeight = shadowBounds.high.y - shadowBounds.low.y;
             const float radiusZ = ( shadowBounds.high.z - shadowBounds.low.z ) * 0.5f;
 
-            if ( radiusX > 0.1f && radiusX < 20.0f &&
+            // tDrawable's base implementation returns a generic 0..1 box.
+            // A usable shadow asset should be essentially planar in local Y.
+            if ( localHeight >= 0.0f && localHeight < 0.25f &&
+                 radiusX > 0.1f && radiusX < 20.0f &&
                  radiusZ > 0.1f && radiusZ < 20.0f )
             {
                 mToonSmallTreeShadowCenterX = ( shadowBounds.high.x + shadowBounds.low.x ) * 0.5f;
