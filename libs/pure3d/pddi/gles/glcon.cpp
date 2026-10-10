@@ -34,6 +34,17 @@ static float gCRTBrightness = 1.0f;
 static float gCRTContrast = 1.0f;
 
 static const char* CRT_CONFIGURATION_FILE_NAME = "Simpsons_crt_configuration.txt";
+static bool gCRTPiConfigurationLoaded = false;
+static bool gCRTPiEnabled = false;
+static float gCRTPiScanlineStrength = 0.70f;
+static float gCRTPiScanlineGapBrightness = 0.12f;
+static float gCRTPiMaskStrength = 0.30f;
+static float gCRTPiBloomFactor = 1.50f;
+static float gCRTPiCurvature = 0.0f;
+static float gCRTPiBrightness = 1.0f;
+static float gCRTPiContrast = 1.0f;
+static const char* CRT_PI_CONFIGURATION_FILE_NAME = "Simpsons_crt_pi_configuration.txt";
+
 static const char* CEL_SHADING_CONFIGURATION_FILE_NAME = "Simpsons_cel_shading.txt";
 
 static bool ParseCelShadingBool(const char* value, bool defaultValue)
@@ -219,6 +230,90 @@ static void LoadCRTConfiguration()
         ParseCRTFloatSetting(line, "contrast=", &gCRTContrast, 0.5f, 1.5f);
     }
     fclose(file);
+}
+
+
+static void WriteCRTPiConfiguration()
+{
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if (storagePath == nullptr || storagePath[0] == '\\0')
+        return;
+
+    char filePath[512];
+    snprintf(filePath, sizeof(filePath), "%s/%s", storagePath, CRT_PI_CONFIGURATION_FILE_NAME);
+    FILE* file = fopen(filePath, "w");
+    if (file == nullptr)
+        return;
+    fprintf(file, "# Simpsons Hit & Run Android - CRT-Pi-style filter\\n");
+    fprintf(file, "# CRT-Pi-inspired scanlines, gamma response, and alternating RGB mask.\\n");
+    fprintf(file, "# Filter is disabled by default. Change crt_pi_enabled to 1 to enable it.\\n");
+    fprintf(file, "# Restart the game after changing settings. Values are clamped by the game.\\n");
+    fprintf(file, "crt_pi_enabled=%d\\n", gCRTPiEnabled ? 1 : 0);
+    fprintf(file, "scanline_strength=%.2f\\n", gCRTPiScanlineStrength);
+    fprintf(file, "scanline_gap_brightness=%.2f\\n", gCRTPiScanlineGapBrightness);
+    fprintf(file, "mask_strength=%.2f\\n", gCRTPiMaskStrength);
+    fprintf(file, "bloom_factor=%.2f\\n", gCRTPiBloomFactor);
+    fprintf(file, "curvature=%.2f\\n", gCRTPiCurvature);
+    fprintf(file, "brightness=%.2f\\n", gCRTPiBrightness);
+    fprintf(file, "contrast=%.2f\\n", gCRTPiContrast);
+    fclose(file);
+}
+
+static void LoadCRTPiConfiguration()
+{
+    if (gCRTPiConfigurationLoaded)
+        return;
+    gCRTPiConfigurationLoaded = true;
+
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if (storagePath == nullptr || storagePath[0] == '\\0')
+        return;
+
+    char filePath[512];
+    snprintf(filePath, sizeof(filePath), "%s/%s", storagePath, CRT_PI_CONFIGURATION_FILE_NAME);
+    FILE* file = fopen(filePath, "r");
+    if (file == nullptr)
+    {
+        WriteCRTPiConfiguration();
+        return;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), file) != nullptr)
+    {
+        char* enabled = strstr(line, "crt_pi_enabled=");
+        if (enabled != nullptr)
+        {
+            enabled += strlen("crt_pi_enabled=");
+            while (*enabled == ' ' || *enabled == '\\t')
+                ++enabled;
+            gCRTPiEnabled = (*enabled == '1' || strncmp(enabled, "true", 4) == 0 || strncmp(enabled, "on", 2) == 0);
+            continue;
+        }
+        ParseCRTFloatSetting(line, "scanline_strength=", &gCRTPiScanlineStrength, 0.0f, 1.0f);
+        ParseCRTFloatSetting(line, "scanline_gap_brightness=", &gCRTPiScanlineGapBrightness, 0.02f, 1.0f);
+        ParseCRTFloatSetting(line, "mask_strength=", &gCRTPiMaskStrength, 0.0f, 0.75f);
+        ParseCRTFloatSetting(line, "bloom_factor=", &gCRTPiBloomFactor, 0.0f, 3.0f);
+        ParseCRTFloatSetting(line, "curvature=", &gCRTPiCurvature, 0.0f, 0.5f);
+        ParseCRTFloatSetting(line, "brightness=", &gCRTPiBrightness, 0.5f, 1.5f);
+        ParseCRTFloatSetting(line, "contrast=", &gCRTPiContrast, 0.5f, 1.5f);
+    }
+    fclose(file);
+}
+
+void GetCRTPiFilterConfiguration(bool* enabled, float* scanlineStrength, float* scanlineGapBrightness,
+                                 float* maskStrength, float* bloomFactor, float* curvature,
+                                 float* brightness, float* contrast)
+{
+    LoadCRTPiConfiguration();
+    if (enabled) *enabled = gCRTPiEnabled;
+    if (scanlineStrength) *scanlineStrength = gCRTPiScanlineStrength;
+    if (scanlineGapBrightness) *scanlineGapBrightness = gCRTPiScanlineGapBrightness;
+    if (maskStrength) *maskStrength = gCRTPiMaskStrength;
+    if (bloomFactor) *bloomFactor = gCRTPiBloomFactor;
+    if (curvature) *curvature = gCRTPiCurvature;
+    if (brightness) *brightness = gCRTPiBrightness;
+    if (contrast) *contrast = gCRTPiContrast;
 }
 
 void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature,
