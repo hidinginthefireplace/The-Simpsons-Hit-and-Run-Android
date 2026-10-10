@@ -9,6 +9,9 @@
 #include <p3d/texture.hpp>
 
 #include <string.h>
+#ifdef RAD_ANDROID
+#include <android/log.h>
+#endif // RAD_ANDROID
 
 //-------------------------------------------------------------------
 tImageConverter::tImageConverter()
@@ -92,7 +95,7 @@ tTexture* tImageConverter::ImageToTexture(tImage* image, bool linear)
         const char* diagnosticName = image->GetNameDangerous();
         if (diagnosticName == NULL || diagnosticName[0] == '\0')
             diagnosticName = "(unnamed)";
-        p3d::printf("[XBRZ-DIAG] IMAGE_TO_TEXTURE_BYPASS name=%s size=%dx%d depth=%d alpha=%d alphaDepth=%d\n",
+        __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG", "[XBRZ-DIAG] IMAGE_TO_TEXTURE_BYPASS name=%s size=%dx%d depth=%d alpha=%d alphaDepth=%d\n",
                     diagnosticName, image->GetWidth(), image->GetHeight(),
                     image->GetDepth(), image->HasAlpha() ? 1 : 0, image->GetAlphaDepth());
     }
