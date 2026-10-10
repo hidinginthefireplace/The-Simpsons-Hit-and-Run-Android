@@ -27,6 +27,10 @@
 #include <constants/blobshadownames.h>
 
 #include <radtime.hpp>
+#include <string.h>
+#ifdef RAD_ANDROID
+#include <android/log.h>
+#endif
 //************************************************************************
 //
 // Global Data, Local Data, Local Classes
@@ -99,17 +103,34 @@ tEntity* StaticPhysLoader::LoadObject(tChunkFile* f, tEntityStore* store)
     IEntityDSG::msDeletionsSafe=true;
     char name[255];
     f->GetPString(name);
-	// Lets see if theis object has a shadow associated with it
+	// Find the authored blob-shadow asset associated with this static physics object.
 	const char* pShadowName = BlobbyShadowNames::FindShadowName( name );
-	tDrawable* pShadow;
+	tDrawable* pShadow = NULL;
 	if ( pShadowName != NULL )
 	{
 		pShadow = p3d::find< tDrawable > ( pShadowName );
 	}
-	else
-	{
-		pShadow = NULL;
-	}
+#ifdef RAD_ANDROID
+    // Trace at load/lookup time: the SetShadow trace alone can be lost if logcat
+    // is cleared after the level has already loaded. Focus on all mapped objects
+    // plus object names that look like tree assets, and keep output capped.
+    static int shadowLoadTraceCount = 0;
+    const bool isTreeName =
+        strstr(name, "tree") != NULL ||
+        strstr(name, "Tree") != NULL ||
+        strstr(name, "TREE") != NULL;
+    if (shadowLoadTraceCount < 400 && (pShadowName != NULL || isTreeName))
+    {
+        __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowLoad",
+            "LOAD_SHADOW[%d] object=%s mapping=%s found=%d returnedDrawable=%s",
+            shadowLoadTraceCount,
+            name,
+            pShadowName != NULL ? pShadowName : "<none>",
+            pShadow != NULL ? 1 : 0,
+            (pShadow != NULL && pShadow->GetName() != NULL) ? pShadow->GetName() : "<null>");
+        ++shadowLoadTraceCount;
+    }
+#endif
 
     int version = f->GetLong();
 
