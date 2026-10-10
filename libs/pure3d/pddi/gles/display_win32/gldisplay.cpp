@@ -941,7 +941,11 @@ static void ApplyCRTFilter(int width, int height)
         // Lightweight GLES2 CRT-Geom-inspired pass: scanlines, barrel curvature,
         // restrained highlight glow, corner shading, and user-controlled levels.
         const char* fragmentSource =
+            "#ifdef GL_FRAGMENT_PRECISION_HIGH\n"
+            "precision highp float;\n"
+            "#else\n"
             "precision mediump float;\n"
+            "#endif\n"
             "uniform sampler2D frameTex; uniform vec2 texelSize;\n"
             "uniform float scanlineStrength; uniform float curvature; uniform float glowStrength;\n"
             "uniform float cornerDarkening; uniform float overscan; uniform float brightness; uniform float contrast;\n"
@@ -954,7 +958,7 @@ static void ApplyCRTFilter(int width, int height)
             " vec3 color=texture2D(frameTex,uv).rgb;\n"
             " vec3 glow=(texture2D(frameTex,uv+vec2(texelSize.x*1.5,0.0)).rgb+texture2D(frameTex,uv-vec2(texelSize.x*1.5,0.0)).rgb+texture2D(frameTex,uv+vec2(0.0,texelSize.y*1.5)).rgb+texture2D(frameTex,uv-vec2(0.0,texelSize.y*1.5)).rgb)*0.25;\n"
             " color+=max(glow-vec3(0.68),vec3(0.0))*clamp(glowStrength,0.0,1.0)*0.35;\n"
-            " float scan=0.5+0.5*cos((uv.y/texelSize.y)*3.14159265);\n"
+            " float scan=1.0-mod(floor(gl_FragCoord.y),2.0);\n"
             " color*=1.0-clamp(scanlineStrength,0.0,1.0)*(0.22*(1.0-scan));\n"
             " float edge=clamp(length((uv*2.0-1.0)*vec2(0.82,1.0)),0.0,1.4);\n"
             " color*=1.0-clamp(cornerDarkening,0.0,1.0)*smoothstep(0.55,1.15,edge);\n"
