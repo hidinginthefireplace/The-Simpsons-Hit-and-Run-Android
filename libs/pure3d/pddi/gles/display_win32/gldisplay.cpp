@@ -940,8 +940,8 @@ static void ApplyCRTPiFilter(int width, int height)
         const char* vertexSource =
             "attribute vec2 position; varying vec2 texcoord;\n"
             "void main() { texcoord = position * 0.5 + 0.5; gl_Position = vec4(position, 0.0, 1.0); }\n";
-        // Lightweight GLES2 CRT-Geom-inspired pass: scanlines, barrel curvature,
-        // restrained highlight glow, corner shading, and user-controlled levels.
+        // Lightweight GLES2 CRT-Pi-inspired pass: scanline weighting, gamma response,
+        // alternating RGB mask, optional curvature, and user-controlled levels.
         const char* fragmentSource =
             "precision mediump float;\n"
             "uniform sampler2D frameTex; uniform vec2 texelSize;\n"
