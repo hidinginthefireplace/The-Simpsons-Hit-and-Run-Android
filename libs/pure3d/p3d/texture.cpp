@@ -292,7 +292,7 @@ void UpdateSelectedShadowAlphaForCelState()
 #endif
 
 
-tTexture::tTexture() : texture(NULL)
+tTexture::tTexture() : texture(NULL), originalWidth(0), originalHeight(0)
 {
 }
 
