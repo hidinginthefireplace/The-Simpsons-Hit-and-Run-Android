@@ -547,6 +547,11 @@ void CGuiScreenPauseOptions::HandleMessage
 //===========================================================================
 void CGuiScreenPauseOptions::InitIntro()
 {
+#ifdef RAD_ANDROID
+    // Every entry from another pause screen should return to the root options menu.
+    SetGraphicsSettingsMode( false );
+#endif
+
 //    this->SetButtonVisible( BUTTON_ICON_ACCEPT, (m_pMenu->GetSelection() != MENU_ITEM_CAMERA) );
 
 #ifndef RAD_E3
