@@ -130,7 +130,8 @@ tSprite::tSprite(tTexture** images, int w, int h, int count, tShader* mat, int b
     nPolys = count;
 
     // We've only got one texture, so ignore the blitborder
-    if ((textures[0]->GetHeight() == h) && (textures[0]->GetWidth() == w))
+    if ((textures[0]->GetOriginalHeight() == h) &&
+        (textures[0]->GetOriginalWidth() == w))
     {
         blitBorder = 0;
     }
@@ -147,12 +148,14 @@ tSprite::tSprite(tTexture** images, int w, int h, int count, tShader* mat, int b
         x = -blitBorder;
         while (x<w-1)
         {
-            newX = textures[index]->GetWidth();
-            newY = textures[index]->GetHeight();
+            // Use the source/logical dimensions for layout and UV generation.
+            // xBRZ doubles backing storage, but must not double sprite geometry.
+            newX = textures[index]->GetOriginalWidth();
+            newY = textures[index]->GetOriginalHeight();
             dim.left = x+blitBorder;
             dim.top = y+blitBorder;
-            dim.width = textures[index]->GetWidth()>w ? w : (newX - (blitBorder<<1));
-            dim.height = textures[index]->GetHeight()>h ? h : (newY - (blitBorder<<1));
+            dim.width = newX > w ? w : (newX - (blitBorder<<1));
+            dim.height = newY > h ? h : (newY - (blitBorder<<1));
             dim.right = dim.left+dim.width;
             dim.bottom = dim.top+dim.height;
             BuildPoly(index,dim,newX,newY);
