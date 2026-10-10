@@ -51,23 +51,13 @@ namespace
 {
     const int SMALL_TREE_TOON_SHADOW_SLICES = 32;
 
-    bool IsSmallTreeShadowTarget(const char* objectName, const char* shadowName)
+    bool IsSmallTreeShadowAsset(const char* shadowName)
     {
-        if (objectName == NULL || shadowName == NULL)
-        {
-            return false;
-        }
-
-        // Restrict this first pass to living small trees. Cypress trees use
-        // the same source drawable but are deliberately left unchanged.
-        if (strstr(objectName, "treesm") == NULL ||
-            strstr(objectName, "treesmdead") != NULL ||
-            strstr(objectName, "treedead") != NULL)
-        {
-            return false;
-        }
-
-        return strcmp(shadowName, "treeshadowsmall") == 0;
+        // Diagnostic mode deliberately matches the shared small-tree shadow
+        // drawable regardless of the owning object's name. Cypress trees may
+        // also be highlighted because they share this same asset.
+        return shadowName != NULL &&
+               strcmp(shadowName, "treeshadowsmall") == 0;
     }
 
     bool DrawSmallTreeToonShadow(
@@ -88,10 +78,10 @@ namespace
             return false;
         }
 
-        // Match the solid, crisp tone used by the cel-enabled character and
-        // vehicle blobs. A fan of triangles replaces the authored soft shadow
-        // only for the targeted small-tree objects.
-        shadowShader->SetInt(PDDI_SP_BLENDMODE, PDDI_BLEND_MODULATE);
+        // Diagnostic pass: replace the authored shadow with a bright cyan marker
+        // so it's obvious whether this code path is reached. This is temporary.
+        // No blending: the cyan marker should be clearly visible over the ground.
+        shadowShader->SetInt(PDDI_SP_BLENDMODE, PDDI_BLEND_NONE);
         shadowShader->SetInt(PDDI_SP_ISLIT, 0);
         shadowShader->SetInt(PDDI_SP_ALPHATEST, 0);
         shadowShader->SetInt(PDDI_SP_SHADEMODE, PDDI_SHADE_GOURAUD);
@@ -106,7 +96,8 @@ namespace
             return false;
         }
 
-        const tColour shadowColour(116, 116, 116, 116);
+        // Deliberately unmistakable diagnostic marker; this is not the final shadow tint.
+        const tColour shadowColour(0, 255, 255, 255);
         const float angleStep = rmt::PI_2 / float(SMALL_TREE_TOON_SHADOW_SLICES);
 
         for (int i = 0; i < SMALL_TREE_TOON_SHADOW_SLICES; ++i)
@@ -554,7 +545,7 @@ void StaticPhysDSG::SetShadow( tDrawable* ipShadow )
         mpShadowMatrix = CreateShadowMatrix( rPosition() );
 
 #ifdef RAD_ANDROID
-        if ( IsSmallTreeShadowTarget( GetName(), ipShadow->GetName() ) )
+        if ( IsSmallTreeShadowAsset( ipShadow->GetName() ) )
         {
             // Use the asset's own local bounds to preserve the artist-authored
             // footprint as closely as possible, but render it as a crisp oval.
@@ -668,8 +659,9 @@ void StaticPhysDSG::DisplaySimpleShadow()
 	rmt::Matrix shadowTransform( *mpShadowMatrix );
 	shadowTransform.Row( 3 ).Add( camPos );
 
-    // Display. The toon shadow is opt-in and only substitutes the
-    // original drawable for living small trees while cel shading is enabled.
+    // Display. In this diagnostic build, the bright marker substitutes the
+    // original drawable for any object using the shared small-tree shadow asset
+    // while cel shading is enabled.
     p3d::stack->PushMultiply( shadowTransform );
     bool displayedToonSmallTreeShadow = false;
 #ifdef RAD_ANDROID
