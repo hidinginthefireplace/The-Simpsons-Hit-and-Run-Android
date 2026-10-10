@@ -51,6 +51,12 @@ protected:
     pddiTexture* texture;
 };
 
+#ifdef RAD_ANDROID
+// Runtime alpha remapping for tree-shadow textures. Original data is kept in
+// memory and restored whenever cel shading is disabled.
+void UpdateTreeShadowAlphaForCelState();
+#endif
+
 class tImageFactory;
 class tImageConverter;
 

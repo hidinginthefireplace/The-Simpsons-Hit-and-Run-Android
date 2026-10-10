@@ -15,12 +15,303 @@
 #include <constants/chunkids.hpp>
 #include <constants/srrchunks.h> // For SetChunk.
 
+#ifdef RAD_ANDROID
+#include <android/log.h>
+#include <ctype.h>
+#include <vector>
+#include <string.h>
+
+bool IsCelShadingEnabled();
+
+namespace
+{
+    struct TreeShadowAlphaState
+    {
+        tTexture* texture;
+        std::vector< std::vector<unsigned char> > originalAlpha;
+        bool sharpened;
+        char name[128];
+    };
+
+    std::vector<TreeShadowAlphaState*> gTreeShadowAlphaStates;
+
+    bool IsTreeShadowTextureName(const char* name)
+    {
+        if (name == NULL)
+        {
+            return false;
+        }
+
+        char lowerName[256];
+        size_t i = 0;
+        for (; name[i] != '\0' && i < sizeof(lowerName) - 1; ++i)
+        {
+            lowerName[i] = (char)tolower((unsigned char)name[i]);
+        }
+        lowerName[i] = '\0';
+
+        return strstr(lowerName, "tree") != NULL &&
+               strstr(lowerName, "shadow") != NULL;
+    }
+
+    bool CaptureTreeShadowAlpha(TreeShadowAlphaState* state)
+    {
+        if (state == NULL || state->texture == NULL)
+        {
+            return false;
+        }
+
+        const int lastMip = state->texture->GetNumMipMaps();
+        if (lastMip < 0 || lastMip > 12)
+        {
+            return false;
+        }
+
+        state->originalAlpha.clear();
+        for (int mip = 0; mip <= lastMip; ++mip)
+        {
+            pddiLockInfo* lock = state->texture->Lock(mip);
+            if (lock == NULL || lock->bits == NULL)
+            {
+                if (lock != NULL)
+                {
+                    state->texture->Unlock(mip);
+                }
+                state->originalAlpha.clear();
+                return false;
+            }
+
+            // Android GLES uses 32-bit ARGB for normal textured assets.
+            // Compressed or unexpected formats are deliberately left alone.
+            const unsigned int alphaMask = lock->rgbaMask[3];
+            int alphaShift = 0;
+            while (alphaShift < 32 &&
+                   ((alphaMask >> alphaShift) & 1U) == 0U)
+            {
+                ++alphaShift;
+            }
+
+            if (lock->format != PDDI_PIXEL_ARGB8888 ||
+                lock->width <= 0 || lock->height <= 0 ||
+                lock->pitch == 0 || alphaMask == 0 ||
+                alphaShift >= 32 || (alphaMask >> alphaShift) != 0xffU)
+            {
+                state->texture->Unlock(mip);
+                state->originalAlpha.clear();
+                return false;
+            }
+
+            std::vector<unsigned char> alpha;
+            alpha.resize((size_t)lock->width * (size_t)lock->height);
+
+            unsigned char* row = (unsigned char*)lock->bits;
+            for (int y = 0; y < lock->height; ++y)
+            {
+                for (int x = 0; x < lock->width; ++x)
+                {
+                    unsigned int pixel = 0;
+                    memcpy(&pixel, row + (x * 4), sizeof(pixel));
+                    alpha[(size_t)y * (size_t)lock->width + (size_t)x] =
+                        (unsigned char)((pixel & alphaMask) >> alphaShift);
+                }
+                // A negative pitch is valid on the GLES backend.
+                row += lock->pitch;
+            }
+
+            state->texture->Unlock(mip);
+            state->originalAlpha.push_back(alpha);
+        }
+
+        return !state->originalAlpha.empty();
+    }
+
+    bool WriteTreeShadowAlpha(TreeShadowAlphaState* state, bool sharpen)
+    {
+        if (state == NULL || state->texture == NULL ||
+            state->originalAlpha.empty())
+        {
+            return false;
+        }
+
+        for (size_t mip = 0; mip < state->originalAlpha.size(); ++mip)
+        {
+            pddiLockInfo* lock = state->texture->Lock((int)mip);
+            if (lock == NULL || lock->bits == NULL)
+            {
+                if (lock != NULL)
+                {
+                    state->texture->Unlock((int)mip);
+                }
+                return false;
+            }
+
+            const unsigned int alphaMask = lock->rgbaMask[3];
+            int alphaShift = 0;
+            while (alphaShift < 32 &&
+                   ((alphaMask >> alphaShift) & 1U) == 0U)
+            {
+                ++alphaShift;
+            }
+
+            const std::vector<unsigned char>& original =
+                state->originalAlpha[mip];
+            if (lock->format != PDDI_PIXEL_ARGB8888 ||
+                lock->width <= 0 || lock->height <= 0 ||
+                lock->pitch == 0 || alphaMask == 0 ||
+                alphaShift >= 32 || (alphaMask >> alphaShift) != 0xffU ||
+                original.size() != (size_t)lock->width * (size_t)lock->height)
+            {
+                state->texture->Unlock((int)mip);
+                return false;
+            }
+
+            unsigned int maxAlpha = 0;
+            for (size_t i = 0; i < original.size(); ++i)
+            {
+                if (original[i] > maxAlpha)
+                {
+                    maxAlpha = original[i];
+                }
+            }
+
+            // Drop faint edge pixels, then remap the remaining range to a
+            // stronger yet translucent shadow. The relative cutoff keeps
+            // lower-resolution mip levels from disappearing at distance.
+            const unsigned int threshold = (maxAlpha * 60U) / 100U;
+            unsigned char* row = (unsigned char*)lock->bits;
+            for (int y = 0; y < lock->height; ++y)
+            {
+                for (int x = 0; x < lock->width; ++x)
+                {
+                    const size_t index =
+                        (size_t)y * (size_t)lock->width + (size_t)x;
+                    unsigned int pixel = 0;
+                    memcpy(&pixel, row + (x * 4), sizeof(pixel));
+
+                    unsigned int newAlpha = original[index];
+                    if (sharpen)
+                    {
+                        if (maxAlpha <= threshold || newAlpha <= threshold)
+                        {
+                            newAlpha = 0;
+                        }
+                        else
+                        {
+                            newAlpha = ((newAlpha - threshold) * 200U) /
+                                       (maxAlpha - threshold);
+                            if (newAlpha > 200U)
+                            {
+                                newAlpha = 200U;
+                            }
+                        }
+                    }
+
+                    pixel = (pixel & ~alphaMask) |
+                            ((newAlpha << alphaShift) & alphaMask);
+                    memcpy(row + (x * 4), &pixel, sizeof(pixel));
+                }
+                row += lock->pitch;
+            }
+
+            state->texture->Unlock((int)mip);
+        }
+
+        return true;
+    }
+
+    void RemoveTreeShadowAlphaState(tTexture* texture)
+    {
+        for (std::vector<TreeShadowAlphaState*>::iterator it =
+                 gTreeShadowAlphaStates.begin();
+             it != gTreeShadowAlphaStates.end(); ++it)
+        {
+            if (*it != NULL && (*it)->texture == texture)
+            {
+                delete *it;
+                gTreeShadowAlphaStates.erase(it);
+                return;
+            }
+        }
+    }
+
+    void RegisterTreeShadowTexture(tTexture* texture, const char* name)
+    {
+        if (texture == NULL || !IsTreeShadowTextureName(name))
+        {
+            return;
+        }
+
+        for (size_t i = 0; i < gTreeShadowAlphaStates.size(); ++i)
+        {
+            if (gTreeShadowAlphaStates[i] != NULL &&
+                gTreeShadowAlphaStates[i]->texture == texture)
+            {
+                return;
+            }
+        }
+
+        TreeShadowAlphaState* state = new TreeShadowAlphaState;
+        state->texture = texture;
+        state->sharpened = false;
+        strncpy(state->name, name, sizeof(state->name) - 1);
+        state->name[sizeof(state->name) - 1] = '\0';
+
+        if (!CaptureTreeShadowAlpha(state))
+        {
+            __android_log_print(ANDROID_LOG_WARN, "SHR-TreeShadowAlpha",
+                "SKIP name=%s reason=unsupported-format-or-lock",
+                state->name);
+            delete state;
+            return;
+        }
+
+        gTreeShadowAlphaStates.push_back(state);
+        __android_log_print(ANDROID_LOG_INFO, "SHR-TreeShadowAlpha",
+            "TRACK name=%s size=%dx%d mips=%d",
+            state->name, texture->GetWidth(), texture->GetHeight(),
+            texture->GetNumMipMaps() + 1);
+    }
+}
+
+void UpdateTreeShadowAlphaForCelState()
+{
+    const bool celEnabled = IsCelShadingEnabled();
+
+    for (size_t i = 0; i < gTreeShadowAlphaStates.size(); ++i)
+    {
+        TreeShadowAlphaState* state = gTreeShadowAlphaStates[i];
+        if (state == NULL || state->sharpened == celEnabled)
+        {
+            continue;
+        }
+
+        if (WriteTreeShadowAlpha(state, celEnabled))
+        {
+            state->sharpened = celEnabled;
+            __android_log_print(ANDROID_LOG_INFO, "SHR-TreeShadowAlpha",
+                "%s name=%s thresholdPercent=60 opacityCeiling=200",
+                celEnabled ? "SHARPEN" : "RESTORE", state->name);
+        }
+        else
+        {
+            __android_log_print(ANDROID_LOG_WARN, "SHR-TreeShadowAlpha",
+                "UPDATE_FAILED name=%s cel=%d", state->name,
+                celEnabled ? 1 : 0);
+        }
+    }
+}
+#endif
+
+
 tTexture::tTexture() : texture(NULL)
 {
 }
 
 tTexture::~tTexture()
 {
+#ifdef RAD_ANDROID
+    RemoveTreeShadowAlphaState(this);
+#endif
     tRefCounted::Release(texture);
 }
 
@@ -219,6 +510,9 @@ tTexture* tTextureLoader::LoadTexture(tChunkFile* f)
     {
         texture->SetName(name);
         texture->SetPriority(priority);
+#ifdef RAD_ANDROID
+        RegisterTreeShadowTexture(texture, name);
+#endif
     }
     return texture;
 }

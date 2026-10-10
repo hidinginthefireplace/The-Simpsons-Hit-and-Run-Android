@@ -18,6 +18,7 @@
 #include <render/DSG/StaticEntityDSG.h>
 #include <memory/srrmemory.h>
 #include <p3d/utility.hpp>
+#include <p3d/texture.hpp>
 
 //************************************************************************
 //
@@ -222,6 +223,9 @@ void StaticEntityDSG::Display()
     char profileName[] = "  StaticEntityDSG Display";
 #endif
     if(IS_DRAW_LONG) return;
+#ifdef RAD_ANDROID
+    UpdateTreeShadowAlphaForCelState();
+#endif
     DSG_BEGIN_PROFILE(profileName)
 
     if(mIsGeo & IS_SHADOW)
