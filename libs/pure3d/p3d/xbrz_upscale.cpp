@@ -60,6 +60,18 @@ namespace
         return true;
     }
 
+    bool IsFullyOpaque(const std::vector<uint32_t>& pixels)
+    {
+        for (size_t i = 0; i < pixels.size(); ++i)
+        {
+            if ((pixels[i] & 0xff000000U) != 0xff000000U)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     bool WriteArgbMip(tTexture* texture, int mip, int expectedWidth,
                       int expectedHeight, const std::vector<uint32_t>& pixels)
     {
@@ -99,7 +111,12 @@ namespace
 
 tTexture* CreateXbrz2xTexture(tTexture* source)
 {
-    if (source == NULL || source->GetTexture() == NULL) return NULL;
+    if (source == NULL || source->GetTexture() == NULL ||
+        source->HasOriginalSize())
+    {
+        // Never upscale a texture object twice.
+        return NULL;
+    }
     const int width = source->GetWidth();
     const int height = source->GetHeight();
     const int lastSourceMip = source->GetNumMipMaps();
@@ -130,8 +147,11 @@ tTexture* CreateXbrz2xTexture(tTexture* source)
         std::vector<uint32_t> scaledPixels;
         sourcePixels.resize((size_t)width * (size_t)height);
         scaledPixels.resize(targetPixels);
-        if (!ReadArgbMip(source, 0, width, height, sourcePixels))
+        if (!ReadArgbMip(source, 0, width, height, sourcePixels) ||
+            !IsFullyOpaque(sourcePixels))
         {
+            // Diagnostic: keep alpha-bearing textures (foliage, lights, decals)
+            // unchanged until their alpha behavior can be validated independently.
             target->Release();
             return NULL;
         }
@@ -152,8 +172,10 @@ tTexture* CreateXbrz2xTexture(tTexture* source)
             const int mipHeight = height >> mip;
             if (mipWidth <= 0 || mipHeight <= 0 ||
                 !ReadArgbMip(source, mip, mipWidth, mipHeight, sourcePixels) ||
+                !IsFullyOpaque(sourcePixels) ||
                 !WriteArgbMip(target, mip + 1, mipWidth, mipHeight, sourcePixels))
             {
+                // Reject the replacement as a whole if any source mip contains alpha.
                 target->Release();
                 return NULL;
             }
@@ -168,6 +190,7 @@ tTexture* CreateXbrz2xTexture(tTexture* source)
 
     target->SetName(source->GetNameDangerous());
     target->SetPriority(source->GetPriority());
+    target->SetOriginalSize(width, height);
     return target;
 }
 #endif // RAD_ANDROID
