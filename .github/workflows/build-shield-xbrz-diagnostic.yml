@@ -1,9 +1,9 @@
-name: Build Shield xBRZ Diagnostic Experiment
+name: Build Shield xBRZ Alpha-Safe Diagnostic
 
 on:
   push:
     branches:
-      - android11-shield-xbrz-diagnostic
+      - android11-shield-xbrz-diagnostic-alpha-safe
   workflow_dispatch:
 
 permissions:
@@ -70,7 +70,7 @@ jobs:
       - name: Upload xBRZ 2x experimental APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simpsons-Hit-and-Run-xBRZ-Diagnostic
+          name: Simpsons-Hit-and-Run-xBRZ-Alpha-Safe-Diagnostic
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
@@ -79,6 +79,6 @@ jobs:
 # No experimental mesh replacement or temporary shadow diagnostic logging is enabled.
 # Original P3D/BMP assets are unchanged.
 
-# Diagnostic behavior: xBRZ 2x remains independent of cel shading, but generated
-# sprite-section textures are not upscaled and RGB888 textures retain originals.
-# This isolates likely GUI/alpha-less texture conversion problems. Game files unchanged.
+# Diagnostic behavior: xBRZ 2x remains independent of cel shading. Sprite geometry
+# uses original logical texture dimensions; RGB888 and any alpha-bearing textures
+# retain their original data pending validation. Original game files are unchanged.
