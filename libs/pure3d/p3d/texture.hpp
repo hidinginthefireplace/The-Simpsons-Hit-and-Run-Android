@@ -27,6 +27,12 @@ public:
     pddiPixelFormat GetPixelFormat()                      { return texture->GetPixelFormat(); }
     int GetWidth()                                        { return texture->GetWidth(); }
     int GetHeight()                                       { return texture->GetHeight(); }
+
+    // Logical dimensions retained when an Android xBRZ texture has 2x backing storage.
+    int GetOriginalWidth()                                { return originalWidth > 0 ? originalWidth : GetWidth(); }
+    int GetOriginalHeight()                               { return originalHeight > 0 ? originalHeight : GetHeight(); }
+    bool HasOriginalSize()                                { return originalWidth > 0 && originalHeight > 0; }
+    void SetOriginalSize(int w, int h)                    { originalWidth = w; originalHeight = h; }
     int GetDepth()                                        { return texture->GetDepth(); }
     int GetAlphaDepth()                                   { return texture->GetAlphaDepth(); }
     int GetNumMipMaps()                                   { return texture->GetNumMipMaps(); }
@@ -49,6 +55,8 @@ public:
 protected:
     virtual ~tTexture();
     pddiTexture* texture;
+    int originalWidth;
+    int originalHeight;
 };
 
 #ifdef RAD_ANDROID
