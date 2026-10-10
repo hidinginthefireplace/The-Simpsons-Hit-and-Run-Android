@@ -59,9 +59,12 @@ namespace
             texture->Unlock(mip);
             return false;
         }
-        // Diagnostic safety gate: do not process RGB888/no-alpha textures yet.
-        // They remain unchanged until their exact lock-buffer semantics are verified.
-        if (lock->format != PDDI_PIXEL_ARGB8888)
+        // GLES stores RGB888 textures in a 32-bit backing buffer, but the
+        // upper byte is not an alpha channel. Accept it only as 4 bytes/pixel,
+        // then explicitly force alpha opaque before passing pixels to xBRZ.
+        // Compressed formats (DXT1/3/5) remain rejected here.
+        const bool rgb888 = lock->format == PDDI_PIXEL_RGB888;
+        if (lock->format != PDDI_PIXEL_ARGB8888 && !rgb888)
         {
             LogReadMipFailure(diagnosticPath, diagnosticName, mip, "FORMAT",
                               lock, expectedWidth, expectedHeight);
@@ -104,6 +107,10 @@ namespace
                     (((packed & lock->rgbaMask[1]) >> lock->rgbaLShift[1]) << lock->rgbaRShift[1]) |
                     (((packed & lock->rgbaMask[2]) >> lock->rgbaLShift[2]) << lock->rgbaRShift[2]) |
                     (((packed & lock->rgbaMask[3]) >> lock->rgbaLShift[3]) << lock->rgbaRShift[3]);
+                if (rgb888)
+                {
+                    canonical |= 0xff000000U;
+                }
                 pixels[(size_t)y * (size_t)expectedWidth + (size_t)x] = canonical;
             }
             row += lock->pitch;
@@ -124,14 +131,61 @@ namespace
         return true;
     }
 
-    // Transparent xBRZ processing is limited to the front-end P3D asset parse
-    // path for this diagnostic stage. Keep world/effect texture alpha behavior
-    // unchanged until the GUI result is validated.
+    // Match the source container filename (not just a generic load path), so
+    // this diagnostic build upscales only known front-end/UI asset containers.
+    // World and effect containers remain untouched until the GUI pass is validated.
+    bool PathHasFilename(const char* diagnosticPath, const char* expectedFilename)
+    {
+        if (diagnosticPath == NULL || expectedFilename == NULL)
+            return false;
+
+        const char* file = strstr(diagnosticPath, "file=");
+        if (file == NULL)
+            return false;
+        file += 5;
+
+        const char* end = file;
+        while (*end != '\0' && *end != ' ' && *end != '\t' &&
+               *end != '\r' && *end != '\n')
+        {
+            ++end;
+        }
+
+        const char* basename = file;
+        for (const char* p = file; p < end; ++p)
+        {
+            if (*p == '/' || *p == '\\')
+                basename = p + 1;
+        }
+
+        const size_t basenameLength = (size_t)(end - basename);
+        if (basenameLength != strlen(expectedFilename))
+            return false;
+
+        for (size_t i = 0; i < basenameLength; ++i)
+        {
+            if (tolower((unsigned char)basename[i]) !=
+                tolower((unsigned char)expectedFilename[i]))
+                return false;
+        }
+        return true;
+    }
+
+    bool AllowsGuiUpscaling(const char* diagnosticPath)
+    {
+        return PathHasFilename(diagnosticPath, "frontend.p3d") ||
+               PathHasFilename(diagnosticPath, "backend.p3d") ||
+               PathHasFilename(diagnosticPath, "bootup.p3d") ||
+               PathHasFilename(diagnosticPath, "language.p3d") ||
+               PathHasFilename(diagnosticPath, "loading1.p3d") ||
+               PathHasFilename(diagnosticPath, "licensep.p3d");
+    }
+
+    // Alpha-bearing pixels are enabled only for the front-end container in
+    // this first GUI-focused stage. Other UI containers must be fully opaque.
     bool AllowsFrontendAlpha(const char* diagnosticPath)
     {
-        return diagnosticPath != NULL &&
-               strstr(diagnosticPath, "IMAGE_FACTORY_PARSE") == diagnosticPath &&
-               strstr(diagnosticPath, "file=frontend.p3d") != NULL;
+        return PathHasFilename(diagnosticPath, "frontend.p3d");
     }
 
     bool WriteArgbMip(tTexture* texture, int mip, int expectedWidth,
@@ -197,6 +251,11 @@ tTexture* CreateXbrz2xTexture(tTexture* source, const char* loadPath)
     if (diagnosticName == NULL || diagnosticName[0] == '\0')
         diagnosticName = "(unnamed)";
     const char* diagnosticPath = loadPath ? loadPath : "unspecified";
+    // Keep this experiment limited to known GUI/start-up P3D containers.
+    // The source filename is supplied by both image-factory and chunk paths.
+    if (!AllowsGuiUpscaling(diagnosticPath))
+        return NULL;
+
     const bool allowAlphaUpscaling = AllowsFrontendAlpha(diagnosticPath);
     __android_log_print(ANDROID_LOG_INFO, "XBRZ-DIAG", "[XBRZ-DIAG] CANDIDATE path=%s name=%s size=%dx%d depth=%d pixelFormat=%d alphaDepth=%d sourceLastMip=%d\n",
                 diagnosticPath, diagnosticName, width, height, source->GetDepth(),

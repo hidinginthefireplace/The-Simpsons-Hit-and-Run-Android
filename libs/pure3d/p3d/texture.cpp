@@ -17,6 +17,7 @@
 
 #ifdef RAD_ANDROID
 #include <ctype.h>
+#include <stdio.h>
 #include <vector>
 #include <mutex>
 #include <string.h>
@@ -506,7 +507,10 @@ tTexture* tTextureLoader::LoadTexture(tChunkFile* f)
         texture->SetName(name);
         texture->SetPriority(priority);
 #ifdef RAD_ANDROID
-        tTexture* upscaledTexture = CreateXbrz2xTexture(texture, "P3D_TEXTURE_CHUNK");
+        char diagnosticPath[256];
+        snprintf(diagnosticPath, sizeof(diagnosticPath), "P3D_TEXTURE_CHUNK file=%s",
+                 f->GetFilename() ? f->GetFilename() : "(unknown)");
+        tTexture* upscaledTexture = CreateXbrz2xTexture(texture, diagnosticPath);
         if (upscaledTexture != NULL)
         {
             texture->Release();
