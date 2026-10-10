@@ -18,6 +18,7 @@
 
 bool IsCelShadingEnabled();
 float GetFrameSharpenStrength();
+void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature, float* glowStrength, float* cornerDarkening, float* overscan, float* brightness, float* contrast);
 
 namespace
 {
@@ -52,6 +53,21 @@ GLint gFrameSharpenTexelLocation = -1;
 GLint gFrameSharpenStrengthLocation = -1;
 int gFrameSharpenWidth = 0;
 int gFrameSharpenHeight = 0;
+
+GLuint gCRTProgram = 0;
+GLuint gCRTTexture = 0;
+GLuint gCRTVbo = 0;
+GLint gCRTSceneLocation = -1;
+GLint gCRTTexelLocation = -1;
+GLint gCRTScanlineLocation = -1;
+GLint gCRTCurvatureLocation = -1;
+GLint gCRTGlowLocation = -1;
+GLint gCRTCornersLocation = -1;
+GLint gCRTOverscanLocation = -1;
+GLint gCRTBrightnessLocation = -1;
+GLint gCRTContrastLocation = -1;
+int gCRTWidth = 0;
+int gCRTHeight = 0;
 
 GLuint gCelBloomFbo = 0;
 GLuint gCelBloomTexture = 0;
@@ -905,6 +921,135 @@ static void ApplyFrameSharpening(int width, int height)
     glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)oldFbo);
 }
 
+
+static void ApplyCRTFilter(int width, int height)
+{
+    bool enabled = false;
+    float scanlineStrength = 0.35f, curvature = 0.15f, glowStrength = 0.10f;
+    float cornerDarkening = 0.05f, overscan = 0.0f, brightness = 1.0f, contrast = 1.0f;
+    GetCRTFilterConfiguration(&enabled, &scanlineStrength, &curvature, &glowStrength,
+                              &cornerDarkening, &overscan, &brightness, &contrast);
+    // When disabled, return before allocating resources or issuing any CRT draw calls.
+    if (!enabled || width <= 0 || height <= 0)
+        return;
+
+    if (gCRTProgram == 0)
+    {
+        const char* vertexSource =
+            "attribute vec2 position; varying vec2 texcoord;\n"
+            "void main() { texcoord = position * 0.5 + 0.5; gl_Position = vec4(position, 0.0, 1.0); }\n";
+        // Lightweight GLES2 CRT-Geom-inspired pass: scanlines, barrel curvature,
+        // restrained highlight glow, corner shading, and user-controlled levels.
+        const char* fragmentSource =
+            "precision mediump float;\n"
+            "uniform sampler2D frameTex; uniform vec2 texelSize;\n"
+            "uniform float scanlineStrength; uniform float curvature; uniform float glowStrength;\n"
+            "uniform float cornerDarkening; uniform float overscan; uniform float brightness; uniform float contrast;\n"
+            "varying vec2 texcoord;\n"
+            "void main() {\n"
+            " vec2 uv=(texcoord-0.5)*(1.0+clamp(overscan,0.0,0.05)*2.0)+0.5;\n"
+            " vec2 p=uv*2.0-1.0; float curve=clamp(curvature,0.0,0.5);\n"
+            " uv=(p*(1.0+curve*vec2(p.y*p.y,p.x*p.x)))*0.5+0.5;\n"
+            " if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }\n"
+            " vec3 color=texture2D(frameTex,uv).rgb;\n"
+            " vec3 glow=(texture2D(frameTex,uv+vec2(texelSize.x*1.5,0.0)).rgb+texture2D(frameTex,uv-vec2(texelSize.x*1.5,0.0)).rgb+texture2D(frameTex,uv+vec2(0.0,texelSize.y*1.5)).rgb+texture2D(frameTex,uv-vec2(0.0,texelSize.y*1.5)).rgb)*0.25;\n"
+            " color+=max(glow-vec3(0.68),vec3(0.0))*clamp(glowStrength,0.0,1.0)*0.35;\n"
+            " float scan=0.5+0.5*cos((uv.y/texelSize.y)*3.14159265);\n"
+            " color*=1.0-clamp(scanlineStrength,0.0,1.0)*(0.22*(1.0-scan));\n"
+            " float edge=clamp(length((uv*2.0-1.0)*vec2(0.82,1.0)),0.0,1.4);\n"
+            " color*=1.0-clamp(cornerDarkening,0.0,1.0)*smoothstep(0.55,1.15,edge);\n"
+            " color=(color-vec3(0.5))*clamp(contrast,0.5,1.5)+vec3(0.5);\n"
+            " color*=clamp(brightness,0.5,1.5); gl_FragColor=vec4(clamp(color,0.0,1.0),1.0);\n"
+            "}\n";
+        gCRTProgram = CreateCelPostProgram(vertexSource, fragmentSource, "CRT-Geom-style fullscreen filter");
+        if (gCRTProgram != 0)
+        {
+            gCRTSceneLocation = glGetUniformLocation(gCRTProgram, "frameTex");
+            gCRTTexelLocation = glGetUniformLocation(gCRTProgram, "texelSize");
+            gCRTScanlineLocation = glGetUniformLocation(gCRTProgram, "scanlineStrength");
+            gCRTCurvatureLocation = glGetUniformLocation(gCRTProgram, "curvature");
+            gCRTGlowLocation = glGetUniformLocation(gCRTProgram, "glowStrength");
+            gCRTCornersLocation = glGetUniformLocation(gCRTProgram, "cornerDarkening");
+            gCRTOverscanLocation = glGetUniformLocation(gCRTProgram, "overscan");
+            gCRTBrightnessLocation = glGetUniformLocation(gCRTProgram, "brightness");
+            gCRTContrastLocation = glGetUniformLocation(gCRTProgram, "contrast");
+            const GLfloat quad[] = {-1.0f,-1.0f, 1.0f,-1.0f, -1.0f,1.0f, 1.0f,1.0f};
+            glGenBuffers(1, &gCRTVbo);
+            glBindBuffer(GL_ARRAY_BUFFER, gCRTVbo);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glGenTextures(1, &gCRTTexture);
+        }
+    }
+    if (gCRTProgram == 0 || gCRTTexture == 0 || gCRTVbo == 0)
+        return;
+
+    GLint oldFbo=0, oldViewport[4]={0,0,width,height}, oldProgram=0, oldActive=GL_TEXTURE0;
+    GLint oldTexture=0, oldTexture0=0, oldArray=0, oldVao=0, oldAttrib=GL_FALSE;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING,&oldFbo);
+    glGetIntegerv(GL_VIEWPORT,oldViewport);
+    glGetIntegerv(GL_CURRENT_PROGRAM,&oldProgram);
+    glGetIntegerv(GL_ACTIVE_TEXTURE,&oldActive);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D,&oldTexture);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D,&oldTexture0);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&oldArray);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING_OES,&oldVao);
+    glGetVertexAttribiv(0,GL_VERTEX_ATTRIB_ARRAY_ENABLED,&oldAttrib);
+    const GLboolean depth=glIsEnabled(GL_DEPTH_TEST), blend=glIsEnabled(GL_BLEND);
+    const GLboolean cull=glIsEnabled(GL_CULL_FACE), scissor=glIsEnabled(GL_SCISSOR_TEST);
+    const GLboolean stencil=glIsEnabled(GL_STENCIL_TEST);
+
+    glBindFramebuffer(GL_FRAMEBUFFER,0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D,gCRTTexture);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+    if (gCRTWidth!=width || gCRTHeight!=height)
+    {
+        glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,width,height,0,GL_RGB,GL_UNSIGNED_BYTE,NULL);
+        gCRTWidth=width;
+        gCRTHeight=height;
+    }
+    // Capture the frame after sharpening, then apply CRT processing to the whole image.
+    glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,width,height);
+    glViewport(0,0,width,height);
+    glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_STENCIL_TEST);
+    glUseProgram(gCRTProgram);
+    glUniform1i(gCRTSceneLocation,0);
+    if (gCRTTexelLocation>=0) glUniform2f(gCRTTexelLocation,1.0f/(float)width,1.0f/(float)height);
+    if (gCRTScanlineLocation>=0) glUniform1f(gCRTScanlineLocation,scanlineStrength);
+    if (gCRTCurvatureLocation>=0) glUniform1f(gCRTCurvatureLocation,curvature);
+    if (gCRTGlowLocation>=0) glUniform1f(gCRTGlowLocation,glowStrength);
+    if (gCRTCornersLocation>=0) glUniform1f(gCRTCornersLocation,cornerDarkening);
+    if (gCRTOverscanLocation>=0) glUniform1f(gCRTOverscanLocation,overscan);
+    if (gCRTBrightnessLocation>=0) glUniform1f(gCRTBrightnessLocation,brightness);
+    if (gCRTContrastLocation>=0) glUniform1f(gCRTContrastLocation,contrast);
+    glBindBuffer(GL_ARRAY_BUFFER,gCRTVbo);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,(const GLvoid*)0);
+    glDrawArrays(GL_TRIANGLE_STRIP,0,4);
+
+    if (oldAttrib) glEnableVertexAttribArray(0); else glDisableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER,(GLuint)oldArray);
+    glBindVertexArrayOES((GLuint)oldVao);
+    glUseProgram((GLuint)oldProgram);
+    glViewport(oldViewport[0],oldViewport[1],oldViewport[2],oldViewport[3]);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D,(GLuint)oldTexture0);
+    glActiveTexture((GLenum)oldActive);
+    if (oldActive!=GL_TEXTURE0) glBindTexture(GL_TEXTURE_2D,(GLuint)oldTexture);
+    if (depth) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+    if (blend) glEnable(GL_BLEND); else glDisable(GL_BLEND);
+    if (cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (scissor) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
+    if (stencil) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
+    glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)oldFbo);
+}
+
+
 static int gSHARAndroidRenderWidth = 0;
 static int gSHARAndroidRenderHeight = 0;
 
@@ -1452,6 +1597,7 @@ void pglDisplay::SwapBuffers(void)
 {
 #ifdef RAD_ANDROID
     ApplyFrameSharpening(winWidth, winHeight);
+    ApplyCRTFilter(winWidth, winHeight);
 #endif
     SDL_GL_SwapWindow(win);
     reset = false;
