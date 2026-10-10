@@ -18,6 +18,9 @@
 #include <contexts/bootupcontext.h>
 #include <pddi/pddi.hpp>
 #include <string.h>
+#ifdef RAD_ANDROID
+#include <android/log.h>
+#endif
 
 #ifdef RAD_ANDROID
 bool IsCelShadingEnabled();
@@ -530,6 +533,20 @@ sim::Solving_Answer StaticPhysDSG::PostReactToCollision(rmt::Vector& impulse, si
 
 void StaticPhysDSG::SetShadow( tDrawable* ipShadow )
 {
+#ifdef RAD_ANDROID
+    // Runtime diagnostic: cap logs to avoid flooding logcat during level streaming.
+    static int shadowAssignmentLogCount = 0;
+    if (shadowAssignmentLogCount < 180)
+    {
+        const rmt::Vector& pos = rPosition();
+        __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowTrace",
+            "SET_SHADOW[%d] drawable=%s objectPos=(%.2f,%.2f,%.2f)",
+            shadowAssignmentLogCount,
+            (ipShadow != NULL && ipShadow->GetName() != NULL) ? ipShadow->GetName() : "<null>",
+            pos.x, pos.y, pos.z);
+        ++shadowAssignmentLogCount;
+    }
+#endif
     tRefCounted::Assign( mpShadow, ipShadow );
 
     mUseToonSmallTreeShadow = false;
@@ -569,6 +586,13 @@ void StaticPhysDSG::SetShadow( tDrawable* ipShadow )
             }
 
             mUseToonSmallTreeShadow = true;
+#ifdef RAD_ANDROID
+            __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowTrace",
+                "TREE_SHADOW_MATCH drawable=%s center=(%.2f,%.2f) radius=(%.2f,%.2f)",
+                ipShadow->GetName(),
+                mToonSmallTreeShadowCenterX, mToonSmallTreeShadowCenterZ,
+                mToonSmallTreeShadowRadiusX, mToonSmallTreeShadowRadiusZ);
+#endif
         }
 #endif
     }
@@ -635,6 +659,20 @@ void StaticPhysDSG::RecomputeShadowPositionNoIntersect( float height, const rmt:
 
 void StaticPhysDSG::DisplaySimpleShadow()
 {
+#ifdef RAD_ANDROID
+    static int shadowDisplayLogCount = 0;
+    if (shadowDisplayLogCount < 180)
+    {
+        __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowTrace",
+            "DISPLAY_SHADOW[%d] drawable=%s toonTreeMatch=%d cel=%d matrix=%d",
+            shadowDisplayLogCount,
+            (mpShadow != NULL && mpShadow->GetName() != NULL) ? mpShadow->GetName() : "<null>",
+            mUseToonSmallTreeShadow ? 1 : 0,
+            IsCelShadingEnabled() ? 1 : 0,
+            mpShadowMatrix != NULL ? 1 : 0);
+        ++shadowDisplayLogCount;
+    }
+#endif
     p3d::pddi->SetZWrite(false);
     BEGIN_PROFILE("DisplaySimpleShadow")
 	rAssert( mpShadow != NULL );
