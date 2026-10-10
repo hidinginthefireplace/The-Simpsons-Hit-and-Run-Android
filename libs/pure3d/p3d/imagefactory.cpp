@@ -560,7 +560,7 @@ tLoadStatus tImageHandler::Load(tFile* file, tEntityStore* store)
         {
             texture->SetName(name);
 #ifdef RAD_ANDROID
-            tTexture* upscaledTexture = CreateXbrz2xTexture(texture);
+            tTexture* upscaledTexture = CreateXbrz2xTexture(texture, "IMAGE_HANDLER_LOAD");
             if (upscaledTexture != NULL)
             {
                 texture->Release();
@@ -783,7 +783,7 @@ tTexture* tImageFactory::LoadAsTexture(char* filename, char* inventoryName)
 #ifdef RAD_ANDROID
             if (!deferXbrzUpscale)
             {
-                tTexture* upscaledTexture = CreateXbrz2xTexture(texture);
+                tTexture* upscaledTexture = CreateXbrz2xTexture(texture, "IMAGE_FACTORY_LOAD");
                 if (upscaledTexture != NULL)
                 {
                     texture->Release();
@@ -828,7 +828,7 @@ tTexture* tImageFactory::ParseAsTexture( tFile* file, char* inventoryName, const
 #ifdef RAD_ANDROID
             if (!deferXbrzUpscale)
             {
-                tTexture* upscaledTexture = CreateXbrz2xTexture(texture);
+                tTexture* upscaledTexture = CreateXbrz2xTexture(texture, "IMAGE_FACTORY_PARSE");
                 if (upscaledTexture != NULL)
                 {
                     texture->Release();
