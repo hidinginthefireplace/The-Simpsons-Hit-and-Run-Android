@@ -172,8 +172,18 @@ namespace
         return true;
     }
 
+    bool IsScroobySpriteSectionPath(const char* diagnosticPath)
+    {
+        return diagnosticPath != NULL &&
+               strcmp(diagnosticPath, "SCROOBY_SPRITE_SECTION") == 0;
+    }
+
     bool AllowsGuiUpscaling(const char* diagnosticPath)
     {
+        // Explicit call from tSprite::BuildTexture for Scrooby/UI image sections.
+        if (IsScroobySpriteSectionPath(diagnosticPath))
+            return true;
+
         return PathHasFilename(diagnosticPath, "frontend.p3d") ||
                PathHasFilename(diagnosticPath, "backend.p3d") ||
                PathHasFilename(diagnosticPath, "bootup.p3d") ||
@@ -182,11 +192,12 @@ namespace
                PathHasFilename(diagnosticPath, "licensep.p3d");
     }
 
-    // Alpha-bearing pixels are enabled only for the front-end container in
-    // this first GUI-focused stage. Other UI containers must be fully opaque.
+    // Alpha-aware xBRZ is safe to try for the explicit Scrooby sprite-section
+    // route and frontend.p3d. World/effect texture paths remain excluded.
     bool AllowsFrontendAlpha(const char* diagnosticPath)
     {
-        return PathHasFilename(diagnosticPath, "frontend.p3d");
+        return IsScroobySpriteSectionPath(diagnosticPath) ||
+               PathHasFilename(diagnosticPath, "frontend.p3d");
     }
 
     bool WriteArgbMip(tTexture* texture, int mip, int expectedWidth,

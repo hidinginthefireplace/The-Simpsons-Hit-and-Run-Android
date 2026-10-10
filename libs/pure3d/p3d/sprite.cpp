@@ -517,6 +517,21 @@ void tSprite::BuildTexture(int texNum, tRect& src, int newX, int newY, tImage* i
     }
 
     textures[texNum] = conv->ImageToTexture(buffer,linear);
+#ifdef RAD_ANDROID
+    // Scrooby UI sprites are assembled from cropped image sections. Upscale only
+    // this explicit sprite-section path, not every texture converted by Pure3D.
+    // Linear sprites use pixel-space UVs and must keep their original resolution.
+    if (!linear && textures[texNum] != NULL)
+    {
+        tTexture* upscaledTexture =
+            CreateXbrz2xTexture(textures[texNum], "SCROOBY_SPRITE_SECTION");
+        if (upscaledTexture != NULL)
+        {
+            textures[texNum]->Release();
+            textures[texNum] = upscaledTexture;
+        }
+    }
+#endif
     textures[texNum]->AddRef();
 
 /*
