@@ -22,6 +22,8 @@ static bool gCelShadingOutlinePass = false;
 static pglContext* gCelShadingContext = nullptr;
 static bool gCelShadingConfigurationLoaded = false;
 static float gFrameSharpenStrength = 0.4f;
+static bool gFrameSharpeningEnabled = true;
+static bool gSharpeningConfigurationLoaded = false;
 
 static bool gCRTConfigurationLoaded = false;
 static bool gCRTEnabled = false;
@@ -35,6 +37,7 @@ static float gCRTContrast = 1.0f;
 
 static const char* CRT_CONFIGURATION_FILE_NAME = "Simpsons_crt_configuration.txt";
 static const char* CEL_SHADING_CONFIGURATION_FILE_NAME = "Simpsons_cel_shading.txt";
+static const char* SHARPENING_CONFIGURATION_FILE_NAME = "Simpsons_sharpening.txt";
 
 static bool ParseCelShadingBool(const char* value, bool defaultValue)
 {
@@ -73,7 +76,6 @@ static void WriteCelShadingConfiguration()
     fprintf(file, "# Restart the game after changing this file.\n");
     fprintf(file, "\n");
     fprintf(file, "cel_shading=%s\n", gCelShadingEnabled ? "true" : "false");
-    fprintf(file, "sharpen=%.2f\n", gFrameSharpenStrength);
 
     fclose(file);
 }
@@ -105,21 +107,6 @@ static void LoadCelShadingConfiguration()
     char line[256];
     while (fgets(line, sizeof(line), file) != nullptr)
     {
-        char* sharpenKey = strstr(line, "sharpen=");
-        if (sharpenKey != nullptr)
-        {
-            sharpenKey += strlen("sharpen=");
-            char* sharpenEnd = sharpenKey + strlen(sharpenKey);
-            while (sharpenEnd > sharpenKey && (sharpenEnd[-1] == '\n' || sharpenEnd[-1] == '\r' || sharpenEnd[-1] == ' ' || sharpenEnd[-1] == '\t'))
-                --sharpenEnd;
-            *sharpenEnd = '\0';
-            char* parseEnd = nullptr;
-            const float parsed = strtof(sharpenKey, &parseEnd);
-            if (parseEnd != sharpenKey && isfinite(parsed))
-                gFrameSharpenStrength = fmaxf(0.0f, fminf(1.0f, parsed));
-            continue;
-        }
-
         char* key = strstr(line, "cel_shading=");
         if (key == nullptr)
             continue;
@@ -140,6 +127,106 @@ static void LoadCelShadingConfiguration()
     fclose(file);
 }
 
+
+static void WriteSharpeningConfiguration()
+{
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if (storagePath == nullptr || storagePath[0] == '\0')
+        return;
+
+    char filePath[512];
+    snprintf(filePath, sizeof(filePath), "%s/%s", storagePath, SHARPENING_CONFIGURATION_FILE_NAME);
+    FILE* file = fopen(filePath, "w");
+    if (file == nullptr)
+        return;
+
+    fprintf(file, "# Simpsons Hit & Run Android - Sharpening\n");
+    fprintf(file, "# Adjust the values to increase or decrease  the amount of sharpening.\n");
+    fprintf(file, "# 0=Off / 0.2=Light / 0.4=Average / 0.6=Stronger / 0.8=Very Strong / 1.0=Max\n");
+    fprintf(file, "# Restart the game after changing this file.\n");
+    fprintf(file, "\n");
+    fprintf(file, "sharpen=%.2f\n", gFrameSharpenStrength);
+    fprintf(file, "sharpening_enabled=%s\n", gFrameSharpeningEnabled ? "true" : "false");
+
+    fclose(file);
+}
+
+static bool ParseSharpeningStrengthLine(char* line)
+{
+    char* value = strstr(line, "sharpen=");
+    if (value == nullptr)
+        return false;
+
+    value += strlen("sharpen=");
+    char* end = value + strlen(value);
+    while (end > value &&
+           (end[-1] == '\n' || end[-1] == '\r' ||
+            end[-1] == ' ' || end[-1] == '\t'))
+    {
+        --end;
+    }
+    *end = '\0';
+
+    char* parseEnd = nullptr;
+    const float parsed = strtof(value, &parseEnd);
+    if (parseEnd != value && isfinite(parsed))
+        gFrameSharpenStrength = fmaxf(0.0f, fminf(1.0f, parsed));
+    return true;
+}
+
+static void LoadSharpeningConfiguration()
+{
+    if (gSharpeningConfigurationLoaded)
+        return;
+
+    gSharpeningConfigurationLoaded = true;
+
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if (storagePath == nullptr || storagePath[0] == '\0')
+        return;
+
+    char filePath[512];
+    snprintf(filePath, sizeof(filePath), "%s/%s", storagePath, SHARPENING_CONFIGURATION_FILE_NAME);
+    FILE* file = fopen(filePath, "r");
+    if (file == nullptr)
+    {
+        // Migrate the numeric value from the previous combined cel-shading file
+        // when possible, so an existing user's sharpening level is preserved.
+        char legacyPath[512];
+        snprintf(legacyPath, sizeof(legacyPath), "%s/%s", storagePath, CEL_SHADING_CONFIGURATION_FILE_NAME);
+        FILE* legacyFile = fopen(legacyPath, "r");
+        if (legacyFile != nullptr)
+        {
+            char legacyLine[256];
+            while (fgets(legacyLine, sizeof(legacyLine), legacyFile) != nullptr)
+                ParseSharpeningStrengthLine(legacyLine);
+            fclose(legacyFile);
+        }
+
+        WriteSharpeningConfiguration();
+        return;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), file) != nullptr)
+    {
+        if (ParseSharpeningStrengthLine(line))
+            continue;
+
+        char* enabled = strstr(line, "sharpening_enabled=");
+        if (enabled != nullptr)
+        {
+            enabled += strlen("sharpening_enabled=");
+            while (*enabled == ' ' || *enabled == '\t')
+                ++enabled;
+            gFrameSharpeningEnabled =
+                (*enabled == '1' || strncmp(enabled, "true", 4) == 0 ||
+                 strncmp(enabled, "on", 2) == 0);
+        }
+    }
+
+    fclose(file);
+}
 
 static bool ParseCRTFloatSetting(char* line, const char* key, float* target, float minimum, float maximum)
 {
@@ -221,6 +308,21 @@ static void LoadCRTConfiguration()
     fclose(file);
 }
 
+bool IsCRTFilterEnabled()
+{
+    LoadCRTConfiguration();
+    return gCRTEnabled;
+}
+
+void SetCRTFilterEnabled(bool enabled)
+{
+    LoadCRTConfiguration();
+    if (gCRTEnabled == enabled)
+        return;
+    gCRTEnabled = enabled;
+    WriteCRTConfiguration();
+}
+
 void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature,
                                float* glowStrength, float* cornerDarkening, float* overscan,
                                float* brightness, float* contrast)
@@ -241,7 +343,27 @@ bool IsCelShadingEnabled()
     LoadCelShadingConfiguration();
     return gCelShadingEnabled;
 }
-float GetFrameSharpenStrength() { LoadCelShadingConfiguration(); return gFrameSharpenStrength; }
+
+bool IsFrameSharpeningEnabled()
+{
+    LoadSharpeningConfiguration();
+    return gFrameSharpeningEnabled;
+}
+
+void SetFrameSharpeningEnabled(bool enabled)
+{
+    LoadSharpeningConfiguration();
+    if (gFrameSharpeningEnabled == enabled)
+        return;
+    gFrameSharpeningEnabled = enabled;
+    WriteSharpeningConfiguration();
+}
+
+float GetFrameSharpenStrength()
+{
+    LoadSharpeningConfiguration();
+    return gFrameSharpenStrength;
+}
 bool IsCelShadingObjectEnabled() { return gCelShadingObjectEnabled; }
 bool IsCelShadingOutlinePass() { return gCelShadingOutlinePass; }
 
