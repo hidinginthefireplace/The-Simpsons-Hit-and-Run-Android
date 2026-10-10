@@ -78,9 +78,9 @@ namespace
             return false;
         }
 
-        // Diagnostic pass: replace the authored shadow with a bright cyan marker
+        // Diagnostic pass: replace the authored shadow with a bright magenta marker
         // so it's obvious whether this code path is reached. This is temporary.
-        // No blending: the cyan marker should be clearly visible over the ground.
+        // No blending: the magenta marker should be clearly visible over the ground.
         shadowShader->SetInt(PDDI_SP_BLENDMODE, PDDI_BLEND_NONE);
         shadowShader->SetInt(PDDI_SP_ISLIT, 0);
         shadowShader->SetInt(PDDI_SP_ALPHATEST, 0);
@@ -97,7 +97,7 @@ namespace
         }
 
         // Deliberately unmistakable diagnostic marker; this is not the final shadow tint.
-        const tColour shadowColour(0, 255, 255, 255);
+        const tColour shadowColour(255, 0, 255, 255);
         const float angleStep = rmt::PI_2 / float(SMALL_TREE_TOON_SHADOW_SLICES);
 
         for (int i = 0; i < SMALL_TREE_TOON_SHADOW_SLICES; ++i)
@@ -670,8 +670,8 @@ void StaticPhysDSG::DisplaySimpleShadow()
         displayedToonSmallTreeShadow = DrawSmallTreeToonShadow(
             mToonSmallTreeShadowCenterX,
             mToonSmallTreeShadowCenterZ,
-            mToonSmallTreeShadowRadiusX,
-            mToonSmallTreeShadowRadiusZ );
+            mToonSmallTreeShadowRadiusX * 1.8f,
+            mToonSmallTreeShadowRadiusZ * 1.8f );
     }
 #endif
     if ( !displayedToonSmallTreeShadow )
