@@ -21,6 +21,10 @@
 // contains OpenGL types which are not available in this translation unit.
 bool IsCelShadingEnabled();
 void SetCelShadingEnabled(bool enabled);
+bool IsCRTFilterEnabled();
+void SetCRTFilterEnabled(bool enabled);
+bool IsFrameSharpeningEnabled();
+void SetFrameSharpeningEnabled(bool enabled);
 #endif
 #include <presentation/gui/guimenu.h>
 
@@ -101,6 +105,9 @@ CGuiScreenPauseOptions::CGuiScreenPauseOptions
     CGuiEntity* pParent
 )
 :   CGuiScreen( pScreen, pParent, GUI_SCREEN_ID_OPTIONS ),
+#ifdef RAD_ANDROID
+    m_graphicsSettingsMode( false ),
+#endif
     m_pMenu( NULL )
 {
 MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
@@ -220,7 +227,7 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
 
     if( pGraphicsValue )
     {
-        pGraphicsValue->SetString( 0, IsCelShadingEnabled() ? "CEL SHADED ON" : "CEL SHADED OFF" );
+        pGraphicsValue->SetString( 0, "OPEN" );
     }
 
     // Give the Graphics row the normal left/right value arrows.
@@ -246,6 +253,12 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
     menu->Translate( 0, 70 );
 #endif
 
+#ifdef RAD_ANDROID
+    // The graphics submenu reuses the four existing pause-menu rows.
+    // No Scrooby/game assets are added or modified.
+    SetGraphicsSettingsMode( false );
+#endif
+
     // TC: [TEMP] disable controller screen for now to free up some memory for HUD map
     //
 #ifndef RAD_PC
@@ -260,6 +273,99 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
 MEMTRACK_POP_GROUP("CGUIScreenPauseOptions");
 }
 
+
+#ifdef RAD_ANDROID
+void CGuiScreenPauseOptions::SetGraphicsSettingsMode( bool enabled, bool resetSelection )
+{
+    m_graphicsSettingsMode = enabled;
+
+    if( m_pMenu == NULL )
+    {
+        return;
+    }
+
+    const char* mainLabels[ NUM_PAUSE_MENU_ITEMS ] =
+    {
+        "CONTROLLER",
+        "SOUND",
+        "SETTINGS",
+        "GRAPHICS"
+    };
+
+    const char* graphicsLabels[ NUM_PAUSE_MENU_ITEMS ] =
+    {
+        "CEL SHADING",
+        "CRT FILTER",
+        "SHARPENING",
+        "BACK"
+    };
+
+    for( int i = 0; i < NUM_PAUSE_MENU_ITEMS; ++i )
+    {
+        GuiMenuItem* item = m_pMenu->GetMenuItem( i );
+        if( item == NULL )
+        {
+            continue;
+        }
+
+        Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
+        Scrooby::Text* value = dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
+
+        if( label != NULL )
+        {
+            label->SetString( 0, enabled ? graphicsLabels[ i ] : mainLabels[ i ] );
+            label->SetVisible( true );
+        }
+
+        if( value != NULL )
+        {
+            const char* valueText = "";
+            bool valueVisible = false;
+
+            if( enabled )
+            {
+                if( i == MENU_ITEM_CONTROLLER )
+                {
+                    valueText = IsCelShadingEnabled() ? "ON" : "OFF";
+                    valueVisible = true;
+                }
+                else if( i == MENU_ITEM_SOUND )
+                {
+                    valueText = IsCRTFilterEnabled() ? "ON" : "OFF";
+                    valueVisible = true;
+                }
+                else if( i == MENU_ITEM_SETTINGS )
+                {
+                    valueText = IsFrameSharpeningEnabled() ? "ON" : "OFF";
+                    valueVisible = true;
+                }
+            }
+            else if( i == MENU_ITEM_GRAPHICS )
+            {
+                valueText = "OPEN";
+                valueVisible = true;
+            }
+
+            value->SetString( 0, valueText );
+            value->SetVisible( valueVisible );
+        }
+
+        if( item->m_itemValueArrowL != NULL )
+        {
+            item->m_itemValueArrowL->SetVisible( false );
+        }
+        if( item->m_itemValueArrowR != NULL )
+        {
+            item->m_itemValueArrowR->SetVisible( false );
+        }
+    }
+
+    if( resetSelection )
+    {
+        m_pMenu->Reset( enabled ? MENU_ITEM_CONTROLLER : MENU_ITEM_GRAPHICS );
+    }
+}
+#endif
 
 //===========================================================================
 // CGuiScreenPauseOptions::~CGuiScreenPauseOptions
@@ -317,6 +423,18 @@ void CGuiScreenPauseOptions::HandleMessage
     {
         switch( message )
         {
+#ifdef RAD_ANDROID
+            case GUI_MSG_CONTROLLER_BACK:
+            {
+                if( m_graphicsSettingsMode )
+                {
+                    SetGraphicsSettingsMode( false );
+                    return;
+                }
+                break;
+            }
+#endif
+
             case GUI_MSG_CONTROLLER_START:
             {
                 if( !m_pMenu->HasSelectionBeenMade() )
@@ -330,6 +448,31 @@ void CGuiScreenPauseOptions::HandleMessage
 
             case GUI_MSG_MENU_SELECTION_MADE:
             {
+#ifdef RAD_ANDROID
+                if( m_graphicsSettingsMode )
+                {
+                    if( param1 == MENU_ITEM_CONTROLLER )
+                    {
+                        SetCelShadingEnabled( !IsCelShadingEnabled() );
+                        SetGraphicsSettingsMode( true, false );
+                    }
+                    else if( param1 == MENU_ITEM_SOUND )
+                    {
+                        SetCRTFilterEnabled( !IsCRTFilterEnabled() );
+                        SetGraphicsSettingsMode( true, false );
+                    }
+                    else if( param1 == MENU_ITEM_SETTINGS )
+                    {
+                        SetFrameSharpeningEnabled( !IsFrameSharpeningEnabled() );
+                        SetGraphicsSettingsMode( true, false );
+                    }
+                    else if( param1 == MENU_ITEM_GRAPHICS )
+                    {
+                        SetGraphicsSettingsMode( false );
+                    }
+                }
+                else
+#endif
                 if( param1 == MENU_ITEM_CONTROLLER )
                 {
                     m_pParent->HandleMessage( GUI_MSG_GOTO_SCREEN, GUI_SCREEN_ID_CONTROLLER );
@@ -346,19 +489,7 @@ void CGuiScreenPauseOptions::HandleMessage
 #ifdef RAD_ANDROID
                 else if( param1 == MENU_ITEM_GRAPHICS )
                 {
-                    SetCelShadingEnabled( !IsCelShadingEnabled() );
-
-                    Scrooby::Page* pPage = m_pScroobyScreen->GetPage( "PauseOptions" );
-                    if( pPage )
-                    {
-                        Scrooby::Text* pGraphicsValue = pPage->GetText( "Display_Value" );
-                        if( pGraphicsValue )
-                        {
-                            pGraphicsValue->SetString(
-                                0,
-                                IsCelShadingEnabled() ? "CEL SHADED ON" : "CEL SHADED OFF" );
-                        }
-                    }
+                    SetGraphicsSettingsMode( true );
                 }
 #endif
             
