@@ -26,7 +26,7 @@ bool IsCelShadingEnabled();
 
 namespace
 {
-    struct TreeShadowAlphaState
+    struct SelectedShadowAlphaState
     {
         tTexture* texture;
         std::vector< std::vector<unsigned char> > originalAlpha;
@@ -34,10 +34,10 @@ namespace
         char name[128];
     };
 
-    std::vector<TreeShadowAlphaState*> gTreeShadowAlphaStates;
-    std::mutex gTreeShadowAlphaMutex;
+    std::vector<SelectedShadowAlphaState*> gSelectedShadowAlphaStates;
+    std::mutex gSelectedShadowAlphaMutex;
 
-    bool IsTreeShadowTextureName(const char* name)
+    bool IsSelectedShadowAlphaTextureName(const char* name)
     {
         if (name == NULL)
         {
@@ -52,11 +52,15 @@ namespace
         }
         lowerName[i] = '\0';
 
-        return strstr(lowerName, "tree") != NULL &&
-               strstr(lowerName, "shadow") != NULL;
+        // Keep this allow-list narrow so character/vehicle blob shadows
+        // and unrelated shadow textures retain their original appearance.
+        // "treeshad" covers treeshadow, treeshadowsmall, treeshad_overcast,
+        // and deadtreeshad_overcast variants.
+        return strstr(lowerName, "treeshad") != NULL ||
+               strstr(lowerName, "beeshadow") != NULL;
     }
 
-    bool CaptureTreeShadowAlpha(TreeShadowAlphaState* state)
+    bool CaptureSelectedShadowAlpha(SelectedShadowAlphaState* state)
     {
         if (state == NULL || state->texture == NULL)
         {
@@ -127,7 +131,7 @@ namespace
         return !state->originalAlpha.empty();
     }
 
-    bool WriteTreeShadowAlpha(TreeShadowAlphaState* state, bool sharpen)
+    bool WriteSelectedShadowAlpha(SelectedShadowAlphaState* state, bool sharpen)
     {
         if (state == NULL || state->texture == NULL ||
             state->originalAlpha.empty())
@@ -179,7 +183,7 @@ namespace
             // Drop faint edge pixels, then remap the remaining range to a
             // stronger yet translucent shadow. The relative cutoff keeps
             // lower-resolution mip levels from disappearing at distance.
-            const unsigned int threshold = (maxAlpha * 60U) / 100U;
+            const unsigned int threshold = (maxAlpha * 72U) / 100U;
             unsigned char* row = (unsigned char*)lock->bits;
             for (int y = 0; y < lock->height; ++y)
             {
@@ -221,85 +225,85 @@ namespace
         return true;
     }
 
-    void RemoveTreeShadowAlphaState(tTexture* texture)
+    void RemoveSelectedShadowAlphaState(tTexture* texture)
     {
-        std::lock_guard<std::mutex> guard(gTreeShadowAlphaMutex);
-        for (std::vector<TreeShadowAlphaState*>::iterator it =
-                 gTreeShadowAlphaStates.begin();
-             it != gTreeShadowAlphaStates.end(); ++it)
+        std::lock_guard<std::mutex> guard(gSelectedShadowAlphaMutex);
+        for (std::vector<SelectedShadowAlphaState*>::iterator it =
+                 gSelectedShadowAlphaStates.begin();
+             it != gSelectedShadowAlphaStates.end(); ++it)
         {
             if (*it != NULL && (*it)->texture == texture)
             {
                 delete *it;
-                gTreeShadowAlphaStates.erase(it);
+                gSelectedShadowAlphaStates.erase(it);
                 return;
             }
         }
     }
 
-    void RegisterTreeShadowTexture(tTexture* texture, const char* name)
+    void RegisterSelectedShadowTexture(tTexture* texture, const char* name)
     {
-        if (texture == NULL || !IsTreeShadowTextureName(name))
+        if (texture == NULL || !IsSelectedShadowAlphaTextureName(name))
         {
             return;
         }
 
-        std::lock_guard<std::mutex> guard(gTreeShadowAlphaMutex);
-        for (size_t i = 0; i < gTreeShadowAlphaStates.size(); ++i)
+        std::lock_guard<std::mutex> guard(gSelectedShadowAlphaMutex);
+        for (size_t i = 0; i < gSelectedShadowAlphaStates.size(); ++i)
         {
-            if (gTreeShadowAlphaStates[i] != NULL &&
-                gTreeShadowAlphaStates[i]->texture == texture)
+            if (gSelectedShadowAlphaStates[i] != NULL &&
+                gSelectedShadowAlphaStates[i]->texture == texture)
             {
                 return;
             }
         }
 
-        TreeShadowAlphaState* state = new TreeShadowAlphaState;
+        SelectedShadowAlphaState* state = new SelectedShadowAlphaState;
         state->texture = texture;
         state->sharpened = false;
         strncpy(state->name, name, sizeof(state->name) - 1);
         state->name[sizeof(state->name) - 1] = '\0';
 
-        if (!CaptureTreeShadowAlpha(state))
+        if (!CaptureSelectedShadowAlpha(state))
         {
-            __android_log_print(ANDROID_LOG_WARN, "SHR-TreeShadowAlpha",
+            __android_log_print(ANDROID_LOG_WARN, "SHR-ShadowAlpha",
                 "SKIP name=%s reason=unsupported-format-or-lock",
                 state->name);
             delete state;
             return;
         }
 
-        gTreeShadowAlphaStates.push_back(state);
-        __android_log_print(ANDROID_LOG_INFO, "SHR-TreeShadowAlpha",
+        gSelectedShadowAlphaStates.push_back(state);
+        __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowAlpha",
             "TRACK name=%s size=%dx%d mips=%d",
             state->name, texture->GetWidth(), texture->GetHeight(),
             texture->GetNumMipMaps() + 1);
     }
 }
 
-void UpdateTreeShadowAlphaForCelState()
+void UpdateSelectedShadowAlphaForCelState()
 {
-    std::lock_guard<std::mutex> guard(gTreeShadowAlphaMutex);
+    std::lock_guard<std::mutex> guard(gSelectedShadowAlphaMutex);
     const bool celEnabled = IsCelShadingEnabled();
 
-    for (size_t i = 0; i < gTreeShadowAlphaStates.size(); ++i)
+    for (size_t i = 0; i < gSelectedShadowAlphaStates.size(); ++i)
     {
-        TreeShadowAlphaState* state = gTreeShadowAlphaStates[i];
+        SelectedShadowAlphaState* state = gSelectedShadowAlphaStates[i];
         if (state == NULL || state->sharpened == celEnabled)
         {
             continue;
         }
 
-        if (WriteTreeShadowAlpha(state, celEnabled))
+        if (WriteSelectedShadowAlpha(state, celEnabled))
         {
             state->sharpened = celEnabled;
-            __android_log_print(ANDROID_LOG_INFO, "SHR-TreeShadowAlpha",
-                "%s name=%s thresholdPercent=60 opacityCeiling=200",
+            __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowAlpha",
+                "%s name=%s thresholdPercent=72 opacityCeiling=200",
                 celEnabled ? "SHARPEN" : "RESTORE", state->name);
         }
         else
         {
-            __android_log_print(ANDROID_LOG_WARN, "SHR-TreeShadowAlpha",
+            __android_log_print(ANDROID_LOG_WARN, "SHR-ShadowAlpha",
                 "UPDATE_FAILED name=%s cel=%d", state->name,
                 celEnabled ? 1 : 0);
         }
@@ -315,7 +319,7 @@ tTexture::tTexture() : texture(NULL)
 tTexture::~tTexture()
 {
 #ifdef RAD_ANDROID
-    RemoveTreeShadowAlphaState(this);
+    RemoveSelectedShadowAlphaState(this);
 #endif
     tRefCounted::Release(texture);
 }
@@ -516,7 +520,7 @@ tTexture* tTextureLoader::LoadTexture(tChunkFile* f)
         texture->SetName(name);
         texture->SetPriority(priority);
 #ifdef RAD_ANDROID
-        RegisterTreeShadowTexture(texture, name);
+        RegisterSelectedShadowTexture(texture, name);
 #endif
     }
     return texture;

@@ -19,6 +19,28 @@
 #include <memory/srrmemory.h>
 #include <p3d/utility.hpp>
 #include <p3d/texture.hpp>
+#ifdef RAD_ANDROID
+#include <android/log.h>
+#include <ctype.h>
+#include <string.h>
+
+static bool IsSimpleCircleShadowDiagnosticName(const char* value)
+{
+   if (value == NULL)
+   {
+      return false;
+   }
+
+   char lowerName[256];
+   size_t i = 0;
+   for (; value[i] != '\0' && i < sizeof(lowerName) - 1; ++i)
+   {
+      lowerName[i] = (char)tolower((unsigned char)value[i]);
+   }
+   lowerName[i] = '\0';
+   return strstr(lowerName, "simplecircleshadow") != NULL;
+}
+#endif
 
 //************************************************************************
 //
@@ -132,6 +154,29 @@ void StaticEntityDSG::SetGeometry(tGeometry* ipGeo)
 //   mShaderUID = ipGeo->GetShader(0)->GetUID();
    ipGeo->ProcessShaders(*this);
 
+#ifdef RAD_ANDROID
+   // Log simple-circle shadow geometry and its actual runtime shader bindings
+   // once when the static entity is configured, rather than every frame.
+   const char* geometryName = ipGeo->GetNameDangerous();
+   if (IsSimpleCircleShadowDiagnosticName(geometryName))
+   {
+      __android_log_print(ANDROID_LOG_INFO, "SHR-CircleShadow",
+         "GEOMETRY name=%s castsShadow=%d shaderCount=%d",
+         geometryName, ipGeo->CastsShadow() ? 1 : 0, ipGeo->GetNumShader());
+
+      for (int i = 0; i < ipGeo->GetNumShader(); ++i)
+      {
+         tShader* shader = ipGeo->GetShader(i);
+         if (shader != NULL)
+         {
+            __android_log_print(ANDROID_LOG_INFO, "SHR-CircleShadow",
+               "GEOMETRY_SHADER geometry=%s index=%d material=%s shaderType=%s",
+               geometryName, i, shader->GetNameDangerous(), shader->GetType());
+         }
+      }
+   }
+#endif
+
    SetInternalState();
 }
 //========================================================================
@@ -224,7 +269,7 @@ void StaticEntityDSG::Display()
 #endif
     if(IS_DRAW_LONG) return;
 #ifdef RAD_ANDROID
-    UpdateTreeShadowAlphaForCelState();
+    UpdateSelectedShadowAlphaForCelState();
 #endif
     DSG_BEGIN_PROFILE(profileName)
 
