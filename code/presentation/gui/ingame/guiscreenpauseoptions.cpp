@@ -279,6 +279,13 @@ void CGuiScreenPauseOptions::SetGraphicsSettingsMode( bool enabled, bool resetSe
 {
     m_graphicsSettingsMode = enabled;
 
+    if( m_pMenu != NULL )
+    {
+        // The Controller row is normally hidden on Android to conserve menu
+        // space; reveal it in graphics mode because it becomes Cel Shading.
+        m_pMenu->SetMenuItemEnabled( MENU_ITEM_CONTROLLER, enabled, true );
+    }
+
     if( m_pMenu == NULL )
     {
         return;
