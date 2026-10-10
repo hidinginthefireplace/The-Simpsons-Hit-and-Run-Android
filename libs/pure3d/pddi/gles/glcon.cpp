@@ -236,7 +236,7 @@ static void LoadCRTConfiguration()
 static void WriteCRTPiConfiguration()
 {
     const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
-    if (storagePath == nullptr || storagePath[0] == '\\0')
+    if (storagePath == nullptr || storagePath[0] == '\0')
         return;
 
     char filePath[512];
@@ -244,18 +244,18 @@ static void WriteCRTPiConfiguration()
     FILE* file = fopen(filePath, "w");
     if (file == nullptr)
         return;
-    fprintf(file, "# Simpsons Hit & Run Android - CRT-Pi-style filter\\n");
-    fprintf(file, "# CRT-Pi-inspired scanlines, gamma response, and alternating RGB mask.\\n");
-    fprintf(file, "# Filter is disabled by default. Change crt_pi_enabled to 1 to enable it.\\n");
-    fprintf(file, "# Restart the game after changing settings. Values are clamped by the game.\\n");
-    fprintf(file, "crt_pi_enabled=%d\\n", gCRTPiEnabled ? 1 : 0);
-    fprintf(file, "scanline_strength=%.2f\\n", gCRTPiScanlineStrength);
-    fprintf(file, "scanline_gap_brightness=%.2f\\n", gCRTPiScanlineGapBrightness);
-    fprintf(file, "mask_strength=%.2f\\n", gCRTPiMaskStrength);
-    fprintf(file, "bloom_factor=%.2f\\n", gCRTPiBloomFactor);
-    fprintf(file, "curvature=%.2f\\n", gCRTPiCurvature);
-    fprintf(file, "brightness=%.2f\\n", gCRTPiBrightness);
-    fprintf(file, "contrast=%.2f\\n", gCRTPiContrast);
+    fprintf(file, "# Simpsons Hit & Run Android - CRT-Pi-style filter\n");
+    fprintf(file, "# CRT-Pi-inspired scanlines, gamma response, and alternating RGB mask.\n");
+    fprintf(file, "# Filter is disabled by default. Change crt_pi_enabled to 1 to enable it.\n");
+    fprintf(file, "# Restart the game after changing settings. Values are clamped by the game.\n");
+    fprintf(file, "crt_pi_enabled=%d\n", gCRTPiEnabled ? 1 : 0);
+    fprintf(file, "scanline_strength=%.2f\n", gCRTPiScanlineStrength);
+    fprintf(file, "scanline_gap_brightness=%.2f\n", gCRTPiScanlineGapBrightness);
+    fprintf(file, "mask_strength=%.2f\n", gCRTPiMaskStrength);
+    fprintf(file, "bloom_factor=%.2f\n", gCRTPiBloomFactor);
+    fprintf(file, "curvature=%.2f\n", gCRTPiCurvature);
+    fprintf(file, "brightness=%.2f\n", gCRTPiBrightness);
+    fprintf(file, "contrast=%.2f\n", gCRTPiContrast);
     fclose(file);
 }
 
@@ -266,7 +266,7 @@ static void LoadCRTPiConfiguration()
     gCRTPiConfigurationLoaded = true;
 
     const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
-    if (storagePath == nullptr || storagePath[0] == '\\0')
+    if (storagePath == nullptr || storagePath[0] == '\0')
         return;
 
     char filePath[512];
@@ -285,7 +285,7 @@ static void LoadCRTPiConfiguration()
         if (enabled != nullptr)
         {
             enabled += strlen("crt_pi_enabled=");
-            while (*enabled == ' ' || *enabled == '\\t')
+            while (*enabled == ' ' || *enabled == '\t')
                 ++enabled;
             gCRTPiEnabled = (*enabled == '1' || strncmp(enabled, "true", 4) == 0 || strncmp(enabled, "on", 2) == 0);
             continue;
