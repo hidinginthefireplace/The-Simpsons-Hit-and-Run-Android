@@ -534,7 +534,7 @@ sim::Solving_Answer StaticPhysDSG::PostReactToCollision(rmt::Vector& impulse, si
 void StaticPhysDSG::SetShadow( tDrawable* ipShadow )
 {
 #ifdef RAD_ANDROID
-    // Runtime diagnostic: cap logs to avoid flooding logcat during level streaming.
+    // Runtime diagnostic: cap logs to avoid flooding logcat during level streaming. The tag is SHR-ShadowTrace.
     static int shadowAssignmentLogCount = 0;
     if (shadowAssignmentLogCount < 180)
     {
