@@ -27,7 +27,8 @@ namespace
             if (lock != NULL) texture->Unlock(mip);
             return false;
         }
-        if (lock->format != PDDI_PIXEL_ARGB8888 ||
+        if ((lock->format != PDDI_PIXEL_ARGB8888 &&
+             lock->format != PDDI_PIXEL_RGB888) ||
             lock->width != expectedWidth || lock->height != expectedHeight ||
             lock->pitch == 0 ||
             (lock->pitch < 0 ? -lock->pitch : lock->pitch) < expectedWidth * 4)
@@ -43,8 +44,18 @@ namespace
             {
                 uint32_t packed = 0;
                 memcpy(&packed, row + (size_t)x * 4, sizeof(packed));
-                pixels[(size_t)y * (size_t)expectedWidth + (size_t)x] =
-                    (uint32_t)lock->MakeColour(packed);
+                // Convert backend-packed pixels to canonical 0xAARRGGBB
+                // ordering before passing them to xBRZ.
+                uint32_t canonical =
+                    (((packed & lock->rgbaMask[0]) >> lock->rgbaLShift[0]) << lock->rgbaRShift[0]) |
+                    (((packed & lock->rgbaMask[1]) >> lock->rgbaLShift[1]) << lock->rgbaRShift[1]) |
+                    (((packed & lock->rgbaMask[2]) >> lock->rgbaLShift[2]) << lock->rgbaRShift[2]) |
+                    (((packed & lock->rgbaMask[3]) >> lock->rgbaLShift[3]) << lock->rgbaRShift[3]);
+                if (lock->format == PDDI_PIXEL_RGB888)
+                {
+                    canonical |= 0xff000000U;
+                }
+                pixels[(size_t)y * (size_t)expectedWidth + (size_t)x] = canonical;
             }
             row += lock->pitch;
         }
