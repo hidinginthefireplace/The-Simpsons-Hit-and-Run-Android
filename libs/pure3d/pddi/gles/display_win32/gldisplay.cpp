@@ -17,6 +17,7 @@
 #include <jni.h>
 
 bool IsCelShadingEnabled();
+float GetFrameSharpenStrength();
 
 namespace
 {
@@ -42,6 +43,16 @@ GLint gCelPostDepthAvailableLocation = -1;
 
 GLuint gCelBloomExtractProgram = 0;
 GLuint gCelBloomBlurProgram = 0;
+
+GLuint gFrameSharpenProgram = 0;
+GLuint gFrameSharpenTexture = 0;
+GLuint gFrameSharpenVbo = 0;
+GLint gFrameSharpenSceneLocation = -1;
+GLint gFrameSharpenTexelLocation = -1;
+GLint gFrameSharpenStrengthLocation = -1;
+int gFrameSharpenWidth = 0;
+int gFrameSharpenHeight = 0;
+
 GLuint gCelBloomFbo = 0;
 GLuint gCelBloomTexture = 0;
 GLuint gCelBloomScratchTexture = 0;
@@ -791,6 +802,109 @@ void ApplyCelPostProcessBeforeGui(int width, int height)
     ApplyCelPostProcess(width, height);
 }
 
+
+static void ApplyFrameSharpening(int width, int height)
+{
+    const float strength = GetFrameSharpenStrength();
+    if (strength <= 0.001f || width <= 0 || height <= 0)
+        return;
+
+    if (gFrameSharpenProgram == 0)
+    {
+        const char* vertexSource =
+            "attribute vec2 position;\n"
+            "varying vec2 texcoord;\n"
+            "void main() { texcoord = position * 0.5 + 0.5; gl_Position = vec4(position, 0.0, 1.0); }\n";
+        const char* fragmentSource =
+            "precision mediump float;\n"
+            "uniform sampler2D frameTex; uniform vec2 texelSize; uniform float sharpen;\n"
+            "varying vec2 texcoord;\n"
+            "void main() {\n"
+            "vec3 e=texture2D(frameTex,texcoord).rgb;\n"
+            "vec3 a=texture2D(frameTex,texcoord+vec2(0.0,-texelSize.y)).rgb;\n"
+            "vec3 b=texture2D(frameTex,texcoord+vec2(-texelSize.x,0.0)).rgb;\n"
+            "vec3 d=texture2D(frameTex,texcoord+vec2(texelSize.x,0.0)).rgb;\n"
+            "vec3 f=texture2D(frameTex,texcoord+vec2(0.0,texelSize.y)).rgb;\n"
+            "vec3 mn=min(min(min(a,b),min(d,f)),e); vec3 mx=max(max(max(a,b),max(d,f)),e);\n"
+            "vec3 amp=sqrt(clamp(min(mn,1.0-mx)/max(mx,vec3(0.001)),0.0,1.0));\n"
+            "float s=clamp(sharpen,0.0,1.0); vec3 w=amp*(-s/mix(8.0,5.0,s));\n"
+            "vec3 result=(w*(a+b+d+f)+e)/(1.0+4.0*w); gl_FragColor=vec4(clamp(result,0.0,1.0),1.0); }\n";
+        gFrameSharpenProgram = CreateCelPostProgram(vertexSource, fragmentSource, "Full-frame adaptive sharpening");
+        if (gFrameSharpenProgram != 0)
+        {
+            gFrameSharpenSceneLocation = glGetUniformLocation(gFrameSharpenProgram, "frameTex");
+            gFrameSharpenTexelLocation = glGetUniformLocation(gFrameSharpenProgram, "texelSize");
+            gFrameSharpenStrengthLocation = glGetUniformLocation(gFrameSharpenProgram, "sharpen");
+            const GLfloat quad[] = {-1.0f,-1.0f, 1.0f,-1.0f, -1.0f,1.0f, 1.0f,1.0f};
+            glGenBuffers(1, &gFrameSharpenVbo);
+            glBindBuffer(GL_ARRAY_BUFFER, gFrameSharpenVbo);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glGenTextures(1, &gFrameSharpenTexture);
+        }
+    }
+    if (gFrameSharpenProgram == 0 || gFrameSharpenTexture == 0 || gFrameSharpenVbo == 0)
+        return;
+
+    GLint oldFbo=0, oldViewport[4]={0,0,width,height}, oldProgram=0, oldActive=GL_TEXTURE0;
+    GLint oldTexture=0, oldTexture0=0, oldArray=0, oldVao=0, oldAttrib=GL_FALSE;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING,&oldFbo);
+    glGetIntegerv(GL_VIEWPORT,oldViewport);
+    glGetIntegerv(GL_CURRENT_PROGRAM,&oldProgram);
+    glGetIntegerv(GL_ACTIVE_TEXTURE,&oldActive);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D,&oldTexture);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D,&oldTexture0);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&oldArray);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING_OES,&oldVao);
+    glGetVertexAttribiv(0,GL_VERTEX_ATTRIB_ARRAY_ENABLED,&oldAttrib);
+    const GLboolean depth=glIsEnabled(GL_DEPTH_TEST), blend=glIsEnabled(GL_BLEND);
+    const GLboolean cull=glIsEnabled(GL_CULL_FACE), scissor=glIsEnabled(GL_SCISSOR_TEST);
+    const GLboolean stencil=glIsEnabled(GL_STENCIL_TEST);
+
+    glBindFramebuffer(GL_FRAMEBUFFER,0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D,gFrameSharpenTexture);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+    if (gFrameSharpenWidth!=width || gFrameSharpenHeight!=height)
+    {
+        glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,width,height,0,GL_RGB,GL_UNSIGNED_BYTE,NULL);
+        gFrameSharpenWidth=width;
+        gFrameSharpenHeight=height;
+    }
+    // Snapshot the fully rendered frame before drawing the filtered copy back.
+    glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,width,height);
+    glViewport(0,0,width,height);
+    glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_STENCIL_TEST);
+    glUseProgram(gFrameSharpenProgram);
+    glUniform1i(gFrameSharpenSceneLocation,0);
+    if (gFrameSharpenTexelLocation>=0) glUniform2f(gFrameSharpenTexelLocation,1.0f/(float)width,1.0f/(float)height);
+    if (gFrameSharpenStrengthLocation>=0) glUniform1f(gFrameSharpenStrengthLocation,strength);
+    glBindBuffer(GL_ARRAY_BUFFER,gFrameSharpenVbo);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,(const GLvoid*)0);
+    glDrawArrays(GL_TRIANGLE_STRIP,0,4);
+
+    if (oldAttrib) glEnableVertexAttribArray(0); else glDisableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER,(GLuint)oldArray);
+    glBindVertexArrayOES((GLuint)oldVao);
+    glUseProgram((GLuint)oldProgram);
+    glViewport(oldViewport[0],oldViewport[1],oldViewport[2],oldViewport[3]);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D,(GLuint)oldTexture0);
+    glActiveTexture((GLenum)oldActive);
+    if (oldActive!=GL_TEXTURE0) glBindTexture(GL_TEXTURE_2D,(GLuint)oldTexture);
+    if (depth) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+    if (blend) glEnable(GL_BLEND); else glDisable(GL_BLEND);
+    if (cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (scissor) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
+    if (stencil) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
+    glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)oldFbo);
+}
+
 static int gSHARAndroidRenderWidth = 0;
 static int gSHARAndroidRenderHeight = 0;
 
@@ -1336,6 +1450,9 @@ void pglDisplay::SetGamma(float r, float g, float b)
 
 void pglDisplay::SwapBuffers(void)
 {
+#ifdef RAD_ANDROID
+    ApplyFrameSharpening(winWidth, winHeight);
+#endif
     SDL_GL_SwapWindow(win);
     reset = false;
     #ifdef RAD_ANDROID
