@@ -17,6 +17,7 @@
 #include <jni.h>
 
 bool IsCelShadingEnabled();
+bool IsFrameSharpeningEnabled();
 float GetFrameSharpenStrength();
 void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature, float* glowStrength, float* cornerDarkening, float* overscan, float* brightness, float* contrast);
 
@@ -821,6 +822,9 @@ void ApplyCelPostProcessBeforeGui(int width, int height)
 
 static void ApplyFrameSharpening(int width, int height)
 {
+    if (!IsFrameSharpeningEnabled())
+        return;
+
     const float strength = GetFrameSharpenStrength();
     if (strength <= 0.001f || width <= 0 || height <= 0)
         return;
