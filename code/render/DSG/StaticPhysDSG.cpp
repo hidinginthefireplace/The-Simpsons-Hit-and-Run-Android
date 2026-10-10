@@ -15,6 +15,13 @@
 #include <p3d/matrixstack.hpp>
 #include <p3d/utility.hpp>
 #include <p3d/view.hpp>
+#include <contexts/bootupcontext.h>
+#include <pddi/pddi.hpp>
+#include <string.h>
+
+#ifdef RAD_ANDROID
+bool IsCelShadingEnabled();
+#endif
 #include <simcollision/collisionobject.hpp>
 #include <simcollision/collisionvolume.hpp>
 
@@ -35,6 +42,93 @@
 // Bias that determines how much force is required to emit particles during a 
 // collision
 const float STAT_PHYS_MASS_IMPULSE_PARTICLE_BIAS = 10.0f;
+
+#ifdef RAD_ANDROID
+namespace
+{
+    const int SMALL_TREE_TOON_SHADOW_SLICES = 32;
+    const float SMALL_TREE_TOON_SHADOW_FALLBACK_RADIUS_X = 1.15f;
+    const float SMALL_TREE_TOON_SHADOW_FALLBACK_RADIUS_Z = 1.15f;
+
+    bool IsSmallTreeShadowTarget(const char* objectName, const char* shadowName)
+    {
+        if (objectName == NULL || shadowName == NULL)
+        {
+            return false;
+        }
+
+        // Restrict this first pass to living small trees. Cypress trees use
+        // the same source drawable but are deliberately left unchanged.
+        if (strstr(objectName, "treesm") == NULL ||
+            strstr(objectName, "treesmdead") != NULL ||
+            strstr(objectName, "treedead") != NULL)
+        {
+            return false;
+        }
+
+        return strcmp(shadowName, "treeshadowsmall") == 0;
+    }
+
+    bool DrawSmallTreeToonShadow(
+        float centerX,
+        float centerZ,
+        float radiusX,
+        float radiusZ)
+    {
+        BootupContext* bootupContext = BootupContext::GetInstance();
+        if (bootupContext == NULL || p3d::pddi == NULL)
+        {
+            return false;
+        }
+
+        pddiShader* shadowShader = bootupContext->GetSharedShader();
+        if (shadowShader == NULL)
+        {
+            return false;
+        }
+
+        // Match the solid, crisp tone used by the cel-enabled character and
+        // vehicle blobs. A fan of triangles replaces the authored soft shadow
+        // only for the targeted small-tree objects.
+        shadowShader->SetInt(PDDI_SP_BLENDMODE, PDDI_BLEND_MODULATE);
+        shadowShader->SetInt(PDDI_SP_ISLIT, 0);
+        shadowShader->SetInt(PDDI_SP_ALPHATEST, 0);
+        shadowShader->SetInt(PDDI_SP_SHADEMODE, PDDI_SHADE_GOURAUD);
+
+        pddiPrimStream* stream = p3d::pddi->BeginPrims(
+            shadowShader,
+            PDDI_PRIM_TRIANGLES,
+            PDDI_V_C,
+            SMALL_TREE_TOON_SHADOW_SLICES * 3);
+        if (stream == NULL)
+        {
+            return false;
+        }
+
+        const tColour shadowColour(116, 116, 116, 116);
+        const float angleStep = rmt::PI_2 / float(SMALL_TREE_TOON_SHADOW_SLICES);
+
+        for (int i = 0; i < SMALL_TREE_TOON_SHADOW_SLICES; ++i)
+        {
+            float sin0, cos0, sin1, cos1;
+            rmt::SinCos(angleStep * float(i), &sin0, &cos0);
+            rmt::SinCos(angleStep * float(i + 1), &sin1, &cos1);
+
+            stream->Colour(shadowColour);
+            stream->Coord(centerX, 0.0f, centerZ);
+
+            stream->Colour(shadowColour);
+            stream->Coord(centerX + radiusX * cos0, 0.0f, centerZ + radiusZ * sin0);
+
+            stream->Colour(shadowColour);
+            stream->Coord(centerX + radiusX * cos1, 0.0f, centerZ + radiusZ * sin1);
+        }
+
+        p3d::pddi->EndPrims(stream);
+        return true;
+    }
+}
+#endif
 
 //************************************************************************
 //
@@ -57,7 +151,12 @@ const float STAT_PHYS_MASS_IMPULSE_PARTICLE_BIAS = 10.0f;
 //========================================================================
 StaticPhysDSG::StaticPhysDSG() : 
 mpShadow( NULL ),
-mpShadowMatrix( NULL )
+mpShadowMatrix( NULL ),
+mUseToonSmallTreeShadow( false ),
+mToonSmallTreeShadowCenterX( 0.0f ),
+mToonSmallTreeShadowCenterZ( 0.0f ),
+mToonSmallTreeShadowRadiusX( SMALL_TREE_TOON_SHADOW_FALLBACK_RADIUS_X ),
+mToonSmallTreeShadowRadiusZ( SMALL_TREE_TOON_SHADOW_FALLBACK_RADIUS_Z )
 {
    mpSimStateObj = NULL;
 }
@@ -441,13 +540,42 @@ void StaticPhysDSG::SetShadow( tDrawable* ipShadow )
 {
     tRefCounted::Assign( mpShadow, ipShadow );
 
-	if ( ipShadow != NULL )
-	{
-		// Hang onto the shadow drawable
-		rAssert( mpShadowMatrix == NULL );
-		mpShadowMatrix = CreateShadowMatrix( rPosition() );
-	}
+    mUseToonSmallTreeShadow = false;
+    mToonSmallTreeShadowCenterX = 0.0f;
+    mToonSmallTreeShadowCenterZ = 0.0f;
+    mToonSmallTreeShadowRadiusX = SMALL_TREE_TOON_SHADOW_FALLBACK_RADIUS_X;
+    mToonSmallTreeShadowRadiusZ = SMALL_TREE_TOON_SHADOW_FALLBACK_RADIUS_Z;
 
+    if ( ipShadow != NULL )
+    {
+        // Hang onto the shadow drawable
+        rAssert( mpShadowMatrix == NULL );
+        mpShadowMatrix = CreateShadowMatrix( rPosition() );
+
+#ifdef RAD_ANDROID
+        if ( IsSmallTreeShadowTarget( GetName(), ipShadow->GetName() ) )
+        {
+            // Use the asset's own local bounds to preserve the artist-authored
+            // footprint as closely as possible, but render it as a crisp oval.
+            rmt::Box3D shadowBounds;
+            ipShadow->GetBoundingBox( &shadowBounds );
+
+            const float radiusX = ( shadowBounds.high.x - shadowBounds.low.x ) * 0.5f;
+            const float radiusZ = ( shadowBounds.high.z - shadowBounds.low.z ) * 0.5f;
+
+            if ( radiusX > 0.1f && radiusX < 20.0f &&
+                 radiusZ > 0.1f && radiusZ < 20.0f )
+            {
+                mToonSmallTreeShadowCenterX = ( shadowBounds.high.x + shadowBounds.low.x ) * 0.5f;
+                mToonSmallTreeShadowCenterZ = ( shadowBounds.high.z + shadowBounds.low.z ) * 0.5f;
+                mToonSmallTreeShadowRadiusX = radiusX;
+                mToonSmallTreeShadowRadiusZ = radiusZ;
+            }
+
+            mUseToonSmallTreeShadow = true;
+        }
+#endif
+    }
 }
 
 rmt::Matrix* StaticPhysDSG::CreateShadowMatrix( const rmt::Vector& objectPosition )
@@ -535,9 +663,24 @@ void StaticPhysDSG::DisplaySimpleShadow()
 	rmt::Matrix shadowTransform( *mpShadowMatrix );
 	shadowTransform.Row( 3 ).Add( camPos );
 
-	// Display
-	p3d::stack->PushMultiply( shadowTransform );
-	mpShadow->Display();
+    // Display. The toon shadow is opt-in and only substitutes the
+    // original drawable for living small trees while cel shading is enabled.
+    p3d::stack->PushMultiply( shadowTransform );
+    bool displayedToonSmallTreeShadow = false;
+#ifdef RAD_ANDROID
+    if ( mUseToonSmallTreeShadow && IsCelShadingEnabled() )
+    {
+        displayedToonSmallTreeShadow = DrawSmallTreeToonShadow(
+            mToonSmallTreeShadowCenterX,
+            mToonSmallTreeShadowCenterZ,
+            mToonSmallTreeShadowRadiusX,
+            mToonSmallTreeShadowRadiusZ );
+    }
+#endif
+    if ( !displayedToonSmallTreeShadow )
+    {
+        mpShadow->Display();
+    }
     p3d::stack->Pop();
     }
     else
