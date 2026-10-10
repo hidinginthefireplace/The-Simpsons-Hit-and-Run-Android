@@ -11,6 +11,7 @@
 #include <p3d/xbrz/xbrz.h>
 #include <vector>
 #include <cstring>
+#include <ctype.h>
 #include <stdint.h>
 #include <stddef.h>
 
