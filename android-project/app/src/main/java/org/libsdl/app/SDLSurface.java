@@ -76,7 +76,7 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
      */
     private static final boolean SHAR_USE_ADAPTIVE_RENDER_RESOLUTION = true;
 
-    // First safe profile. Later we can make this configurable through a text file.
+    // Default profile; the in-game Graphics menu can change this target live.
     private static final String SHAR_GRAPHICS_FOLDER = "Graphics";
     private static final String SHAR_RESOLUTION_CONFIG_FILE = "Simpsons_resolution.txt";
     private static final String SHAR_TOUCH_CONTROLS_FOLDER = "Touch";
@@ -875,6 +875,47 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
                 );
             }
         }
+    }
+
+    /**
+     * Request a new internal render height while the game is running.
+     *
+     * This method may be called by the SDL/game thread. All SurfaceView,
+     * SurfaceHolder and layout operations are posted to the Android UI thread.
+     * The existing surfaceChanged/native resize route then updates SDL/PDDI.
+     */
+    public boolean requestSHARRenderResolutionHeight(final int requestedHeight) {
+        return post(new Runnable() {
+            @Override
+            public void run() {
+                final int targetHeight =
+                        sanitizeSHARTargetRenderHeight(requestedHeight);
+                final int previousHeight = mSHARTargetRenderHeight;
+
+                mSHARTargetRenderHeight = targetHeight;
+
+                if (SHAR_LOG_RESOLUTION) {
+                    Log.v(
+                            "SDL",
+                            "SHAR live resolution request: targetHeight=" +
+                                    targetHeight + " (previous=" + previousHeight + ")"
+                    );
+                }
+
+                // Recompute the landscape width and resize the actual Surface
+                // buffer. Android's surfaceChanged callback sends the confirmed
+                // size through SDL's standard native resize event.
+                applyAdaptiveFixedSurfaceSize("graphics-menu-live", true);
+
+                if (SHAR_LOG_RESOLUTION) {
+                    Log.v(
+                            "SDL",
+                            "SHAR live resolution resize queued: render=" +
+                                    mRenderWidth + "x" + mRenderHeight
+                    );
+                }
+            }
+        });
     }
 
     private void applyAdaptiveFixedSurfaceSize(String reason, boolean force) {
