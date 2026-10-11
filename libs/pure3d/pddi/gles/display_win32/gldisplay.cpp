@@ -1069,6 +1069,14 @@ static void ApplyFrameSharpening(int width, int height)
     if (strength <= 0.001f || width <= 0 || height <= 0)
         return;
 
+    if (gFrameSharpenFailedWidth == width &&
+        gFrameSharpenFailedHeight == height)
+        return;
+
+    if (!CheckSHARRenderTargetSize(
+            width, height, "sharpening texture", 5, false, true))
+        return;
+
     if (gFrameSharpenProgram == 0)
     {
         const char* vertexSource =
@@ -1130,25 +1138,42 @@ static void ApplyFrameSharpening(int width, int height)
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+    bool sharpenTextureReady = true;
     if (gFrameSharpenWidth!=width || gFrameSharpenHeight!=height)
     {
         glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,width,height,0,GL_RGB,GL_UNSIGNED_BYTE,NULL);
-        gFrameSharpenWidth=width;
-        gFrameSharpenHeight=height;
+        sharpenTextureReady = CheckSHARAllocationError(
+            "sharpening texture", width, height);
+        if (sharpenTextureReady)
+        {
+            gFrameSharpenWidth=width;
+            gFrameSharpenHeight=height;
+            gFrameSharpenFailedWidth=0;
+            gFrameSharpenFailedHeight=0;
+        }
+        else
+        {
+            gFrameSharpenFailedWidth=width;
+            gFrameSharpenFailedHeight=height;
+        }
     }
-    // Snapshot the fully rendered frame before drawing the filtered copy back.
-    glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,width,height);
-    glViewport(0,0,width,height);
-    glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_CULL_FACE);
-    glDisable(GL_SCISSOR_TEST); glDisable(GL_STENCIL_TEST);
-    glUseProgram(gFrameSharpenProgram);
-    glUniform1i(gFrameSharpenSceneLocation,0);
-    if (gFrameSharpenTexelLocation>=0) glUniform2f(gFrameSharpenTexelLocation,1.0f/(float)width,1.0f/(float)height);
-    if (gFrameSharpenStrengthLocation>=0) glUniform1f(gFrameSharpenStrengthLocation,strength);
-    glBindBuffer(GL_ARRAY_BUFFER,gFrameSharpenVbo);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,(const GLvoid*)0);
-    glDrawArrays(GL_TRIANGLE_STRIP,0,4);
+
+    if (sharpenTextureReady)
+    {
+        // Snapshot the fully rendered frame before drawing the filtered copy back.
+        glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,width,height);
+        glViewport(0,0,width,height);
+        glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_CULL_FACE);
+        glDisable(GL_SCISSOR_TEST); glDisable(GL_STENCIL_TEST);
+        glUseProgram(gFrameSharpenProgram);
+        glUniform1i(gFrameSharpenSceneLocation,0);
+        if (gFrameSharpenTexelLocation>=0) glUniform2f(gFrameSharpenTexelLocation,1.0f/(float)width,1.0f/(float)height);
+        if (gFrameSharpenStrengthLocation>=0) glUniform1f(gFrameSharpenStrengthLocation,strength);
+        glBindBuffer(GL_ARRAY_BUFFER,gFrameSharpenVbo);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,(const GLvoid*)0);
+        glDrawArrays(GL_TRIANGLE_STRIP,0,4);
+    }
 
     if (oldAttrib) glEnableVertexAttribArray(0); else glDisableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER,(GLuint)oldArray);
