@@ -571,10 +571,10 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
     // while the Graphics submenu is displayed. This keeps the resource's
     // original OFF/ON strings intact for the regular Settings menu.
     {
-        Scrooby::Group* pSharpeningGroup = pPage->GetGroup( "IntersectNavSystem" );
+        Scrooby::Group* pSharpeningGroup = pPage->GetGroup( "Radar" );
         FeGroup* pFeSharpeningGroup = dynamic_cast<FeGroup*>( pSharpeningGroup );
         FeText* pOriginalValue = pSharpeningGroup != NULL
-            ? dynamic_cast<FeText*>( pSharpeningGroup->GetText( "IntersectNavSystem_Value" ) )
+            ? dynamic_cast<FeText*>( pSharpeningGroup->GetText( "Radar_Value" ) )
             : NULL;
 
         if( pFeSharpeningGroup != NULL && pOriginalValue != NULL )
