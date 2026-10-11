@@ -547,6 +547,16 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
             continue;
         }
 
+        // "Back" is an action row; the three graphics options use L/R values.
+        if( i == 3 )
+        {
+            item->m_attributes |= SELECTABLE;
+        }
+        else
+        {
+            item->m_attributes &= ~SELECTABLE;
+        }
+
         m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
 
         Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
@@ -641,6 +651,9 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
         {
             continue;
         }
+
+        // Restore the original non-selectable value-row behaviour.
+        item->m_attributes &= ~SELECTABLE;
 
         Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
         Scrooby::Text* value = dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
