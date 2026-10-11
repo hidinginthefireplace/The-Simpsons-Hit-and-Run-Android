@@ -49,6 +49,7 @@ public:
     bool ExtBGRA(void) { return extBGRA;}
     bool CheckExtension(const char*);
     bool HasReset(void) { return reset; }
+    void ClearReset(void) { reset = false; }
 
     void BeginContext(void);
     void EndContext(void);
