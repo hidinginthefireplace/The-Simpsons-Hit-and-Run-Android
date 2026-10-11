@@ -547,6 +547,8 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
             continue;
         }
 
+        m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
+
         Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
         Scrooby::Text* value = dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
 
@@ -581,7 +583,6 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
             item->m_itemValueArrowR->SetVisible( i < 3 );
         }
 
-        m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
     }
 
     // Hide the two Android-only gameplay rows while the four-row graphics
