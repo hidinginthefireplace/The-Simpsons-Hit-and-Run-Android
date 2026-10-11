@@ -59,6 +59,11 @@ void SetFrameSharpeningLevel(int level);
 
 static bool gAndroidGraphicsSettingsRequested = false;
 
+// Diagnostic Graphics-menu-only selector. This deliberately does not write the
+// resolution config or request an Android Surface/native renderer resize.
+static const int SHAR_GRAPHICS_RESOLUTION_COUNT = 5;
+static int gSHARGraphicsResolutionSelection = 3; // 480p, 720p, 1080p, 1440p, 2160p
+
 void RequestAndroidGraphicsSettings()
 {
     gAndroidGraphicsSettingsRequested = true;
@@ -508,6 +513,59 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
     GetCheatInputSystem()->RegisterCallback( this );
 
 #if defined(RAD_ANDROID)
+    // Create a separate five-value Resolution text object for the Graphics
+    // submenu. Never expand or overwrite the original Camera value resource.
+    {
+        Scrooby::Group* pResolutionGroup = pPage->GetGroup( "Camera" );
+        FeGroup* pFeResolutionGroup = dynamic_cast<FeGroup*>( pResolutionGroup );
+        FeText* pOriginalValue = pResolutionGroup != NULL
+            ? dynamic_cast<FeText*>( pResolutionGroup->GetText( "Camera_Value" ) )
+            : NULL;
+
+        if( pFeResolutionGroup != NULL && pOriginalValue != NULL )
+        {
+            m_pOriginalResolutionValue = pOriginalValue;
+            FeText* pGraphicsValue =
+                pFeResolutionGroup->AddText( "AndroidGraphicsResolutionValue", 0, 0 );
+
+            if( pGraphicsValue != NULL )
+            {
+                CopyAndroidMenuTextAppearance( pGraphicsValue, pOriginalValue );
+
+                int width = 0;
+                int height = 0;
+                int centerX = 0;
+                int centerY = 0;
+                pOriginalValue->GetBoundingBoxSize( width, height );
+                pOriginalValue->GetBoundingBoxCenter( centerX, centerY );
+                pGraphicsValue->SetBoundingBoxSize( width, height );
+                pGraphicsValue->SetPositionOfCenter( centerX, centerY );
+
+                const char* resolutionValues[5] =
+                {
+                    "480p", "720p", "1080p", "1440p", "2160p"
+                };
+                for( int valueIndex = 0; valueIndex < SHAR_GRAPHICS_RESOLUTION_COUNT; ++valueIndex )
+                {
+                    pGraphicsValue->AddHardCodedString( resolutionValues[valueIndex] );
+                }
+
+                pGraphicsValue->SetIndex( 3 );
+                pGraphicsValue->SetVisible( false );
+                m_pGraphicsResolutionValue = pGraphicsValue;
+                LOGI("[SHAR-RESOLUTION-MENU] Created dedicated five-value Resolution text");
+            }
+            else
+            {
+                LOGE("[SHAR-RESOLUTION-MENU] Failed to create dedicated Resolution value text");
+            }
+        }
+        else
+        {
+            LOGE("[SHAR-RESOLUTION-MENU] Could not find Camera row group/value text");
+        }
+    }
+
     // Do not expand the original Scrooby Settings value object to six strings.
     // Build a separate value object in the same row group and swap it in only
     // while the Graphics submenu is displayed. This keeps the resource's
@@ -570,17 +628,23 @@ MEMTRACK_POP_GROUP( "CGuiScreenPauseSettings" );
 
 void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
 {
-    LOGI("[SHAR-GRAPHICS-DIAG] ConfigureAndroidGraphicsMenu begin");
-    const int logicalItems[4] =
+    LOGI("[SHAR-RESOLUTION-MENU] ConfigureAndroidGraphicsMenu begin");
+
+    // Reuse five existing Settings rows without editing any Scrooby/game assets.
+    // Camera is used as the temporary Resolution row, and Invert Camera is
+    // the temporary Back row. These values are UI-only in this diagnostic build.
+    const int logicalItems[5] =
     {
         MENU_ITEM_CAMERA,
         MENU_ITEM_JUMP_CAMERAS,
         MENU_ITEM_INTERSECT_NAV_SYSTEM,
-        MENU_ITEM_RADAR
+        MENU_ITEM_RADAR,
+        MENU_ITEM_INVERT_CAM_CONTROL
     };
 
-    const char* labels[4] =
+    const char* labels[5] =
     {
+        "Resolution",
         "Cel Shading",
         "CRT Filter",
         "Sharpening",
@@ -599,32 +663,48 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
     };
     const int sharpeningLevel = GetFrameSharpeningLevel();
 
-    for( int i = 0; i < 4; ++i )
+    const char* resolutionValues[SHAR_GRAPHICS_RESOLUTION_COUNT] =
+    {
+        "480p", "720p", "1080p", "1440p", "2160p"
+    };
+
+    if( gSHARGraphicsResolutionSelection < 0 ||
+        gSHARGraphicsResolutionSelection >= SHAR_GRAPHICS_RESOLUTION_COUNT )
+    {
+        gSHARGraphicsResolutionSelection = 3;
+    }
+
+    for( int i = 0; i < 5; ++i )
     {
         const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
         if( guiIndex < 0 )
         {
+            LOGE("[SHAR-RESOLUTION-MENU] Missing GUI row for option %d", i);
             continue;
         }
 
         GuiMenuItem* item = m_pMenu->GetMenuItem( guiIndex );
         if( item == NULL )
         {
+            LOGE("[SHAR-RESOLUTION-MENU] Null GUI row for option %d", i);
             continue;
         }
 
-        // Use an independently-created text object for the six sharpening
-        // levels; never grow or rewrite the original Scrooby value resource.
-        if( i == 2 && m_pGraphicsSharpeningValue != NULL )
+        if( i == 0 && m_pGraphicsResolutionValue != NULL )
+        {
+            item->SetItemValue( m_pGraphicsResolutionValue );
+            m_pOriginalResolutionValue->SetVisible( false );
+            m_pGraphicsResolutionValue->SetVisible( true );
+        }
+        else if( i == 3 && m_pGraphicsSharpeningValue != NULL )
         {
             item->SetItemValue( m_pGraphicsSharpeningValue );
             m_pOriginalSharpeningValue->SetVisible( false );
             m_pGraphicsSharpeningValue->SetVisible( true );
-            LOGI("[SHAR-GRAPHICS-DIAG] Swapped in dedicated sharpening value text");
         }
 
-        // "Back" is an action row; the three graphics options use L/R values.
-        if( i == 3 )
+        // Back is the only action row. All other entries are left/right values.
+        if( i == 4 )
         {
             item->m_attributes |= SELECTABLE;
         }
@@ -632,8 +712,8 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         {
             item->m_attributes &= ~SELECTABLE;
         }
-        item->m_showValueArrows = ( i < 3 );
-        item->m_useBackSoundOnSelection = ( i == 3 );
+        item->m_showValueArrows = ( i < 4 );
+        item->m_useBackSoundOnSelection = ( i == 4 );
 
         m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
 
@@ -648,33 +728,52 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
 
         if( value != NULL )
         {
-            if( i < 3 )
+            if( i == 0 )
             {
                 value->SetVisible( true );
-                if( i == 2 )
+                if( m_pGraphicsResolutionValue != NULL &&
+                    value == m_pGraphicsResolutionValue )
                 {
-                    if( m_pGraphicsSharpeningValue != NULL &&
-                        value == m_pGraphicsSharpeningValue )
+                    m_pMenu->SetSelectionValueCount( guiIndex, SHAR_GRAPHICS_RESOLUTION_COUNT );
+                    m_pMenu->SetSelectionValue( guiIndex, gSHARGraphicsResolutionSelection );
+                }
+                else
+                {
+                    // Defensive fallback if the dedicated five-value text object
+                    // cannot be created. Keep the row safe and visibly diagnostic.
+                    value->SetString( 0, "1440p" );
+                    if( value->GetNumOfStrings() > 1 )
                     {
-                        m_pMenu->SetSelectionValueCount( guiIndex, 6 );
-                        m_pMenu->SetSelectionValue( guiIndex, sharpeningLevel );
+                        value->SetString( 1, "2160p" );
                     }
-                    else
-                    {
-                        // Safe fallback if the dedicated value text could not
-                        // be created: retain the original two-entry toggle.
-                        value->SetString( 0, "OFF" );
-                        value->SetString( 1, "ON" );
-                        m_pMenu->SetSelectionValueCount( guiIndex, 2 );
-                        m_pMenu->SetSelectionValue( guiIndex, 0 );
-                    }
+                    m_pMenu->SetSelectionValueCount( guiIndex, 2 );
+                    m_pMenu->SetSelectionValue( guiIndex,
+                        gSHARGraphicsResolutionSelection >= 4 ? 1 : 0 );
+                }
+            }
+            else if( i == 1 || i == 2 )
+            {
+                value->SetVisible( true );
+                value->SetString( 0, "OFF" );
+                value->SetString( 1, "ON" );
+                m_pMenu->SetSelectionValueCount( guiIndex, 2 );
+                m_pMenu->SetSelectionValue( guiIndex, enabled[i - 1] ? 1 : 0 );
+            }
+            else if( i == 3 )
+            {
+                value->SetVisible( true );
+                if( m_pGraphicsSharpeningValue != NULL &&
+                    value == m_pGraphicsSharpeningValue )
+                {
+                    m_pMenu->SetSelectionValueCount( guiIndex, 6 );
+                    m_pMenu->SetSelectionValue( guiIndex, sharpeningLevel );
                 }
                 else
                 {
                     value->SetString( 0, "OFF" );
                     value->SetString( 1, "ON" );
                     m_pMenu->SetSelectionValueCount( guiIndex, 2 );
-                    m_pMenu->SetSelectionValue( guiIndex, enabled[i] ? 1 : 0 );
+                    m_pMenu->SetSelectionValue( guiIndex, 0 );
                 }
             }
             else
@@ -683,8 +782,6 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
             }
         }
 
-        // Hide every arrow before resetting selection. CGuiMenu will reveal
-        // arrows only for the selected value row.
         if( item->m_itemValueArrowL != NULL )
         {
             item->m_itemValueArrowL->SetVisible( false );
@@ -693,27 +790,16 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         {
             item->m_itemValueArrowR->SetVisible( false );
         }
-
     }
 
-    // Hide the two Android-only gameplay rows while the four-row graphics
-    // submenu is using the original four-row Settings layout.
-    const int optionalItems[2] =
+    // The unused Android-only gameplay row stays hidden while Graphics is open.
+    const int unusedItem = MENU_ITEM_VIBRATION;
+    const int unusedGuiIndex = GetGuiMenuIndexFromMenuItem( unusedItem );
+    if( unusedGuiIndex >= 0 )
     {
-        MENU_ITEM_INVERT_CAM_CONTROL,
-        MENU_ITEM_VIBRATION
-    };
-
-    for( int i = 0; i < 2; ++i )
-    {
-        const int guiIndex = GetGuiMenuIndexFromMenuItem( optionalItems[i] );
-        if( guiIndex >= 0 )
-        {
-            m_pMenu->SetMenuItemEnabled( guiIndex, false, true );
-        }
+        m_pMenu->SetMenuItemEnabled( unusedGuiIndex, false, true );
     }
 
-    // Put selection on the first graphics option.
     m_pMenu->Reset( 0 );
 }
 
@@ -753,9 +839,20 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
             continue;
         }
 
-        // Restore the original sharpening value text before normal Settings
-        // updates are applied. Its OFF/ON string table was never modified.
-        if( logicalItems[i] == MENU_ITEM_INTERSECT_NAV_SYSTEM &&
+        // Restore the original Camera value object after leaving Graphics.
+        if( logicalItems[i] == MENU_ITEM_CAMERA &&
+            m_pOriginalResolutionValue != NULL &&
+            item->GetItemValue() == m_pGraphicsResolutionValue )
+        {
+            m_pGraphicsResolutionValue->SetVisible( false );
+            m_pOriginalResolutionValue->SetVisible( true );
+            item->SetItemValue( m_pOriginalResolutionValue );
+            LOGI("[SHAR-RESOLUTION-MENU] Restored original Settings Camera value text");
+        }
+
+        // Restore the original sharpening value text. Its OFF/ON resource
+        // string table was never modified by the Graphics submenu.
+        if( logicalItems[i] == MENU_ITEM_RADAR &&
             m_pOriginalSharpeningValue != NULL &&
             item->GetItemValue() == m_pGraphicsSharpeningValue )
         {
@@ -907,7 +1004,7 @@ void CGuiScreenPauseSettings::HandleMessage
             {
 #if defined(RAD_ANDROID)
                 if( m_graphicsSettingsMode &&
-                    GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) ) == MENU_ITEM_RADAR )
+                    GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) ) == MENU_ITEM_INVERT_CAM_CONTROL )
                 {
                     LeaveAndroidGraphicsMenu( true );
                     return;
@@ -927,16 +1024,25 @@ void CGuiScreenPauseSettings::HandleMessage
                     const bool enabled = ( param2 == 1 );
                     if( logicalMenuItem == MENU_ITEM_CAMERA )
                     {
-                        SetCelShadingEnabled( enabled );
+                        // UI-only diagnostic: changing this value has no effect
+                        // on configuration, Java, the surface, or native rendering.
+                        if( param2 < SHAR_GRAPHICS_RESOLUTION_COUNT )
+                        {
+                            gSHARGraphicsResolutionSelection = static_cast<int>( param2 );
+                        }
                     }
                     else if( logicalMenuItem == MENU_ITEM_JUMP_CAMERAS )
                     {
-                        SetCRTFilterEnabled( enabled );
+                        SetCelShadingEnabled( enabled );
                     }
                     else if( logicalMenuItem == MENU_ITEM_INTERSECT_NAV_SYSTEM )
                     {
+                        SetCRTFilterEnabled( enabled );
+                    }
+                    else if( logicalMenuItem == MENU_ITEM_RADAR )
+                    {
                         // The sharpening row has six values: OFF, 20%, 40%,
-                        // 60%, 80%, and MAX. Persist the exact chosen strength.
+                        // 60%, 80%, and MAX.
                         SetFrameSharpeningLevel( static_cast<int>( param2 ) );
                     }
                     break;
