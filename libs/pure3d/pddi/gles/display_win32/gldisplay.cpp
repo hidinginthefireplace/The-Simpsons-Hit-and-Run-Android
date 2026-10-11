@@ -7,6 +7,9 @@
 #include <pddi/gles/gldisplay.hpp>
 #include <pddi/base/debug.hpp>
 #include <SDL.h>
+#if defined(RAD_ANDROID)
+#include <SDL_system.h>
+#endif
 
 #include<stdio.h>
 #include<string.h>
@@ -1427,6 +1430,100 @@ Java_org_libsdl_app_SDLSurface_nativeSetSHARRenderResolution(
             loggedHeight
         );
     }
+}
+
+// Called by the in-game Graphics menu. This only requests a Java/UI-thread
+// Surface resize; rendering and GL resource changes continue through SDL's
+// regular surface/window resize handling.
+bool RequestSHARAndroidRenderResolutionHeight(int targetHeight)
+{
+#if defined(RAD_ANDROID)
+    if (targetHeight <= 0)
+        return false;
+
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    if (env == NULL)
+    {
+        SDL_LogError(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "SHAR live resolution request failed: no JNI environment");
+        return false;
+    }
+
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (activity == NULL)
+    {
+        SDL_LogError(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "SHAR live resolution request failed: Android activity unavailable");
+        return false;
+    }
+
+    jclass activityClass = env->GetObjectClass(activity);
+    jclass sdlActivityClass = activityClass != NULL
+        ? env->GetSuperclass(activityClass) : NULL;
+
+    if (env->ExceptionCheck())
+    {
+        env->ExceptionClear();
+        sdlActivityClass = NULL;
+    }
+
+    jmethodID requestMethod = sdlActivityClass != NULL
+        ? env->GetStaticMethodID(
+            sdlActivityClass,
+            "requestSHARRenderResolutionHeight",
+            "(I)Z")
+        : NULL;
+
+    if (env->ExceptionCheck())
+    {
+        env->ExceptionClear();
+        requestMethod = NULL;
+    }
+
+    bool queued = false;
+    if (requestMethod != NULL)
+    {
+        const jboolean result = env->CallStaticBooleanMethod(
+            sdlActivityClass,
+            requestMethod,
+            (jint)targetHeight);
+
+        if (env->ExceptionCheck())
+        {
+            env->ExceptionClear();
+        }
+        else
+        {
+            queued = (result == JNI_TRUE);
+        }
+    }
+
+    if (queued)
+    {
+        SDL_Log(
+            "SHAR Android live render resolution requested: targetHeight=%d",
+            targetHeight);
+    }
+    else
+    {
+        SDL_LogError(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "SHAR live resolution request could not be queued for targetHeight=%d; saved setting will apply at next launch",
+            targetHeight);
+    }
+
+    if (sdlActivityClass != NULL)
+        env->DeleteLocalRef(sdlActivityClass);
+    if (activityClass != NULL)
+        env->DeleteLocalRef(activityClass);
+    env->DeleteLocalRef(activity);
+    return queued;
+#else
+    (void)targetHeight;
+    return false;
+#endif
 }
 
 static bool
