@@ -69,7 +69,7 @@ static bool gAndroidGraphicsSettingsRequested = false;
 // 2160p remains deferred until GL allocation safeguards are added.
 static const int SHAR_GRAPHICS_RESOLUTION_COUNT = 4;
 static int gSHARGraphicsResolutionSelection = 3; // default: 1440p
-static bool gSHARGraphicsResolutionNeedsNormalization = false
+static bool gSHARGraphicsResolutionNeedsNormalization = false;
 
 void RequestAndroidGraphicsSettings()
 {
