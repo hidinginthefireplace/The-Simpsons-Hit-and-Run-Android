@@ -911,6 +911,11 @@ pglContext::~pglContext()
 // frame synchronisation
 void pglContext::BeginFrame()
 {
+#ifdef RAD_ANDROID
+    // Apply confirmed Surface dimensions and resize GL resources before any
+    // draw calls begin. No active renderer size is written by UI-thread events.
+    display->CommitPendingResize();
+#endif
     pddiBaseContext::BeginFrame();
 
     SDL_GL_SetSwapInterval(display->GetForceVSync() ? 1 : 0);
