@@ -175,24 +175,50 @@ static void LogSHARRenderTargetRejectedOnce(
 static void LogSHARResizePathOnce(
     int width, int height, const char* stage, const char* route)
 {
-    static int lastWidth = -1;
-    static int lastHeight = -1;
-    static char lastStage[48] = "";
-    static char lastRoute[192] = "";
+    struct CacheEntry
+    {
+        int width;
+        int height;
+        char stage[48];
+        char route[192];
+    };
+    // Keep an independent last-state record per stage. A single global last
+    // state would be overwritten by other stages each frame and spam the log.
+    static CacheEntry entries[8] = {};
 
     const char* safeStage = stage ? stage : "unknown";
     const char* safeRoute = route ? route : "unknown";
-    if (lastWidth == width && lastHeight == height &&
-        strcmp(lastStage, safeStage) == 0 &&
-        strcmp(lastRoute, safeRoute) == 0)
+    int slot = -1;
+    int firstUnused = -1;
+    for (int i = 0; i < 8; ++i)
+    {
+        if (entries[i].stage[0] == '\\0')
+        {
+            if (firstUnused < 0)
+                firstUnused = i;
+            continue;
+        }
+        if (strcmp(entries[i].stage, safeStage) == 0)
+        {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0)
+        slot = firstUnused >= 0 ? firstUnused : 0;
+
+    CacheEntry& entry = entries[slot];
+    if (entry.width == width && entry.height == height &&
+        strcmp(entry.stage, safeStage) == 0 &&
+        strcmp(entry.route, safeRoute) == 0)
     {
         return;
     }
 
-    lastWidth = width;
-    lastHeight = height;
-    snprintf(lastStage, sizeof(lastStage), "%s", safeStage);
-    snprintf(lastRoute, sizeof(lastRoute), "%s", safeRoute);
+    entry.width = width;
+    entry.height = height;
+    snprintf(entry.stage, sizeof(entry.stage), "%s", safeStage);
+    snprintf(entry.route, sizeof(entry.route), "%s", safeRoute);
     SDL_Log("[SHAR-RESIZE-DIAG] stage=%s size=%dx%d %s",
         safeStage, width, height, safeRoute);
 }
