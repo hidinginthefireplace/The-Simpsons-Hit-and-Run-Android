@@ -9,6 +9,7 @@
 #include <SDL.h>
 #if defined(RAD_ANDROID)
 #include <SDL_system.h>
+#include <EGL/egl.h>
 #endif
 
 #include<stdio.h>
@@ -32,6 +33,18 @@ namespace
 GLuint gCelPostProgram = 0;
 GLuint gCelPostTexture = 0;
 GLuint gCelPostVbo = 0;
+GLuint gCelFallbackProgram = 0;
+GLuint gCelFallbackVbo = 0;
+GLint gCelFallbackTextureLocation = -1;
+
+// A frame uses one committed render-size snapshot. The active PDDI dimensions
+// are only modified on the GL thread, at the start of a frame.
+static int gSHARFrameWidth = 0;
+static int gSHARFrameHeight = 0;
+static bool gCelWorldInFbo = false;
+static bool gSHARResizePendingOnGLThread = false;
+static int gSHARHoldDirectFrames = 0;
+static const int SHAR_RESIZE_DIRECT_FRAMES = 3;
 GLuint gCelRenderFbo = 0;
 GLuint gCelRenderDepth = 0;
 GLuint gCelRenderDepthTexture = 0;
@@ -114,6 +127,30 @@ static const size_t SHAR_POSTPROCESS_BUDGET_BYTES =
 static int gSHARLastRejectedWidth = 0;
 static int gSHARLastRejectedHeight = 0;
 static int gSHARLastRejectedReason = 0;
+
+static bool QueryDefaultFramebufferSize(int* width, int* height)
+{
+    if (width == NULL || height == NULL)
+        return false;
+
+    EGLDisplay eglDisplay = eglGetCurrentDisplay();
+    EGLSurface eglSurface = eglGetCurrentSurface(EGL_DRAW);
+    if (eglDisplay == EGL_NO_DISPLAY || eglSurface == EGL_NO_SURFACE)
+        return false;
+
+    EGLint surfaceWidth = 0;
+    EGLint surfaceHeight = 0;
+    if (eglQuerySurface(eglDisplay, eglSurface, EGL_WIDTH, &surfaceWidth) != EGL_TRUE ||
+        eglQuerySurface(eglDisplay, eglSurface, EGL_HEIGHT, &surfaceHeight) != EGL_TRUE ||
+        surfaceWidth <= 0 || surfaceHeight <= 0)
+    {
+        return false;
+    }
+
+    *width = (int)surfaceWidth;
+    *height = (int)surfaceHeight;
+    return true;
+}
 
 static void LogSHARRenderTargetRejectedOnce(
     int width, int height, int reason, const char* message)
@@ -921,18 +958,284 @@ static void DrawCelPostFullscreenQuad()
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
+static bool EnsureCelFallbackResolveResources()
+{
+    if (gCelFallbackProgram != 0 && gCelFallbackVbo != 0)
+        return true;
+
+    const char* vertexSource =
+        "attribute vec2 position;\n"
+        "varying vec2 texcoord;\n"
+        "void main() {\n"
+        "    texcoord = position * 0.5 + 0.5;\n"
+        "    gl_Position = vec4(position, 0.0, 1.0);\n"
+        "}\n";
+    const char* fragmentSource =
+        "precision mediump float;\n"
+        "uniform sampler2D sceneTex;\n"
+        "varying vec2 texcoord;\n"
+        "void main() { gl_FragColor = texture2D(sceneTex, texcoord); }\n";
+
+    GLuint vertexShader = CompileCelPostShader(GL_VERTEX_SHADER, vertexSource);
+    GLuint fragmentShader = CompileCelPostShader(GL_FRAGMENT_SHADER, fragmentSource);
+    if (vertexShader == 0 || fragmentShader == 0)
+    {
+        if (vertexShader) glDeleteShader(vertexShader);
+        if (fragmentShader) glDeleteShader(fragmentShader);
+        return false;
+    }
+
+    gCelFallbackProgram = glCreateProgram();
+    glBindAttribLocation(gCelFallbackProgram, 0, "position");
+    glAttachShader(gCelFallbackProgram, vertexShader);
+    glAttachShader(gCelFallbackProgram, fragmentShader);
+    glLinkProgram(gCelFallbackProgram);
+
+    GLint linked = GL_FALSE;
+    glGetProgramiv(gCelFallbackProgram, GL_LINK_STATUS, &linked);
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    if (linked == GL_FALSE)
+    {
+        GLint length = 0;
+        glGetProgramiv(gCelFallbackProgram, GL_INFO_LOG_LENGTH, &length);
+        if (length > 0)
+        {
+            std::vector<char> info((size_t)length + 1, 0);
+            glGetProgramInfoLog(gCelFallbackProgram, length, NULL, info.data());
+            SDL_LogError(SDL_LOG_CATEGORY_RENDER,
+                "SHAR cel fallback resolve program link failed: %s", info.data());
+        }
+        glDeleteProgram(gCelFallbackProgram);
+        gCelFallbackProgram = 0;
+        return false;
+    }
+
+    gCelFallbackTextureLocation = glGetUniformLocation(gCelFallbackProgram, "sceneTex");
+    static const GLfloat quad[] =
+    {
+        -1.0f, -1.0f,
+         1.0f, -1.0f,
+        -1.0f,  1.0f,
+         1.0f,  1.0f
+    };
+    glGenBuffers(1, &gCelFallbackVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, gCelFallbackVbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    return gCelFallbackVbo != 0;
+}
+
+static void FallbackResolveToScreen(int width, int height)
+{
+    if (!gCelWorldInFbo)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return;
+    }
+
+    GLint oldProgram = 0;
+    GLint oldActiveTexture = GL_TEXTURE0;
+    GLint oldTexture0 = 0;
+    GLint oldArrayBuffer = 0;
+    GLint oldVao = 0;
+    GLint oldViewport[4] = {0, 0, width, height};
+    GLint oldAttrib0Enabled = GL_FALSE;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &oldProgram);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &oldActiveTexture);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &oldArrayBuffer);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING_OES, &oldVao);
+    glGetIntegerv(GL_VIEWPORT, oldViewport);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTexture0);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &oldAttrib0Enabled);
+    glActiveTexture((GLenum)oldActiveTexture);
+
+    const GLboolean depthEnabled = glIsEnabled(GL_DEPTH_TEST);
+    const GLboolean blendEnabled = glIsEnabled(GL_BLEND);
+    const GLboolean cullEnabled = glIsEnabled(GL_CULL_FACE);
+    const GLboolean scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
+    const GLboolean stencilEnabled = glIsEnabled(GL_STENCIL_TEST);
+
+    int outputWidth = width;
+    int outputHeight = height;
+    QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
+
+    bool resolved = false;
+    if (gCelPostTexture != 0 && EnsureCelFallbackResolveResources())
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, outputWidth, outputHeight);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+        glDisable(GL_CULL_FACE);
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_STENCIL_TEST);
+        glUseProgram(gCelFallbackProgram);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
+        if (gCelFallbackTextureLocation >= 0)
+            glUniform1i(gCelFallbackTextureLocation, 0);
+        glBindBuffer(GL_ARRAY_BUFFER, gCelFallbackVbo);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)0);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        resolved = true;
+    }
+    else
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_RENDER,
+            "[SHAR-RESIZE] unable to create direct cel resolve fallback at %dx%d",
+            width, height);
+    }
+
+    if (oldAttrib0Enabled)
+        glEnableVertexAttribArray(0);
+    else
+        glDisableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, (GLuint)oldArrayBuffer);
+    glBindVertexArrayOES((GLuint)oldVao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)oldTexture0);
+    glActiveTexture((GLenum)oldActiveTexture);
+    glUseProgram((GLuint)oldProgram);
+    if (depthEnabled) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+    if (blendEnabled) glEnable(GL_BLEND); else glDisable(GL_BLEND);
+    if (cullEnabled) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (scissorEnabled) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
+    if (stencilEnabled) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
+
+    // This fallback must leave the default framebuffer selected for GUI rendering.
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, outputWidth, outputHeight);
+    gCelWorldInFbo = false;
+    gSHARHoldDirectFrames = SHAR_RESIZE_DIRECT_FRAMES;
+
+    SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+        "[SHAR-RESIZE] cel resolve fallback %s at scene=%dx%d surface=%dx%d",
+        resolved ? "presented" : "unavailable",
+        width, height, outputWidth, outputHeight);
+}
+
+static void RecreateSHARTexture(GLuint& texture)
+{
+    if (texture == 0)
+        return;
+
+    glDeleteTextures(1, &texture);
+    texture = 0;
+    glGenTextures(1, &texture);
+}
+
+static void ResetAndroidPostProcess()
+{
+    // Drain pre-existing errors first, so resource-reset errors are attributable.
+    int staleErrors = 0;
+    for (int i = 0; i < 32; ++i)
+    {
+        GLenum error = glGetError();
+        if (error == GL_NO_ERROR)
+            break;
+        ++staleErrors;
+    }
+    if (staleErrors > 0)
+        SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+            "[SHAR-RESIZE] drained %d stale GL error(s) before resource reset", staleErrors);
+
+    // Detach the old texture storage from FBOs before replacing texture names.
+    if (gCelRenderFbo != 0)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, gCelRenderFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
+    }
+    if (gCelBloomFbo != 0)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, gCelBloomFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    glActiveTexture(GL_TEXTURE0);
+    RecreateSHARTexture(gCelPostTexture);
+    RecreateSHARTexture(gCelRenderDepthTexture);
+    RecreateSHARTexture(gCelBloomTexture);
+    RecreateSHARTexture(gCelBloomScratchTexture);
+    RecreateSHARTexture(gFrameSharpenTexture);
+    RecreateSHARTexture(gCRTTexture);
+
+    if (gCelRenderDepth != 0)
+    {
+        glDeleteRenderbuffers(1, &gCelRenderDepth);
+        gCelRenderDepth = 0;
+        glGenRenderbuffers(1, &gCelRenderDepth);
+    }
+
+    gCelDepthTextureWidth = gCelDepthTextureHeight = 0;
+    gCelDepthTextureActive = false;
+    gCelDepthTextureFailed = false;
+    gCelPostWidth = gCelPostHeight = 0;
+    gCelRenderbufferWidth = gCelRenderbufferHeight = 0;
+    gCelBloomWidth = gCelBloomHeight = 0;
+    gFrameSharpenWidth = gFrameSharpenHeight = 0;
+    gCRTWidth = gCRTHeight = 0;
+    gCelRenderFboReady = false;
+    gCelBloomReady = false;
+
+    // Allocation failure latches are per-size. A successful new resize commit
+    // explicitly allows each target to retry its allocation for the new surface.
+    gCelPostFailedWidth = gCelPostFailedHeight = 0;
+    gCelRenderbufferFailedWidth = gCelRenderbufferFailedHeight = 0;
+    gCelRenderFboFailedWidth = gCelRenderFboFailedHeight = 0;
+    gCelBloomFailedWidth = gCelBloomFailedHeight = 0;
+    gFrameSharpenFailedWidth = gFrameSharpenFailedHeight = 0;
+    gCRTFailedWidth = gCRTFailedHeight = 0;
+    gSHARLastRejectedWidth = gSHARLastRejectedHeight = gSHARLastRejectedReason = 0;
+    gCelWorldInFbo = false;
+    gSHARHoldDirectFrames = SHAR_RESIZE_DIRECT_FRAMES;
+
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR)
+        SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+            "[SHAR-RESIZE] GL error 0x%04x while resetting post-process resources",
+            (unsigned)error);
+}
+
 static void ApplyCelPostProcess(int width, int height)
 {
-    if (!IsCelShadingEnabled())
+    if (gSHARFrameWidth > 0 && gSHARFrameHeight > 0)
+    {
+        width = gSHARFrameWidth;
+        height = gSHARFrameHeight;
+    }
+
+    if (!gCelWorldInFbo)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return;
+    }
+
+    if (!IsCelShadingEnabled())
+    {
+        FallbackResolveToScreen(width, height);
+        return;
+    }
 
     GLint currentFramebuffer = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFramebuffer);
     if ((GLuint)currentFramebuffer != gCelRenderFbo || !gCelRenderFboReady)
+    {
+        FallbackResolveToScreen(width, height);
         return;
+    }
 
     if (!EnsureCelPostProcessResources(width, height))
+    {
+        FallbackResolveToScreen(width, height);
         return;
+    }
 
     const bool bloomReady = EnsureCelBloomResources(width, height);
 
@@ -1067,13 +1370,48 @@ static void ApplyCelPostProcess(int width, int height)
     if (scissorEnabled) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
     if (stencilEnabled) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
 
-    // Leave framebuffer 0 bound so SDL_GL_SwapWindow presents the processed scene.
+    // Keep the GUI and all later passes on the onscreen framebuffer.
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    int outputWidth = width;
+    int outputHeight = height;
+    QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
+    glViewport(0, 0, outputWidth, outputHeight);
+    gCelWorldInFbo = false;
 }
 
 }
 
 bool BeginCelPostProcessFrame(int width, int height)
 {
+    gSHARFrameWidth = width;
+    gSHARFrameHeight = height;
+    gCelWorldInFbo = false;
+
+    if (gSHARResizePendingOnGLThread)
+    {
+        // While waiting for Android/EGL to settle, do not send the scene into
+        // an off-screen target whose size may no longer match the Surface.
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        int outputWidth = width;
+        int outputHeight = height;
+        QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
+        glViewport(0, 0, outputWidth, outputHeight);
+        return false;
+    }
+
+    if (gSHARHoldDirectFrames > 0)
+    {
+        --gSHARHoldDirectFrames;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        int outputWidth = width;
+        int outputHeight = height;
+        QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
+        glViewport(0, 0, outputWidth, outputHeight);
+        if (gSHARHoldDirectFrames == 0)
+            SDL_Log("[SHAR-RESIZE] direct-render warmup finished at %dx%d", width, height);
+        return false;
+    }
+
     if (!IsCelShadingEnabled())
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1083,21 +1421,24 @@ bool BeginCelPostProcessFrame(int width, int height)
     if (!BindCelRenderTarget(width, height))
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+            "[SHAR-RESIZE] cel target unavailable; direct rendering at %dx%d", width, height);
         return false;
     }
 
+    gCelWorldInFbo = true;
     return true;
 }
 
 void ApplyCelPostProcessBeforeGui(int width, int height)
 {
     /*
-     * The game/world layers have finished rendering at this point, while
-     * the dedicated GUI layer has not started yet. Apply the screen-space
-     * cel pass here so GUI and touch overlays are drawn afterward without
-     * being processed.
+     * Use the frame-begin snapshot rather than a second display-dimension
+     * read. Width and height are committed only at the start of a GL frame.
      */
-    ApplyCelPostProcess(width, height);
+    (void)width;
+    (void)height;
+    ApplyCelPostProcess(gSHARFrameWidth, gSHARFrameHeight);
 }
 
 
