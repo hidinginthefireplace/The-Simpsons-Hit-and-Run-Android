@@ -1203,6 +1203,13 @@ static void ApplyCRTFilter(int width, int height)
     if (!enabled || width <= 0 || height <= 0)
         return;
 
+    if (gCRTFailedWidth == width && gCRTFailedHeight == height)
+        return;
+
+    if (!CheckSHARRenderTargetSize(
+            width, height, "CRT filter texture", 6, false, true))
+        return;
+
     if (gCRTProgram == 0)
     {
         const char* vertexSource =
@@ -1281,31 +1288,48 @@ static void ApplyCRTFilter(int width, int height)
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+    bool crtTextureReady = true;
     if (gCRTWidth!=width || gCRTHeight!=height)
     {
         glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,width,height,0,GL_RGB,GL_UNSIGNED_BYTE,NULL);
-        gCRTWidth=width;
-        gCRTHeight=height;
+        crtTextureReady = CheckSHARAllocationError(
+            "CRT filter texture", width, height);
+        if (crtTextureReady)
+        {
+            gCRTWidth=width;
+            gCRTHeight=height;
+            gCRTFailedWidth=0;
+            gCRTFailedHeight=0;
+        }
+        else
+        {
+            gCRTFailedWidth=width;
+            gCRTFailedHeight=height;
+        }
     }
-    // Capture the frame after sharpening, then apply CRT processing to the whole image.
-    glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,width,height);
-    glViewport(0,0,width,height);
-    glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_CULL_FACE);
-    glDisable(GL_SCISSOR_TEST); glDisable(GL_STENCIL_TEST);
-    glUseProgram(gCRTProgram);
-    glUniform1i(gCRTSceneLocation,0);
-    if (gCRTTexelLocation>=0) glUniform2f(gCRTTexelLocation,1.0f/(float)width,1.0f/(float)height);
-    if (gCRTScanlineLocation>=0) glUniform1f(gCRTScanlineLocation,scanlineStrength);
-    if (gCRTCurvatureLocation>=0) glUniform1f(gCRTCurvatureLocation,curvature);
-    if (gCRTGlowLocation>=0) glUniform1f(gCRTGlowLocation,glowStrength);
-    if (gCRTCornersLocation>=0) glUniform1f(gCRTCornersLocation,cornerDarkening);
-    if (gCRTOverscanLocation>=0) glUniform1f(gCRTOverscanLocation,overscan);
-    if (gCRTBrightnessLocation>=0) glUniform1f(gCRTBrightnessLocation,brightness);
-    if (gCRTContrastLocation>=0) glUniform1f(gCRTContrastLocation,contrast);
-    glBindBuffer(GL_ARRAY_BUFFER,gCRTVbo);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,(const GLvoid*)0);
-    glDrawArrays(GL_TRIANGLE_STRIP,0,4);
+
+    if (crtTextureReady)
+    {
+        // Capture the frame after sharpening, then apply CRT processing to the whole image.
+        glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,width,height);
+        glViewport(0,0,width,height);
+        glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_CULL_FACE);
+        glDisable(GL_SCISSOR_TEST); glDisable(GL_STENCIL_TEST);
+        glUseProgram(gCRTProgram);
+        glUniform1i(gCRTSceneLocation,0);
+        if (gCRTTexelLocation>=0) glUniform2f(gCRTTexelLocation,1.0f/(float)width,1.0f/(float)height);
+        if (gCRTScanlineLocation>=0) glUniform1f(gCRTScanlineLocation,scanlineStrength);
+        if (gCRTCurvatureLocation>=0) glUniform1f(gCRTCurvatureLocation,curvature);
+        if (gCRTGlowLocation>=0) glUniform1f(gCRTGlowLocation,glowStrength);
+        if (gCRTCornersLocation>=0) glUniform1f(gCRTCornersLocation,cornerDarkening);
+        if (gCRTOverscanLocation>=0) glUniform1f(gCRTOverscanLocation,overscan);
+        if (gCRTBrightnessLocation>=0) glUniform1f(gCRTBrightnessLocation,brightness);
+        if (gCRTContrastLocation>=0) glUniform1f(gCRTContrastLocation,contrast);
+        glBindBuffer(GL_ARRAY_BUFFER,gCRTVbo);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,(const GLvoid*)0);
+        glDrawArrays(GL_TRIANGLE_STRIP,0,4);
+    }
 
     if (oldAttrib) glEnableVertexAttribArray(0); else glDisableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER,(GLuint)oldArray);
