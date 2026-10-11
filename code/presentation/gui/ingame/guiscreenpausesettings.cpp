@@ -65,11 +65,11 @@ void SetFrameSharpeningLevel(int level);
 
 static bool gAndroidGraphicsSettingsRequested = false;
 
-// Graphics-menu selector. The selected target is persisted to the existing
-// internal resolution config and applied by SDLSurface only at the next full launch.
-// This menu path never resizes the Android Surface or GL renderer while running.
-static const int SHAR_GRAPHICS_RESOLUTION_COUNT = 5;
-static int gSHARGraphicsResolutionSelection = 3; // 480p, 720p, 1080p, 1440p, 2160p
+// Restart-apply selector stage: 480p through 1440p are enabled.
+// 2160p remains deferred until GL allocation safeguards are added.
+static const int SHAR_GRAPHICS_RESOLUTION_COUNT = 4;
+static int gSHARGraphicsResolutionSelection = 3; // default: 1440p
+static bool gSHARGraphicsResolutionNeedsNormalization = false
 
 void RequestAndroidGraphicsSettings()
 {
@@ -100,9 +100,9 @@ void RequestAndroidGraphicsSettings()
 // Resolution choices shown by the Android Graphics submenu. The existing Java
 // startup code consumes target_height from /files/Graphics/Simpsons_resolution.txt.
 // No Surface/GL resize is requested here; the new value is applied at next launch.
-static const int SHAR_GRAPHICS_RESOLUTION_HEIGHTS[5] =
+static const int SHAR_GRAPHICS_RESOLUTION_HEIGHTS[4] =
 {
-    480, 720, 1080, 1440, 2160
+    480, 720, 1080, 1440
 };
 
 static int GetSHARGraphicsResolutionHeight( int selection )
@@ -197,6 +197,7 @@ static int LoadSHARGraphicsResolutionSelection()
             strncmp( value, "max", 3 ) == 0 )
         {
             selection = SHAR_GRAPHICS_RESOLUTION_COUNT - 1;
+            gSHARGraphicsResolutionNeedsNormalization = true;
         }
         else
         {
@@ -204,6 +205,13 @@ static int LoadSHARGraphicsResolutionSelection()
             if( height > 0 )
             {
                 selection = GetSHARGraphicsResolutionSelectionForHeight( height );
+                if( height > GetSHARGraphicsResolutionHeight(
+                                 SHAR_GRAPHICS_RESOLUTION_COUNT - 1 ) )
+                {
+                    // The 2160p choice is intentionally not applied until
+                    // texture/framebuffer allocation guards are implemented.
+                    gSHARGraphicsResolutionNeedsNormalization = true;
+                }
             }
         }
         break;
@@ -266,7 +274,7 @@ static bool SaveSHARGraphicsResolutionSelection( int selection )
         "# Selected in the in-game Graphics menu.\n"
         "# Changes take effect after fully restarting the game.\n"
         "# The render width is calculated automatically from the display aspect ratio.\n"
-        "# Supported menu values: 480, 720, 1080, 1440, 2160.\n"
+        "# Supported menu values in this build: 480, 720, 1080, 1440.\n"
         "target_height=%d\n",
         height );
     const int closeResult = fclose( file );
@@ -737,9 +745,9 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
                 pGraphicsValue->SetBoundingBoxSize( width, height );
                 pGraphicsValue->SetPositionOfCenter( centerX, centerY );
 
-                const char* resolutionValues[5] =
+                const char* resolutionValues[SHAR_GRAPHICS_RESOLUTION_COUNT] =
                 {
-                    "480p", "720p", "1080p", "1440p", "2160p"
+                    "480p", "720p", "1080p", "1440p"
                 };
                 for( int valueIndex = 0; valueIndex < SHAR_GRAPHICS_RESOLUTION_COUNT; ++valueIndex )
                 {
@@ -826,6 +834,13 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
 {
     m_configuringAndroidGraphicsMenu = true;
     gSHARGraphicsResolutionSelection = LoadSHARGraphicsResolutionSelection();
+    if( gSHARGraphicsResolutionNeedsNormalization )
+    {
+        // Migrate unsupported MAX/2160p selections to the safe 1440p ceiling
+        // so the next full launch cannot unexpectedly use the unguarded 4K path.
+        SaveSHARGraphicsResolutionSelection( gSHARGraphicsResolutionSelection );
+        gSHARGraphicsResolutionNeedsNormalization = false;
+    }
     LOGI("[SHAR-RESOLUTION-MENU] ConfigureAndroidGraphicsMenu begin; selected=%dp",
          GetSHARGraphicsResolutionHeight(gSHARGraphicsResolutionSelection));
 
