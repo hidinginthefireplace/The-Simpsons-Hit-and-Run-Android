@@ -1213,6 +1213,7 @@ static void ApplyCRTFilter(int width, int height)
 }
 
 
+static SDL_SpinLock gSHARAndroidRenderResolutionLock = 0;
 static int gSHARAndroidRenderWidth = 0;
 static int gSHARAndroidRenderHeight = 0;
 
@@ -1230,18 +1231,25 @@ Java_org_libsdl_app_SDLSurface_nativeSetSHARRenderResolution(
     if (width <= 0 || height <= 0)
         return;
 
+    // Java surface callbacks can run on the UI thread while SDL reads this
+    // pair on the render/event thread. Keep the dimensions as one consistent
+    // snapshot and never call back into Java while holding this short lock.
+    SDL_AtomicLock(&gSHARAndroidRenderResolutionLock);
     const bool changed =
         gSHARAndroidRenderWidth != (int)width ||
         gSHARAndroidRenderHeight != (int)height;
 
     gSHARAndroidRenderWidth = (int)width;
     gSHARAndroidRenderHeight = (int)height;
+    const int loggedWidth = gSHARAndroidRenderWidth;
+    const int loggedHeight = gSHARAndroidRenderHeight;
+    SDL_AtomicUnlock(&gSHARAndroidRenderResolutionLock);
 
     if (changed) {
         SDL_Log(
             "SHAR Android Java render resolution received: %dx%d",
-            gSHARAndroidRenderWidth,
-            gSHARAndroidRenderHeight
+            loggedWidth,
+            loggedHeight
         );
     }
 }
@@ -1252,11 +1260,16 @@ GetSHARAndroidRenderResolution(int* width, int* height)
     if (width == NULL || height == NULL)
         return false;
 
-    if (gSHARAndroidRenderWidth <= 0 || gSHARAndroidRenderHeight <= 0)
+    SDL_AtomicLock(&gSHARAndroidRenderResolutionLock);
+    const int renderWidth = gSHARAndroidRenderWidth;
+    const int renderHeight = gSHARAndroidRenderHeight;
+    SDL_AtomicUnlock(&gSHARAndroidRenderResolutionLock);
+
+    if (renderWidth <= 0 || renderHeight <= 0)
         return false;
 
-    *width = gSHARAndroidRenderWidth;
-    *height = gSHARAndroidRenderHeight;
+    *width = renderWidth;
+    *height = renderHeight;
 
     return true;
 }
@@ -1882,24 +1895,57 @@ void pglDisplay::SwapBuffers(void)
     
 unsigned pglDisplay::Screenshot(pddiColour* buffer, int nBytes)
 {
-    if(nBytes < (winHeight * winWidth * 4))
+    if (buffer == NULL || nBytes <= 0 || winWidth <= 0 || winHeight <= 0)
         return 0;
 
-    glReadPixels(0, 0,  winWidth, winHeight, GL_BGRA_EXT, GL_UNSIGNED_BYTE, buffer);
-
-    unsigned tmp[2048];
-    PDDIASSERT(winWidth < 2048);
-
-    for(int i = 0; i < winHeight / 2; i++)
+    // Calculate sizes without signed-int overflow. The previous fixed
+    // unsigned tmp[2048] row overflowed at 2048-pixel widths (including 1440p
+    // and 2160p landscape render targets).
+    const size_t rowBytes = (size_t)winWidth * 4;
+    if (rowBytes / 4 != (size_t)winWidth ||
+        (size_t)winHeight > ((size_t)-1) / rowBytes)
     {
-        pddiColour* a = buffer + (i * winWidth);
-        pddiColour* b = buffer + (((winHeight - 1) - i) * winWidth);
-        memcpy(tmp, a, winWidth * 4);
-        memcpy(a, b, winWidth * 4);
-        memcpy(b, tmp, winWidth * 4);
+        SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+            "SHAR screenshot refused: image dimensions overflow size_t (%dx%d)",
+            winWidth, winHeight);
+        return 0;
     }
 
-    return winHeight * winWidth * 4;
+    const size_t requiredBytes = rowBytes * (size_t)winHeight;
+    if (requiredBytes > (size_t)nBytes || requiredBytes > (size_t)~0U)
+        return 0;
+
+    unsigned char* temporaryRow =
+        (unsigned char*)malloc(rowBytes);
+    if (temporaryRow == NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+            "SHAR screenshot refused: could not allocate %u-byte row buffer",
+            (unsigned)rowBytes);
+        return 0;
+    }
+
+    glReadPixels(0, 0, winWidth, winHeight,
+                 GL_BGRA_EXT, GL_UNSIGNED_BYTE, buffer);
+    if (!CheckSHARAllocationError("screenshot readback", winWidth, winHeight))
+    {
+        free(temporaryRow);
+        return 0;
+    }
+
+    for (int row = 0; row < winHeight / 2; ++row)
+    {
+        unsigned char* top = (unsigned char*)(buffer + ((size_t)row * (size_t)winWidth));
+        unsigned char* bottom = (unsigned char*)(buffer +
+            ((size_t)(winHeight - 1 - row) * (size_t)winWidth));
+
+        memcpy(temporaryRow, top, rowBytes);
+        memcpy(top, bottom, rowBytes);
+        memcpy(bottom, temporaryRow, rowBytes);
+    }
+
+    free(temporaryRow);
+    return (unsigned)requiredBytes;
 }
 
 void pglDisplay::BeginTiming()
