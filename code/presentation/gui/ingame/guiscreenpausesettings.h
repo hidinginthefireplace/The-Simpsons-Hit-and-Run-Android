@@ -87,6 +87,12 @@ private:
     };
 
    #if defined(RAD_ANDROID)
+    bool m_graphicsSettingsMode = false;
+
+    void ConfigureAndroidGraphicsMenu();
+    void RestoreAndroidSettingsMenu();
+    void LeaveAndroidGraphicsMenu();
+
     bool mHasInvertCamControl=false;
     bool mHasGamepadVibration=false;
 
