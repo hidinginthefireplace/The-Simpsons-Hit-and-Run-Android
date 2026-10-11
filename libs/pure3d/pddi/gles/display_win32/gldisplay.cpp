@@ -716,6 +716,10 @@ static bool EnsureCelBloomResources(int width, int height)
     const int bloomWidth = width > 3 ? width / 4 : 1;
     const int bloomHeight = height > 3 ? height / 4 : 1;
 
+    if (!CheckSHARRenderTargetSize(
+            bloomWidth, bloomHeight, "cel bloom textures", 4, false, false))
+        return false;
+
     if (gCelBloomReady && gCelBloomWidth == bloomWidth && gCelBloomHeight == bloomHeight)
         return true;
     if (gCelBloomFailedWidth == bloomWidth && gCelBloomFailedHeight == bloomHeight)
@@ -808,6 +812,15 @@ static bool EnsureCelBloomResources(int width, int height)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bloomWidth, bloomHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        if (!CheckSHARAllocationError("cel bloom texture", bloomWidth, bloomHeight))
+        {
+            gCelBloomFailedWidth = bloomWidth;
+            gCelBloomFailedHeight = bloomHeight;
+            glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
+            glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture);
+            glActiveTexture((GLenum)previousActiveTexture);
+            return false;
+        }
 
         glBindTexture(GL_TEXTURE_2D, gCelBloomScratchTexture);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -815,6 +828,15 @@ static bool EnsureCelBloomResources(int width, int height)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bloomWidth, bloomHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        if (!CheckSHARAllocationError("cel bloom scratch texture", bloomWidth, bloomHeight))
+        {
+            gCelBloomFailedWidth = bloomWidth;
+            gCelBloomFailedHeight = bloomHeight;
+            glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
+            glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture);
+            glActiveTexture((GLenum)previousActiveTexture);
+            return false;
+        }
 
         gCelBloomWidth = bloomWidth;
         gCelBloomHeight = bloomHeight;
