@@ -62,11 +62,12 @@ bool IsFrameSharpeningEnabled();
 void SetFrameSharpeningEnabled(bool enabled);
 int GetFrameSharpeningLevel();
 void SetFrameSharpeningLevel(int level);
+bool RequestSHARAndroidRenderResolutionHeight(int targetHeight);
 
 static bool gAndroidGraphicsSettingsRequested = false;
 
-// Restart-apply selector. A 2160p request is now permitted, but full-screen
-// effects use GL size, budget, and allocation guards and safely bypass if needed.
+// Live resolution selector. Full-screen effects continue to use GL size,
+// budget, and allocation guards; failed targets safely bypass the affected effect.
 static const int SHAR_GRAPHICS_RESOLUTION_COUNT = 5;
 static int gSHARGraphicsResolutionSelection = 3; // default: 1440p
 static bool gSHARGraphicsResolutionNeedsNormalization = false;
@@ -97,9 +98,9 @@ void RequestAndroidGraphicsSettings()
 
 #if defined(RAD_ANDROID)
 
-// Resolution choices shown by the Android Graphics submenu. The existing Java
-// startup code consumes target_height from /files/Graphics/Simpsons_resolution.txt.
-// No Surface/GL resize is requested here; the new value is applied at next launch.
+// Resolution choices shown by the Android Graphics submenu. Java reads the
+// saved target_height at startup and also accepts a live resize request from
+// this menu. Android performs the Surface change on its UI thread.
 static const int SHAR_GRAPHICS_RESOLUTION_HEIGHTS[5] =
 {
     480, 720, 1080, 1440, 2160
@@ -281,7 +282,7 @@ static bool SaveSHARGraphicsResolutionSelection( int selection )
         file,
         "# Simpsons Hit & Run Android adaptive render resolution\n"
         "# Selected in the in-game Graphics menu.\n"
-        "# Changes take effect after fully restarting the game.\n"
+        "# Changes are requested immediately and also saved for the next launch.\n"
         "# The render width is calculated automatically from the display aspect ratio.\n"
         "# Supported menu values: 480, 720, 1080, 1440, 2160.\n"
         "target_height=%d\n",
@@ -294,7 +295,7 @@ static bool SaveSHARGraphicsResolutionSelection( int selection )
         return false;
     }
 
-    LOGI("[SHAR-RESOLUTION] Saved target_height=%d to %s (applies next launch)",
+    LOGI("[SHAR-RESOLUTION] Saved target_height=%d to %s",
          height, path);
     return true;
 }
@@ -1264,10 +1265,18 @@ void CGuiScreenPauseSettings::HandleMessage
                             if( newSelection != gSHARGraphicsResolutionSelection )
                             {
                                 gSHARGraphicsResolutionSelection = newSelection;
-                                // Persist to the canonical app-internal config.
-                                // SDLSurface reads this at full app startup, so
-                                // the active renderer is never resized mid-frame.
+                                // Persist the choice, then ask Android's UI thread
+                                // to resize the SurfaceView live. SDL receives the
+                                // resulting standard resize callback; no GL work is
+                                // performed directly by this menu handler.
+                                const int targetHeight =
+                                    GetSHARGraphicsResolutionHeight( newSelection );
                                 SaveSHARGraphicsResolutionSelection( newSelection );
+                                if( !RequestSHARAndroidRenderResolutionHeight( targetHeight ) )
+                                {
+                                    LOGE("[SHAR-RESOLUTION] Live resize request for %dp could not be queued; saved value will apply on next launch",
+                                         targetHeight);
+                                }
                             }
                         }
                     }
