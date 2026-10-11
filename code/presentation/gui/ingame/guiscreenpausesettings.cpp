@@ -968,11 +968,12 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
                     value->SetString( 0, "1440p" );
                     if( value->GetNumOfStrings() > 1 )
                     {
-                        value->SetString( 1, "2160p" );
+                        value->SetString( 1, "1440p" );
                     }
-                    m_pMenu->SetSelectionValueCount( guiIndex, 2 );
-                    m_pMenu->SetSelectionValue( guiIndex,
-                        gSHARGraphicsResolutionSelection >= 4 ? 1 : 0 );
+                    // If we could not create the dedicated selector text, avoid
+                    // exposing an unsupported 2160p fallback; keep the row safe.
+                    m_pMenu->SetSelectionValueCount( guiIndex, 1 );
+                    m_pMenu->SetSelectionValue( guiIndex, 0 );
                 }
             }
             else if( i == 1 || i == 2 )
