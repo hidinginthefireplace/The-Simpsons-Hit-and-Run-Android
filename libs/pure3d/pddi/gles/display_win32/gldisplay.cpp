@@ -192,7 +192,7 @@ static void LogSHARResizePathOnce(
     int firstUnused = -1;
     for (int i = 0; i < 8; ++i)
     {
-        if (entries[i].stage[0] == '\\0')
+        if (entries[i].stage[0] == '\0')
         {
             if (firstUnused < 0)
                 firstUnused = i;
