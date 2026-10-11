@@ -15,8 +15,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <sys/stat.h>
+#include <errno.h>
 
-static bool gCelShadingEnabled = false;
+void SetFrameSharpeningRuntimeEnabled(bool enabled);
+
+static bool gCelShadingEnabled = true;
 static bool gCelShadingObjectEnabled = false;
 static bool gCelShadingOutlinePass = false;
 static pglContext* gCelShadingContext = nullptr;
@@ -39,6 +43,57 @@ static const char* CRT_CONFIGURATION_FILE_NAME = "Simpsons_crt_configuration.txt
 static const char* CEL_SHADING_CONFIGURATION_FILE_NAME = "Simpsons_cel_shading.txt";
 static const char* SHARPENING_CONFIGURATION_FILE_NAME = "Simpsons_sharpening.txt";
 
+static bool BuildGraphicsConfigurationPath(char* filePath, size_t filePathSize, const char* fileName)
+{
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if (storagePath == nullptr || storagePath[0] == '\0')
+        return false;
+
+    char graphicsPath[512];
+    snprintf(graphicsPath, sizeof(graphicsPath), "%s/Graphics", storagePath);
+    if (mkdir(graphicsPath, 0777) != 0 && errno != EEXIST)
+        return false;
+
+    struct stat directoryInfo;
+    if (stat(graphicsPath, &directoryInfo) != 0 || !S_ISDIR(directoryInfo.st_mode))
+        return false;
+
+    snprintf(filePath, filePathSize, "%s/%s", graphicsPath, fileName);
+    return true;
+}
+
+static bool BuildLegacyRootConfigurationPath(char* filePath, size_t filePathSize, const char* fileName)
+{
+    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if (storagePath == nullptr || storagePath[0] == '\0')
+        return false;
+
+    snprintf(filePath, filePathSize, "%s/%s", storagePath, fileName);
+    return true;
+}
+
+static bool GraphicsConfigurationFileExists(const char* path)
+{
+    FILE* file = fopen(path, "r");
+    if (file == nullptr)
+        return false;
+    fclose(file);
+    return true;
+}
+
+static void RemoveLegacyRootConfigurationIfMigrated(const char* oldName, const char* newPath)
+{
+    char oldPath[512];
+    if (!BuildLegacyRootConfigurationPath(oldPath, sizeof(oldPath), oldName))
+        return;
+
+    if (GraphicsConfigurationFileExists(newPath))
+        remove(oldPath);
+}
+
+static void LoadSharpeningConfiguration();
+
+
 static bool ParseCelShadingBool(const char* value, bool defaultValue)
 {
     if (value == nullptr)
@@ -58,25 +113,20 @@ static bool ParseCelShadingBool(const char* value, bool defaultValue)
 
 static void WriteCelShadingConfiguration()
 {
-    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
-    if (storagePath == nullptr || storagePath[0] == '\0')
-        return;
-
     char filePath[512];
-    snprintf(filePath, sizeof(filePath), "%s/%s",
-             storagePath, CEL_SHADING_CONFIGURATION_FILE_NAME);
+    if (!BuildGraphicsConfigurationPath(filePath, sizeof(filePath), CEL_SHADING_CONFIGURATION_FILE_NAME))
+        return;
 
     FILE* file = fopen(filePath, "w");
     if (file == nullptr)
         return;
 
     fprintf(file, "# Simpsons Hit & Run Android - Cel Shading\n");
-    fprintf(file, "# Change only true/false values.\n");
-    fprintf(file, "# You can use 1/0 values too.\n");
+    fprintf(file, "# Change with true/false values.\n");
+    fprintf(file, "# You can also use 1/0 values.\n");
     fprintf(file, "# Restart the game after changing this file.\n");
     fprintf(file, "\n");
     fprintf(file, "cel_shading=%s\n", gCelShadingEnabled ? "true" : "false");
-
     fclose(file);
 }
 
@@ -87,22 +137,31 @@ static void LoadCelShadingConfiguration()
 
     gCelShadingConfigurationLoaded = true;
 
-    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
-    if (storagePath == nullptr || storagePath[0] == '\0')
+    char filePath[512];
+    if (!BuildGraphicsConfigurationPath(filePath, sizeof(filePath), CEL_SHADING_CONFIGURATION_FILE_NAME))
         return;
 
-    char filePath[512];
-    snprintf(filePath, sizeof(filePath), "%s/%s",
-             storagePath, CEL_SHADING_CONFIGURATION_FILE_NAME);
-
     FILE* file = fopen(filePath, "r");
+    bool fromLegacyRoot = false;
+    char legacyPath[512];
+    if (file == nullptr &&
+        BuildLegacyRootConfigurationPath(legacyPath, sizeof(legacyPath), CEL_SHADING_CONFIGURATION_FILE_NAME))
+    {
+        file = fopen(legacyPath, "r");
+        fromLegacyRoot = (file != nullptr);
+    }
+
     if (file == nullptr)
     {
-        // First launch: preserve the current default (OFF) and create the
-        // editable configuration file in the primary Android app storage.
+        // New installs use cel_shading=true unless a config is supplied.
         WriteCelShadingConfiguration();
         return;
     }
+
+    // Older versions stored sharpen= in this same file. Read that value before
+    // migrating/removing the old cel-shading file.
+    if (fromLegacyRoot)
+        LoadSharpeningConfiguration();
 
     char line[256];
     while (fgets(line, sizeof(line), file) != nullptr)
@@ -116,26 +175,26 @@ static void LoadCelShadingConfiguration()
         while (end > key &&
                (end[-1] == '\n' || end[-1] == '\r' ||
                 end[-1] == ' ' || end[-1] == '\t'))
-        {
             --end;
-        }
         *end = '\0';
 
         gCelShadingEnabled = ParseCelShadingBool(key, gCelShadingEnabled);
     }
-
     fclose(file);
-}
 
+    if (fromLegacyRoot)
+    {
+        WriteCelShadingConfiguration();
+        RemoveLegacyRootConfigurationIfMigrated(CEL_SHADING_CONFIGURATION_FILE_NAME, filePath);
+    }
+}
 
 static void WriteSharpeningConfiguration()
 {
-    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
-    if (storagePath == nullptr || storagePath[0] == '\0')
+    char filePath[512];
+    if (!BuildGraphicsConfigurationPath(filePath, sizeof(filePath), SHARPENING_CONFIGURATION_FILE_NAME))
         return;
 
-    char filePath[512];
-    snprintf(filePath, sizeof(filePath), "%s/%s", storagePath, SHARPENING_CONFIGURATION_FILE_NAME);
     FILE* file = fopen(filePath, "w");
     if (file == nullptr)
         return;
@@ -174,6 +233,21 @@ static bool ParseSharpeningStrengthLine(char* line)
     return true;
 }
 
+static void ParseSharpeningEnabledLine(char* line)
+{
+    char* enabled = strstr(line, "sharpening_enabled=");
+    if (enabled == nullptr)
+        return;
+
+    enabled += strlen("sharpening_enabled=");
+    while (*enabled == ' ' || *enabled == '\t')
+        ++enabled;
+
+    gFrameSharpeningEnabled =
+        (*enabled == '1' || strncmp(enabled, "true", 4) == 0 ||
+         strncmp(enabled, "on", 2) == 0);
+}
+
 static void LoadSharpeningConfiguration()
 {
     if (gSharpeningConfigurationLoaded)
@@ -181,28 +255,31 @@ static void LoadSharpeningConfiguration()
 
     gSharpeningConfigurationLoaded = true;
 
-    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
-    if (storagePath == nullptr || storagePath[0] == '\0')
+    char filePath[512];
+    if (!BuildGraphicsConfigurationPath(filePath, sizeof(filePath), SHARPENING_CONFIGURATION_FILE_NAME))
         return;
 
-    char filePath[512];
-    snprintf(filePath, sizeof(filePath), "%s/%s", storagePath, SHARPENING_CONFIGURATION_FILE_NAME);
     FILE* file = fopen(filePath, "r");
+    bool fromLegacyDedicatedFile = false;
+    bool fromLegacyCombinedCelFile = false;
+    char legacyPath[512];
+
+    if (file == nullptr &&
+        BuildLegacyRootConfigurationPath(legacyPath, sizeof(legacyPath), SHARPENING_CONFIGURATION_FILE_NAME))
+    {
+        file = fopen(legacyPath, "r");
+        fromLegacyDedicatedFile = (file != nullptr);
+    }
+
+    if (file == nullptr &&
+        BuildLegacyRootConfigurationPath(legacyPath, sizeof(legacyPath), CEL_SHADING_CONFIGURATION_FILE_NAME))
+    {
+        file = fopen(legacyPath, "r");
+        fromLegacyCombinedCelFile = (file != nullptr);
+    }
+
     if (file == nullptr)
     {
-        // Migrate the numeric value from the previous combined cel-shading file
-        // when possible, so an existing user's sharpening level is preserved.
-        char legacyPath[512];
-        snprintf(legacyPath, sizeof(legacyPath), "%s/%s", storagePath, CEL_SHADING_CONFIGURATION_FILE_NAME);
-        FILE* legacyFile = fopen(legacyPath, "r");
-        if (legacyFile != nullptr)
-        {
-            char legacyLine[256];
-            while (fgets(legacyLine, sizeof(legacyLine), legacyFile) != nullptr)
-                ParseSharpeningStrengthLine(legacyLine);
-            fclose(legacyFile);
-        }
-
         WriteSharpeningConfiguration();
         return;
     }
@@ -212,20 +289,21 @@ static void LoadSharpeningConfiguration()
     {
         if (ParseSharpeningStrengthLine(line))
             continue;
-
-        char* enabled = strstr(line, "sharpening_enabled=");
-        if (enabled != nullptr)
-        {
-            enabled += strlen("sharpening_enabled=");
-            while (*enabled == ' ' || *enabled == '\t')
-                ++enabled;
-            gFrameSharpeningEnabled =
-                (*enabled == '1' || strncmp(enabled, "true", 4) == 0 ||
-                 strncmp(enabled, "on", 2) == 0);
-        }
+        ParseSharpeningEnabledLine(line);
     }
 
     fclose(file);
+
+    if (fromLegacyDedicatedFile)
+    {
+        WriteSharpeningConfiguration();
+        RemoveLegacyRootConfigurationIfMigrated(SHARPENING_CONFIGURATION_FILE_NAME, filePath);
+    }
+    else if (fromLegacyCombinedCelFile)
+    {
+        // Keep the combined file until its cel_shading value has been migrated.
+        WriteSharpeningConfiguration();
+    }
 }
 
 static bool ParseCRTFloatSetting(char* line, const char* key, float* target, float minimum, float maximum)
@@ -247,14 +325,14 @@ static bool ParseCRTFloatSetting(char* line, const char* key, float* target, flo
 
 static void WriteCRTConfiguration()
 {
-    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
-    if (storagePath == nullptr || storagePath[0] == '\0')
-        return;
     char filePath[512];
-    snprintf(filePath, sizeof(filePath), "%s/%s", storagePath, CRT_CONFIGURATION_FILE_NAME);
+    if (!BuildGraphicsConfigurationPath(filePath, sizeof(filePath), CRT_CONFIGURATION_FILE_NAME))
+        return;
+
     FILE* file = fopen(filePath, "w");
     if (file == nullptr)
         return;
+
     fprintf(file, "# Simpsons Hit & Run Android - CRT filter (GLES2 CRT-Geom-style)\n");
     fprintf(file, "# Changes are read on game startup; 0/off bypasses the CRT pass.\n");
     fprintf(file, "crt_enabled=%d\n", gCRTEnabled ? 1 : 0);
@@ -272,19 +350,29 @@ static void LoadCRTConfiguration()
 {
     if (gCRTConfigurationLoaded)
         return;
+
     gCRTConfigurationLoaded = true;
-    const char* storagePath = SDL_AndroidGetApplicationExternalFilesPath();
-    if (storagePath == nullptr || storagePath[0] == '\0')
-        return;
+
     char filePath[512];
-    snprintf(filePath, sizeof(filePath), "%s/%s", storagePath, CRT_CONFIGURATION_FILE_NAME);
+    if (!BuildGraphicsConfigurationPath(filePath, sizeof(filePath), CRT_CONFIGURATION_FILE_NAME))
+        return;
+
     FILE* file = fopen(filePath, "r");
+    bool fromLegacyRoot = false;
+    char legacyPath[512];
+    if (file == nullptr &&
+        BuildLegacyRootConfigurationPath(legacyPath, sizeof(legacyPath), CRT_CONFIGURATION_FILE_NAME))
+    {
+        file = fopen(legacyPath, "r");
+        fromLegacyRoot = (file != nullptr);
+    }
+
     if (file == nullptr)
     {
-        // First run: create a user-editable file, with the CRT effect disabled by default.
         WriteCRTConfiguration();
         return;
     }
+
     char line[256];
     while (fgets(line, sizeof(line), file) != nullptr)
     {
@@ -305,7 +393,14 @@ static void LoadCRTConfiguration()
         ParseCRTFloatSetting(line, "brightness=", &gCRTBrightness, 0.5f, 1.5f);
         ParseCRTFloatSetting(line, "contrast=", &gCRTContrast, 0.5f, 1.5f);
     }
+
     fclose(file);
+
+    if (fromLegacyRoot)
+    {
+        WriteCRTConfiguration();
+        RemoveLegacyRootConfigurationIfMigrated(CRT_CONFIGURATION_FILE_NAME, filePath);
+    }
 }
 
 bool IsCRTFilterEnabled()
@@ -353,9 +448,8 @@ bool IsFrameSharpeningEnabled()
 void SetFrameSharpeningEnabled(bool enabled)
 {
     LoadSharpeningConfiguration();
-    if (gFrameSharpeningEnabled == enabled)
-        return;
     gFrameSharpeningEnabled = enabled;
+    SetFrameSharpeningRuntimeEnabled(enabled);
     WriteSharpeningConfiguration();
 }
 

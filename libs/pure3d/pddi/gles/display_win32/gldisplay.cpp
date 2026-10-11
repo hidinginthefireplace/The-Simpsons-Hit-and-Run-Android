@@ -19,6 +19,15 @@
 bool IsCelShadingEnabled();
 bool IsFrameSharpeningEnabled();
 float GetFrameSharpenStrength();
+
+static bool gFrameSharpeningRuntimeOverride = false;
+static bool gFrameSharpeningRuntimeEnabled = true;
+
+void SetFrameSharpeningRuntimeEnabled(bool enabled)
+{
+    gFrameSharpeningRuntimeEnabled = enabled;
+    gFrameSharpeningRuntimeOverride = true;
+}
 void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature, float* glowStrength, float* cornerDarkening, float* overscan, float* brightness, float* contrast);
 
 namespace
@@ -822,7 +831,11 @@ void ApplyCelPostProcessBeforeGui(int width, int height)
 
 static void ApplyFrameSharpening(int width, int height)
 {
-    if (!IsFrameSharpeningEnabled())
+    const bool enabled = gFrameSharpeningRuntimeOverride
+        ? gFrameSharpeningRuntimeEnabled
+        : IsFrameSharpeningEnabled();
+
+    if (!enabled)
         return;
 
     const float strength = GetFrameSharpenStrength();

@@ -23,6 +23,18 @@
 static const char* TOUCH_ASSET_VERSION = "2";
 
 
+#if defined(RAD_ANDROID)
+static void MigrateLegacyTouchDirectory(const char* storagePath)
+{
+    char oldPath[512], newPath[512];
+    snprintf(oldPath, sizeof(oldPath), "%s/touch_controls", storagePath);
+    snprintf(newPath, sizeof(newPath), "%s/Touch", storagePath);
+    struct stat oldInfo, newInfo;
+    if (stat(newPath, &newInfo) != 0 && stat(oldPath, &oldInfo) == 0)
+        rename(oldPath, newPath);
+}
+#endif
+
 static const char* TOUCH_ASSET_FILES[] =
 {
     // Character
@@ -183,10 +195,12 @@ bool TouchAssetExtractor::BuildOutputRoot()
         return false;
     }
 
+    MigrateLegacyTouchDirectory( storagePath );
+
     snprintf(
         mOutputRoot,
         sizeof( mOutputRoot ),
-        "%s/touch_controls",
+        "%s/Touch",
         storagePath
     );
 
@@ -486,7 +500,7 @@ bool TouchAssetExtractor::WriteVersionFile() const
     snprintf(
         versionPath,
         sizeof( versionPath ),
-        "%s/touch_controls/.version",
+        "%s/Touch/.version",
         storagePath
     );
 
@@ -526,7 +540,7 @@ bool TouchAssetExtractor::IsVersionFileValid() const
     snprintf(
         versionPath,
         sizeof( versionPath ),
-        "%s/touch_controls/.version",
+        "%s/Touch/.version",
         storagePath
     );
 

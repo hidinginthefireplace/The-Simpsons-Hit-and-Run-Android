@@ -7,16 +7,70 @@
     #include <SDL.h>
     #include <sys/stat.h>
     #include <errno.h>
+    #include <unistd.h>
 #endif
 
 namespace
 {
-    const int CURRENT_CONFIGURATION_VERSION = 1;
+    const int CURRENT_CONFIGURATION_VERSION = 2;
 
 #if defined(RAD_ANDROID)
-    const char* CONFIGURATION_FOLDER_NAME = "Simpsons_configuration";
-    const char* CONFIGURATION_FILE_NAME   = "Simpsons_configuration.txt";
-    const char* VERSION_FILE_NAME         = ".versionSimpsons_configuration";
+    const char* CONFIGURATION_FOLDER_NAME = "Controller";
+    const char* CONFIGURATION_FILE_NAME   = "Simpsons_controls.txt";
+    const char* VERSION_FILE_NAME         = ".versionSimpsons_controls";
+    const char* LEGACY_CONFIGURATION_FOLDER_NAME = "Simpsons_configuration";
+    const char* LEGACY_CONFIGURATION_FILE_NAME = "Simpsons_configuration.txt";
+    const char* LEGACY_VERSION_FILE_NAME = ".versionSimpsons_configuration";
+
+    static bool PathExists(const char* path)
+    {
+        struct stat info;
+        return stat(path, &info) == 0;
+    }
+
+    static void MigrateLegacyControllerPaths(const char* basePath)
+    {
+        char oldDirectory[512], newDirectory[512];
+        char oldConfiguration[512], newConfiguration[512];
+        char oldVersion[512], newVersion[512];
+        snprintf(oldDirectory, sizeof(oldDirectory), "%s/%s", basePath, LEGACY_CONFIGURATION_FOLDER_NAME);
+        snprintf(newDirectory, sizeof(newDirectory), "%s/%s", basePath, CONFIGURATION_FOLDER_NAME);
+        snprintf(oldConfiguration, sizeof(oldConfiguration), "%s/%s", oldDirectory, LEGACY_CONFIGURATION_FILE_NAME);
+        snprintf(newConfiguration, sizeof(newConfiguration), "%s/%s", newDirectory, CONFIGURATION_FILE_NAME);
+        snprintf(oldVersion, sizeof(oldVersion), "%s/%s", oldDirectory, LEGACY_VERSION_FILE_NAME);
+        snprintf(newVersion, sizeof(newVersion), "%s/%s", newDirectory, VERSION_FILE_NAME);
+
+        struct stat info;
+        if (stat(newDirectory, &info) != 0)
+        {
+            if (stat(oldDirectory, &info) == 0)
+                rename(oldDirectory, newDirectory);
+            else
+                mkdir(newDirectory, 0777);
+        }
+
+        if (!PathExists(newConfiguration))
+        {
+            char moved[512];
+            snprintf(moved, sizeof(moved), "%s/%s", newDirectory, LEGACY_CONFIGURATION_FILE_NAME);
+            if (PathExists(moved))
+                rename(moved, newConfiguration);
+            else if (PathExists(oldConfiguration))
+                rename(oldConfiguration, newConfiguration);
+        }
+
+        if (!PathExists(newVersion))
+        {
+            char moved[512];
+            snprintf(moved, sizeof(moved), "%s/%s", newDirectory, LEGACY_VERSION_FILE_NAME);
+            if (PathExists(moved))
+                rename(moved, newVersion);
+            else if (PathExists(oldVersion))
+                rename(oldVersion, newVersion);
+        }
+
+        rmdir(oldDirectory);
+    }
 #endif
 }
 
@@ -189,6 +243,8 @@ bool AndroidConfigurationManager::BuildPaths()
         return false;
     }
 
+    MigrateLegacyControllerPaths( basePath );
+
     snprintf( m_directoryPath,
               sizeof( m_directoryPath ),
               "%s/%s",
@@ -281,9 +337,9 @@ void AndroidConfigurationManager::WriteConfigurationFile()
         return;
     }
 
-    fprintf( file, "# Simpsons Hit & Run Android - Configuration\n" );
-    fprintf( file, "# Change only true/false values.\n" );
-    fprintf( file, "# U can put 1/0 values too.\n" );
+    fprintf( file, "# Simpsons Hit & Run Android - Controller Configuration\n" );
+    fprintf( file, "# Change with true/false values.\n" );
+    fprintf( file, "# You can also use 1/0 values.\n" );
     fprintf( file, "# Restart the game after changing this file.\n" );
     fprintf( file, "\n" );
 
