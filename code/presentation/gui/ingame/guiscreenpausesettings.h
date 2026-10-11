@@ -88,6 +88,7 @@ private:
 
    #if defined(RAD_ANDROID)
     bool m_graphicsSettingsMode = false;
+    bool m_configuringAndroidGraphicsMenu = false;
 
     void ConfigureAndroidGraphicsMenu();
     void RestoreAndroidSettingsMenu();
