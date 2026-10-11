@@ -19,6 +19,8 @@
 
 #if defined(RAD_ANDROID)
 #include <jni.h>
+#include <dlfcn.h>
+#include <EGL/egl.h>
 
 bool IsCelShadingEnabled();
 bool IsFrameSharpeningEnabled();
@@ -127,7 +129,7 @@ static int gSHARLastRejectedWidth = 0;
 static int gSHARLastRejectedHeight = 0;
 static int gSHARLastRejectedReason = 0;
 
-static bool QueryDefaultFramebufferSize(int* width, int* height)
+static bool QuerySDLDrawableSize(int* width, int* height)
 {
     if (width == NULL || height == NULL)
         return false;
@@ -152,6 +154,69 @@ static bool QueryDefaultFramebufferSize(int* width, int* height)
     *width = drawableWidth;
     *height = drawableHeight;
     return true;
+}
+
+static bool QueryEglSurfaceSize(int* width, int* height)
+{
+    if (width == NULL || height == NULL)
+        return false;
+
+    typedef EGLDisplay (*GetCurrentDisplayFn)(void);
+    typedef EGLSurface (*GetCurrentSurfaceFn)(EGLint);
+    typedef EGLBoolean (*QuerySurfaceFn)(EGLDisplay, EGLSurface, EGLint, EGLint*);
+
+    static void* eglLibrary = dlopen("libEGL.so", RTLD_NOW);
+    if (eglLibrary == NULL)
+        return false;
+    static GetCurrentDisplayFn getCurrentDisplay =
+        reinterpret_cast<GetCurrentDisplayFn>(dlsym(eglLibrary, "eglGetCurrentDisplay"));
+    static GetCurrentSurfaceFn getCurrentSurface =
+        reinterpret_cast<GetCurrentSurfaceFn>(dlsym(eglLibrary, "eglGetCurrentSurface"));
+    static QuerySurfaceFn querySurface =
+        reinterpret_cast<QuerySurfaceFn>(dlsym(eglLibrary, "eglQuerySurface"));
+    if (getCurrentDisplay == NULL || getCurrentSurface == NULL || querySurface == NULL)
+        return false;
+
+    EGLDisplay display = getCurrentDisplay();
+    EGLSurface surface = getCurrentSurface(EGL_DRAW);
+    if (display == EGL_NO_DISPLAY || surface == EGL_NO_SURFACE)
+        return false;
+
+    EGLint surfaceWidth = 0;
+    EGLint surfaceHeight = 0;
+    if (!querySurface(display, surface, EGL_WIDTH, &surfaceWidth) ||
+        !querySurface(display, surface, EGL_HEIGHT, &surfaceHeight) ||
+        surfaceWidth <= 0 || surfaceHeight <= 0)
+    {
+        return false;
+    }
+
+    *width = (int)surfaceWidth;
+    *height = (int)surfaceHeight;
+    return true;
+}
+
+static bool QueryDefaultFramebufferSize(int* width, int* height)
+{
+    // SDL's drawable size follows Android's SurfaceChanged event and can lead
+    // EGL during live resize. Prefer the active EGL draw surface; retain SDL as
+    // a fallback for startup or drivers that do not expose EGL query symbols.
+    if (QueryEglSurfaceSize(width, height))
+        return true;
+    return QuerySDLDrawableSize(width, height);
+}
+
+static int gSHARProbeFramesRemaining = 0;
+
+static void ProbePixel(const char* tag, int x, int y)
+{
+    unsigned char pixel[4] = {0, 0, 0, 0};
+    glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+    const GLenum error = glGetError();
+    SDL_Log("[SHAR-PROBE] %s (%d,%d)=%u,%u,%u,%u readError=0x%04x",
+        tag ? tag : "pixel", x, y,
+        (unsigned)pixel[0], (unsigned)pixel[1],
+        (unsigned)pixel[2], (unsigned)pixel[3], (unsigned)error);
 }
 
 static void LogSHARRenderTargetRejectedOnce(
@@ -287,11 +352,11 @@ static bool CheckSHARRenderTargetSize(
         const bool celEnabled = IsCelShadingEnabled();
         const bool sharpeningEnabled = IsFrameSharpeningEnabled();
 
-        // Estimate RGBA color + 16-bit depth and two quarter-resolution RGBA
-        // bloom textures when cel shading is enabled.
+        // The offscreen scene target (RGBA color + 16-bit depth) is used
+        // even when cel shading is disabled; only bloom targets are conditional.
+        estimatedBytes += pixels * 6;
         if (celEnabled)
         {
-            estimatedBytes += pixels * 6;
             const size_t bloomWidth = width > 3 ? (size_t)(width / 4) : 1;
             const size_t bloomHeight = height > 3 ? (size_t)(height / 4) : 1;
             estimatedBytes += bloomWidth * bloomHeight * 8;
@@ -482,7 +547,8 @@ static bool EnsureCelRenderTarget(int width, int height)
     // 3840x2160. Above four megapixels, use the smaller depth renderbuffer
     // instead; the toon pass remains active, but depth-aware fading is omitted.
     const size_t renderPixels = (size_t)width * (size_t)height;
-    const bool allowDepthTexture = renderPixels <= (size_t)4 * 1024 * 1024;
+    const bool allowDepthTexture = IsCelShadingEnabled() &&
+        renderPixels <= (size_t)4 * 1024 * 1024;
     gCelDepthTextureActive = false;
     bool depthTextureReady = false;
     if (gCelDepthTextureExtensionAvailable &&
@@ -1184,7 +1250,7 @@ static bool EnsureCelFallbackResolveResources()
     return gCelFallbackVbo != 0;
 }
 
-static void FallbackResolveToScreen(int width, int height)
+static void ResolveSceneToScreen(int width, int height, bool holdDirectAfter)
 {
     if (!gCelWorldInFbo)
     {
@@ -1271,11 +1337,12 @@ static void FallbackResolveToScreen(int width, int height)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, outputWidth, outputHeight);
     gCelWorldInFbo = false;
-    gSHARHoldDirectFrames = SHAR_RESIZE_DIRECT_FRAMES;
+    if (holdDirectAfter)
+        gSHARHoldDirectFrames = SHAR_RESIZE_DIRECT_FRAMES;
 
     char resolveRoute[160];
     snprintf(resolveRoute, sizeof(resolveRoute),
-        "route=cel-fallback-%s scene=%dx%d onscreen=%dx%d texture=%u program=%u",
+        "route=scene-resolve-%s scene=%dx%d onscreen=%dx%d texture=%u program=%u",
         resolved ? "presented" : "unavailable",
         width, height, outputWidth, outputHeight,
         (unsigned)gCelPostTexture, (unsigned)gCelFallbackProgram);
@@ -1363,7 +1430,8 @@ static void ResetAndroidPostProcess()
     gCRTFailedWidth = gCRTFailedHeight = 0;
     gSHARLastRejectedWidth = gSHARLastRejectedHeight = gSHARLastRejectedReason = 0;
     gCelWorldInFbo = false;
-    gSHARHoldDirectFrames = SHAR_RESIZE_DIRECT_FRAMES;
+    // Normal frames remain on the offscreen path immediately after a resize.
+    gSHARHoldDirectFrames = 0;
 
     GLenum error = GL_NO_ERROR;
     int resetErrors = 0;
@@ -1395,15 +1463,21 @@ static void ApplyCelPostProcess(int width, int height)
         return;
     }
 
+    GLint currentFramebuffer = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFramebuffer);
+    if (gSHARProbeFramesRemaining > 0 &&
+        (GLuint)currentFramebuffer == gCelRenderFbo)
+    {
+        ProbePixel("fbo-scene", width / 2, height / 2);
+    }
+
     if (!IsCelShadingEnabled())
     {
-        LogSHARResizePathOnce(width, height, "compose", "route=fallback-cel-shading-disabled");
-        FallbackResolveToScreen(width, height);
+        LogSHARResizePathOnce(width, height, "compose", "route=plain-resolve");
+        ResolveSceneToScreen(width, height, false);
         return;
     }
 
-    GLint currentFramebuffer = 0;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFramebuffer);
     if ((GLuint)currentFramebuffer != gCelRenderFbo || !gCelRenderFboReady)
     {
         char route[160];
@@ -1412,14 +1486,14 @@ static void ApplyCelPostProcess(int width, int height)
             (unsigned)currentFramebuffer, (unsigned)gCelRenderFbo,
             gCelRenderFboReady ? 1 : 0, (unsigned)gCelPostTexture);
         LogSHARResizePathOnce(width, height, "compose", route);
-        FallbackResolveToScreen(width, height);
+        ResolveSceneToScreen(width, height, true);
         return;
     }
 
     if (!EnsureCelPostProcessResources(width, height))
     {
         LogSHARResizePathOnce(width, height, "compose", "route=fallback-postprocess-resource-unavailable");
-        FallbackResolveToScreen(width, height);
+        ResolveSceneToScreen(width, height, true);
         return;
     }
 
@@ -1620,7 +1694,7 @@ bool BeginCelPostProcessFrame(int width, int height)
         --gSHARHoldDirectFrames;
         char warmupRoute[96];
         snprintf(warmupRoute, sizeof(warmupRoute),
-            "route=direct-render-warmup remainingFrames=%d", gSHARHoldDirectFrames);
+            "route=direct-fallback-recovery remainingFrames=%d", gSHARHoldDirectFrames);
         LogSHARResizePathOnce(width, height, "begin-frame", warmupRoute);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         int outputWidth = width;
@@ -1628,14 +1702,7 @@ bool BeginCelPostProcessFrame(int width, int height)
         QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
         glViewport(0, 0, outputWidth, outputHeight);
         if (gSHARHoldDirectFrames == 0)
-            SDL_Log("[SHAR-RESIZE] direct-render warmup finished at %dx%d", width, height);
-        return false;
-    }
-
-    if (!IsCelShadingEnabled())
-    {
-        LogSHARResizePathOnce(width, height, "begin-frame", "route=direct-cel-shading-disabled");
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            SDL_Log("[SHAR-RESIZE] direct-fallback recovery finished at %dx%d", width, height);
         return false;
     }
 
@@ -2234,7 +2301,7 @@ void pglDisplay::CommitPendingResize()
         if (waitFrames == 1 || (waitFrames % 30) == 0)
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
-                "[SHAR-RESIZE] waiting for SDL drawable: requested=%dx%d fb0=%dx%d known=%d frame=%d/120 serial=%d",
+                "[SHAR-RESIZE] waiting for EGL surface: requested=%dx%d fb0=%dx%d known=%d frame=%d/120 serial=%d",
                 requestedWidth, requestedHeight,
                 surfaceWidth, surfaceHeight,
                 surfaceSizeKnown ? 1 : 0, waitFrames, serial);
@@ -2261,6 +2328,20 @@ void pglDisplay::CommitPendingResize()
 
     ResetAndroidPostProcess();
     glViewport(0, 0, winWidth, winHeight);
+    gSHARProbeFramesRemaining = 150;
+
+    // Record the default-framebuffer configuration once per committed resize.
+    GLint depthBits = 0;
+    GLint redBits = 0;
+    int eglWidth = 0;
+    int eglHeight = 0;
+    const bool eglSizeKnown = QueryEglSurfaceSize(&eglWidth, &eglHeight);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glGetIntegerv(GL_DEPTH_BITS, &depthBits);
+    glGetIntegerv(GL_RED_BITS, &redBits);
+    SDL_Log("[SHAR-PROBE] fb0 depthBits=%d redBits=%d egl=%dx%d eglKnown=%d",
+        (int)depthBits, (int)redBits, eglWidth, eglHeight,
+        eglSizeKnown ? 1 : 0);
 }
 #endif
 
@@ -2729,9 +2810,33 @@ void pglDisplay::SwapBuffers(void)
             (unsigned)preSwapError, outputWidth, outputHeight,
             (int)preSwapFramebuffer, preSwapViewport[0], preSwapViewport[1],
             preSwapViewport[2], preSwapViewport[3]);
+    if (gSHARProbeFramesRemaining > 0)
+    {
+        int probeWidth = outputWidth;
+        int probeHeight = outputHeight;
+        QueryDefaultFramebufferSize(&probeWidth, &probeHeight);
+        ProbePixel("fb0-mid", probeWidth / 2, probeHeight / 2);
+        ProbePixel("fb0-top", probeWidth / 2, (probeHeight * 3) / 4);
+        ProbePixel("fb0-bottom", probeWidth / 2, probeHeight / 4);
+        SDL_ClearError();
+    }
 #endif
     SDL_GL_SwapWindow(win);
     reset = false;
+#ifdef RAD_ANDROID
+    if (gSHARProbeFramesRemaining > 0)
+    {
+        const char* swapError = SDL_GetError();
+        if (swapError != NULL && swapError[0] != '\0')
+        {
+            SDL_Log("[SHAR-PROBE] SDL_GL_SwapWindow error: %s", swapError);
+            SDL_ClearError();
+        }
+        --gSHARProbeFramesRemaining;
+        if (gSHARProbeFramesRemaining == 0)
+            SDL_Log("[SHAR-PROBE] 150-frame probe window complete");
+    }
+#endif
     #ifdef RAD_ANDROID
     /*
      * Manual 60 FPS cap for Android.
