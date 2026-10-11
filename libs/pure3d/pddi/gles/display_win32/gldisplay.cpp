@@ -2094,42 +2094,13 @@ long pglDisplay ::ProcessWindowMessage(SDL_Window* win, const SDL_WindowEvent* e
         case SDL_WINDOWEVENT_SIZE_CHANGED:
         {
 #if defined(RAD_ANDROID)
-            int renderW = 0;
-            int renderH = 0;
-
-            /*
-             * On Android, Java/SDLSurface is the source of truth for the
-             * internal render resolution. Do not let SDL report the physical
-             * drawable size as the PDDI render size.
-             */
-            if (GetSHARAndroidRenderResolution(&renderW, &renderH)) {
-                winWidth = renderW;
-                winHeight = renderH;
-
-                LogSHARDisplayResolutionIfChanged(
-                    "window-size-changed-java",
-                    winWidth,
-                    winHeight
-                );
-            } else
-#endif
-            {
-                SDL_GL_GetDrawableSize(win, &winWidth, &winHeight);
-
-#if defined(RAD_ANDROID)
-                LogSHARDisplayResolutionIfChanged(
-                    "window-size-changed-sdl-fallback",
-                    winWidth,
-                    winHeight
-                );
-#endif
-            }
-#if defined(RAD_ANDROID)
-            if (winWidth > 0 && winHeight > 0) {
-                glViewport(0, 0, winWidth, winHeight);
-                SDL_Log("SHAR Android GL viewport refreshed after resize: %dx%d",
-                    winWidth, winHeight);
-            }
+            // Android Surface callbacks run on the UI thread. Do not mutate
+            // active PDDI dimensions or call OpenGL here; the GL thread commits
+            // the latest confirmed target from BeginFrame().
+            SDL_LogVerbose(SDL_LOG_CATEGORY_RENDER,
+                "[SHAR-RESIZE] SDL2 size event observed; GL-thread commit deferred");
+#else
+            SDL_GL_GetDrawableSize(win, &winWidth, &winHeight);
 #endif
             break;
         }
@@ -2148,42 +2119,12 @@ long pglDisplay ::ProcessWindowMessage(SDL_Window* win, const SDL_WindowEvent* e
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
         {
 #if defined(RAD_ANDROID)
-            int renderW = 0;
-            int renderH = 0;
-
-            /*
-             * On Android, Java/SDLSurface is the source of truth for the
-             * internal render resolution. Do not let SDL report the physical
-             * pixel size as the PDDI render size.
-             */
-            if (GetSHARAndroidRenderResolution(&renderW, &renderH)) {
-                winWidth = renderW;
-                winHeight = renderH;
-
-                LogSHARDisplayResolutionIfChanged(
-                    "window-pixel-size-changed-java",
-                    winWidth,
-                    winHeight
-                );
-            } else
-#endif
-            {
-                SDL_GetWindowSizeInPixels(win, &winWidth, &winHeight);
-
-#if defined(RAD_ANDROID)
-                LogSHARDisplayResolutionIfChanged(
-                    "window-pixel-size-changed-sdl-fallback",
-                    winWidth,
-                    winHeight
-                );
-#endif
-            }
-#if defined(RAD_ANDROID)
-            if (winWidth > 0 && winHeight > 0) {
-                glViewport(0, 0, winWidth, winHeight);
-                SDL_Log("SHAR Android GL viewport refreshed after resize: %dx%d",
-                    winWidth, winHeight);
-            }
+            // Defer active-size mutation and GL calls to CommitPendingResize()
+            // on the render thread at the start of a frame.
+            SDL_LogVerbose(SDL_LOG_CATEGORY_RENDER,
+                "[SHAR-RESIZE] SDL3 pixel-size event observed; GL-thread commit deferred");
+#else
+            SDL_GetWindowSizeInPixels(win, &winWidth, &winHeight);
 #endif
             break;
         }
@@ -2492,8 +2433,13 @@ void pglDisplay::SetGamma(float r, float g, float b)
 void pglDisplay::SwapBuffers(void)
 {
 #ifdef RAD_ANDROID
-    ApplyFrameSharpening(winWidth, winHeight);
-    ApplyCRTFilter(winWidth, winHeight);
+    // Keep post-passes on the actual onscreen surface size. The source scene
+    // itself was rendered using the per-frame internal render-size snapshot.
+    int outputWidth = gSHARFrameWidth > 0 ? gSHARFrameWidth : winWidth;
+    int outputHeight = gSHARFrameHeight > 0 ? gSHARFrameHeight : winHeight;
+    QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
+    ApplyFrameSharpening(outputWidth, outputHeight);
+    ApplyCRTFilter(outputWidth, outputHeight);
 #endif
     SDL_GL_SwapWindow(win);
     reset = false;
