@@ -53,6 +53,13 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     private int mLastFixedSurfaceWidth = 0;
     private int mLastFixedSurfaceHeight = 0;
 
+    // Serialize live Surface resizes. While one size is being confirmed by
+    // surfaceChanged(), newer picker choices replace the pending target.
+    private boolean mSHARLiveResizeInProgress = false;
+    private int mSHARLiveResizeRequestedWidth = 0;
+    private int mSHARLiveResizeRequestedHeight = 0;
+    private int mSHARPendingRenderHeight = 0;
+
     // Avoid repeatedly sending the same render resolution to native code
     private int mLastNativeSentRenderWidth = 0;
     private int mLastNativeSentRenderHeight = 0;
@@ -890,32 +897,108 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
             public void run() {
                 final int targetHeight =
                         sanitizeSHARTargetRenderHeight(requestedHeight);
-                final int previousHeight = mSHARTargetRenderHeight;
 
-                mSHARTargetRenderHeight = targetHeight;
-
-                if (SHAR_LOG_RESOLUTION) {
-                    Log.v(
-                            "SDL",
-                            "SHAR live resolution request: targetHeight=" +
-                                    targetHeight + " (previous=" + previousHeight + ")"
-                    );
-                }
-
-                // Recompute the landscape width and resize the actual Surface
-                // buffer. Android's surfaceChanged callback sends the confirmed
-                // size through SDL's standard native resize event.
-                applyAdaptiveFixedSurfaceSize("graphics-menu-live", true);
+                // Keep only the most recent user selection. If a resize is
+                // already in flight, it will be applied after surfaceChanged
+                // confirms the current target.
+                mSHARPendingRenderHeight = targetHeight;
 
                 if (SHAR_LOG_RESOLUTION) {
                     Log.v(
                             "SDL",
-                            "SHAR live resolution resize queued: render=" +
-                                    mRenderWidth + "x" + mRenderHeight
+                            "SHAR live resolution request queued: targetHeight=" +
+                                    targetHeight +
+                                    " inProgress=" + mSHARLiveResizeInProgress +
+                                    " pendingLatest=" + mSHARPendingRenderHeight
                     );
                 }
+
+                processPendingSHARRenderResolutionRequest();
             }
         });
+    }
+
+    /*
+     * Runs only on the Android UI thread. Do not publish the new native render
+     * dimensions here: setFixedSize() is asynchronous, and surfaceChanged()
+     * must confirm the actual buffer dimensions first.
+     */
+    private void processPendingSHARRenderResolutionRequest() {
+        if (mSHARLiveResizeInProgress || mSHARPendingRenderHeight <= 0) {
+            return;
+        }
+
+        final int targetHeight =
+                sanitizeSHARTargetRenderHeight(mSHARPendingRenderHeight);
+        mSHARPendingRenderHeight = 0;
+
+        int[] size = getPhysicalDisplaySize();
+        int deviceWidth = size[0];
+        int deviceHeight = size[1];
+
+        if (!SHAR_USE_ADAPTIVE_RENDER_RESOLUTION ||
+                deviceWidth <= 0 || deviceHeight <= 0) {
+            Log.w("SDL", "SHAR live resize skipped: invalid adaptive/display state");
+            return;
+        }
+
+        int longSide = Math.max(deviceWidth, deviceHeight);
+        int shortSide = Math.min(deviceWidth, deviceHeight);
+        if (shortSide <= 0) {
+            Log.w("SDL", "SHAR live resize skipped: invalid short display side");
+            return;
+        }
+
+        int targetWidth = (int) Math.round(
+                targetHeight * (longSide / (double) shortSide));
+        targetWidth = roundToMultiple(targetWidth, SHAR_RENDER_WIDTH_ALIGNMENT);
+
+        if (targetWidth <= 0 || targetHeight <= 0) {
+            Log.w("SDL", "SHAR live resize skipped: invalid target " +
+                    targetWidth + "x" + targetHeight);
+            return;
+        }
+
+        // A choice that already matches the last confirmed Surface size does
+        // not need another setFixedSize() call (which may produce no callback).
+        if (targetWidth == mRenderWidth && targetHeight == mRenderHeight) {
+            mSHARTargetRenderHeight = targetHeight;
+            mLastFixedSurfaceWidth = targetWidth;
+            mLastFixedSurfaceHeight = targetHeight;
+            Log.v("SDL", "SHAR live resize already confirmed: " +
+                    targetWidth + "x" + targetHeight);
+            return;
+        }
+
+        mSHARTargetRenderHeight = targetHeight;
+        mSHARLiveResizeInProgress = true;
+        mSHARLiveResizeRequestedWidth = targetWidth;
+        mSHARLiveResizeRequestedHeight = targetHeight;
+
+        Log.i("SDL", "SHAR live resize begin: requested=" +
+                targetWidth + "x" + targetHeight +
+                " confirmed=" + mRenderWidth + "x" + mRenderHeight);
+
+        try {
+            // SurfaceHolder operations belong to the UI thread. Do not update
+            // mRenderWidth/mRenderHeight or the native size until confirmation.
+            getHolder().setFixedSize(targetWidth, targetHeight);
+
+            RelativeLayout.LayoutParams surfaceParams =
+                    new RelativeLayout.LayoutParams(
+                            RelativeLayout.LayoutParams.MATCH_PARENT,
+                            RelativeLayout.LayoutParams.MATCH_PARENT
+                    );
+            setLayoutParams(surfaceParams);
+            setScaleX(1.0f);
+            setScaleY(1.0f);
+        } catch (RuntimeException e) {
+            mSHARLiveResizeInProgress = false;
+            mSHARLiveResizeRequestedWidth = 0;
+            mSHARLiveResizeRequestedHeight = 0;
+            Log.e("SDL", "SHAR live resize request failed for " +
+                    targetWidth + "x" + targetHeight, e);
+        }
     }
 
     private void applyAdaptiveFixedSurfaceSize(String reason, boolean force) {
@@ -1230,7 +1313,15 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         /*
          * Ensure the Surface buffer size is applied before notifying native code.
          */
-        applyAdaptiveFixedSurfaceSize("surfaceCreated", true);
+        if (mSHARLiveResizeInProgress &&
+                mSHARLiveResizeRequestedWidth > 0 &&
+                mSHARLiveResizeRequestedHeight > 0) {
+            getHolder().setFixedSize(
+                    mSHARLiveResizeRequestedWidth,
+                    mSHARLiveResizeRequestedHeight);
+        } else {
+            applyAdaptiveFixedSurfaceSize("surfaceCreated", true);
+        }
 
         SDLActivity.onNativeSurfaceCreated();
     }
@@ -1278,6 +1369,24 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
          */
         mRenderWidth = width;
         mRenderHeight = height;
+        mLastFixedSurfaceWidth = width;
+        mLastFixedSurfaceHeight = height;
+
+        if (mSHARLiveResizeInProgress) {
+            if (width == mSHARLiveResizeRequestedWidth &&
+                    height == mSHARLiveResizeRequestedHeight) {
+                Log.i("SDL", "SHAR live resize confirmed: " +
+                        width + "x" + height);
+                mSHARLiveResizeInProgress = false;
+                mSHARLiveResizeRequestedWidth = 0;
+                mSHARLiveResizeRequestedHeight = 0;
+            } else {
+                Log.v("SDL", "SHAR surface size callback while awaiting live resize: " +
+                        "callback=" + width + "x" + height +
+                        " waitingFor=" + mSHARLiveResizeRequestedWidth + "x" +
+                        mSHARLiveResizeRequestedHeight);
+            }
+        }
 
         /*
          * Send the confirmed Surface buffer size to the native display layer.
@@ -1370,6 +1479,7 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         if (skip) {
             Log.v("SDL", "Skip .. Surface is not ready.");
             mIsSurfaceReady = false;
+            processPendingSHARRenderResolutionRequest();
             return;
         }
 
@@ -1381,6 +1491,10 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
 
         SDLActivity.mNextNativeState = SDLActivity.NativeState.RESUMED;
         SDLActivity.handleNativeState();
+
+        // A confirmed resize releases the in-flight slot. Start only the
+        // latest queued selection, never every intermediate picker step.
+        processPendingSHARRenderResolutionRequest();
     }
 
     // Key events
