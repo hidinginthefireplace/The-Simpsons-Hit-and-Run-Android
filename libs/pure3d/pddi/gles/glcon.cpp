@@ -24,8 +24,10 @@ static bool gCelShadingObjectEnabled = false;
 static bool gCelShadingOutlinePass = false;
 static pglContext* gCelShadingContext = nullptr;
 static bool gCelShadingConfigurationLoaded = false;
-static float gFrameSharpenStrength = 0.4f;
-static bool gFrameSharpeningEnabled = true;
+// Fresh installs start with sharpening disabled. User-selected values are
+// loaded from Simpsons_sharpening.txt and remain unchanged on existing installs.
+static float gFrameSharpenStrength = 0.0f;
+static bool gFrameSharpeningEnabled = false;
 static bool gSharpeningConfigurationLoaded = false;
 
 static bool gCRTConfigurationLoaded = false;
