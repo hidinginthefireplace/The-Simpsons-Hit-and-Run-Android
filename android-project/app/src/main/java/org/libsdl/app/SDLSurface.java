@@ -77,8 +77,10 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     private static final boolean SHAR_USE_ADAPTIVE_RENDER_RESOLUTION = true;
 
     // First safe profile. Later we can make this configurable through a text file.
+    private static final String SHAR_GRAPHICS_FOLDER = "Graphics";
     private static final String SHAR_RESOLUTION_CONFIG_FILE = "Simpsons_resolution.txt";
-    private static final String SHAR_TOUCH_CONTROLS_FOLDER = "touch_controls";
+    private static final String SHAR_TOUCH_CONTROLS_FOLDER = "Touch";
+    private static final String SHAR_LEGACY_TOUCH_CONTROLS_FOLDER = "touch_controls";
     private static final String SHAR_TOUCH_MODE_CONFIG_FILE = "Simpsons_touch_mode.txt";
 
     private static final int SHAR_DEFAULT_TARGET_RENDER_HEIGHT = 1440;
@@ -94,7 +96,7 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
      */
     private static final int SHAR_FALLBACK_MAX_TARGET_RENDER_HEIGHT = 1080;
 
-    // Runtime value optionally loaded from app-internal Simpsons_resolution.txt.
+    // Runtime value optionally loaded from app-internal Graphics/Simpsons_resolution.txt.
     private int mSHARTargetRenderHeight = SHAR_DEFAULT_TARGET_RENDER_HEIGHT;
 
     // Round render width to avoid odd framebuffer sizes.
@@ -196,7 +198,133 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
             return null;
         }
 
-        return new File(baseDir, SHAR_RESOLUTION_CONFIG_FILE);
+        File graphicsDir = new File(baseDir, SHAR_GRAPHICS_FOLDER);
+        if (!graphicsDir.exists() && !graphicsDir.mkdirs() && !graphicsDir.isDirectory()) {
+            Log.w("SDL", "SHAR graphics folder could not be created: " + graphicsDir.getAbsolutePath());
+            return null;
+        }
+
+        File configFile = new File(graphicsDir, SHAR_RESOLUTION_CONFIG_FILE);
+        File legacyConfigFile = new File(baseDir, SHAR_RESOLUTION_CONFIG_FILE);
+        migrateSHARConfigFile(legacyConfigFile, configFile);
+        return configFile;
+    }
+
+    private void migrateSHARConfigFile(File legacyFile, File newFile) {
+        if (legacyFile == null || newFile == null || !legacyFile.exists()) {
+            return;
+        }
+
+        if (newFile.exists()) {
+            if (!legacyFile.delete()) {
+                Log.w("SDL", "Could not remove duplicate legacy config: " + legacyFile.getAbsolutePath());
+            }
+            return;
+        }
+
+        File parent = newFile.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs() && !parent.isDirectory()) {
+            Log.w("SDL", "Could not create config parent: " + parent.getAbsolutePath());
+            return;
+        }
+
+        if (legacyFile.renameTo(newFile)) {
+            Log.i("SDL", "Migrated config to " + newFile.getAbsolutePath());
+            return;
+        }
+
+        // renameTo can fail on some Android filesystem/provider combinations;
+        // fall back to copying before deleting the old copy.
+        try (FileInputStream input = new FileInputStream(legacyFile);
+             FileOutputStream output = new FileOutputStream(newFile)) {
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = input.read(buffer)) >= 0) {
+                output.write(buffer, 0, count);
+            }
+            output.flush();
+            if (!legacyFile.delete()) {
+                Log.w("SDL", "Copied config, but could not remove old file: " + legacyFile.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            Log.e("SDL", "Failed migrating config " + legacyFile.getAbsolutePath() + " to " +
+                    newFile.getAbsolutePath(), e);
+        }
+    }
+
+    private void migrateLegacyTouchDirectory(File baseDir, File touchDir) {
+        if (baseDir == null || touchDir == null) {
+            return;
+        }
+
+        File legacyDir = new File(baseDir, SHAR_LEGACY_TOUCH_CONTROLS_FOLDER);
+        if (!legacyDir.isDirectory()) {
+            return;
+        }
+
+        if (!touchDir.exists() && legacyDir.renameTo(touchDir)) {
+            Log.i("SDL", "Migrated touch controls folder to " + touchDir.getAbsolutePath());
+            return;
+        }
+
+        if (!touchDir.exists() && !touchDir.mkdirs() && !touchDir.isDirectory()) {
+            Log.w("SDL", "Could not create Touch folder: " + touchDir.getAbsolutePath());
+            return;
+        }
+
+        File[] legacyChildren = legacyDir.listFiles();
+        if (legacyChildren == null) {
+            return;
+        }
+
+        for (File child : legacyChildren) {
+            File destination = new File(touchDir, child.getName());
+            if (child.isDirectory()) {
+                migrateLegacyTouchDirectoryContents(child, destination);
+            } else if (destination.exists()) {
+                if (!child.delete()) {
+                    Log.w("SDL", "Could not delete duplicate touch file: " + child.getAbsolutePath());
+                }
+            } else if (!child.renameTo(destination)) {
+                Log.w("SDL", "Could not migrate touch file: " + child.getAbsolutePath());
+            }
+        }
+
+        File[] remaining = legacyDir.listFiles();
+        if (remaining != null && remaining.length == 0) {
+            legacyDir.delete();
+        }
+    }
+
+    private void migrateLegacyTouchDirectoryContents(File legacyDir, File targetDir) {
+        if (legacyDir == null || targetDir == null || !legacyDir.isDirectory()) {
+            return;
+        }
+        if (!targetDir.exists() && legacyDir.renameTo(targetDir)) {
+            return;
+        }
+        if (!targetDir.exists() && !targetDir.mkdirs() && !targetDir.isDirectory()) {
+            return;
+        }
+
+        File[] children = legacyDir.listFiles();
+        if (children == null) {
+            return;
+        }
+        for (File child : children) {
+            File destination = new File(targetDir, child.getName());
+            if (child.isDirectory()) {
+                migrateLegacyTouchDirectoryContents(child, destination);
+            } else if (destination.exists()) {
+                child.delete();
+            } else {
+                child.renameTo(destination);
+            }
+        }
+        File[] remaining = legacyDir.listFiles();
+        if (remaining != null && remaining.length == 0) {
+            legacyDir.delete();
+        }
     }
 
     private File getSHARTouchModeConfigFile() {
@@ -207,6 +335,8 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         }
 
         File touchControlsDir = new File(baseDir, SHAR_TOUCH_CONTROLS_FOLDER);
+        // Migrate the old directory before this method creates /files/Touch.
+        migrateLegacyTouchDirectory(baseDir, touchControlsDir);
 
         return new File(touchControlsDir, SHAR_TOUCH_MODE_CONFIG_FILE);
     }
@@ -956,7 +1086,7 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
     /*
      * Re-read touch mode on resume so users can change:
      *
-     *     touch_controls/Simpson_touch_mode.txt
+     *     Touch/Simpsons_touch_mode.txt
      *
      * without reinstalling the app. Usually restarting the app is still the
      * cleanest option, but this makes the setting more forgiving.

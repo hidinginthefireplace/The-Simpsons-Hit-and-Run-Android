@@ -20,14 +20,7 @@ bool IsCelShadingEnabled();
 bool IsFrameSharpeningEnabled();
 float GetFrameSharpenStrength();
 
-static bool gFrameSharpeningRuntimeOverride = false;
-static bool gFrameSharpeningRuntimeEnabled = true;
 
-void SetFrameSharpeningRuntimeEnabled(bool enabled)
-{
-    gFrameSharpeningRuntimeEnabled = enabled;
-    gFrameSharpeningRuntimeOverride = true;
-}
 void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature, float* glowStrength, float* cornerDarkening, float* overscan, float* brightness, float* contrast);
 
 namespace
@@ -831,11 +824,9 @@ void ApplyCelPostProcessBeforeGui(int width, int height)
 
 static void ApplyFrameSharpening(int width, int height)
 {
-    const bool enabled = gFrameSharpeningRuntimeOverride
-        ? gFrameSharpeningRuntimeEnabled
-        : IsFrameSharpeningEnabled();
-
-    if (!enabled)
+    // The pause-menu setter updates the same state queried here, allowing
+    // sharpening to be enabled or bypassed immediately without restarting.
+    if (!IsFrameSharpeningEnabled())
         return;
 
     const float strength = GetFrameSharpenStrength();
@@ -859,9 +850,10 @@ static void ApplyFrameSharpening(int width, int height)
             "vec3 d=texture2D(frameTex,texcoord+vec2(texelSize.x,0.0)).rgb;\n"
             "vec3 f=texture2D(frameTex,texcoord+vec2(0.0,texelSize.y)).rgb;\n"
             "vec3 mn=min(min(min(a,b),min(d,f)),e); vec3 mx=max(max(max(a,b),max(d,f)),e);\n"
-            "vec3 amp=sqrt(clamp(min(mn,1.0-mx)/max(mx,vec3(0.001)),0.0,1.0));\n"
-            "float s=clamp(sharpen,0.0,1.0); vec3 w=amp*(-s/mix(8.0,5.0,s));\n"
-            "vec3 result=(w*(a+b+d+f)+e)/(1.0+4.0*w); gl_FragColor=vec4(clamp(result,0.0,1.0),1.0); }\n";
+            "vec3 blurred=(a+b+d+f)*0.25;\n"
+            "float s=clamp(sharpen,0.0,1.0)*0.9;\n"
+            "vec3 result=e+(e-blurred)*s;\n"
+            "gl_FragColor=vec4(clamp(result,0.0,1.0),1.0); }\n";
         gFrameSharpenProgram = CreateCelPostProgram(vertexSource, fragmentSource, "Full-frame adaptive sharpening");
         if (gFrameSharpenProgram != 0)
         {

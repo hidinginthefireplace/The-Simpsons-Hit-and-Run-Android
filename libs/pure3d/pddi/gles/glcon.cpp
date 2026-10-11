@@ -18,7 +18,6 @@
 #include <sys/stat.h>
 #include <errno.h>
 
-void SetFrameSharpeningRuntimeEnabled(bool enabled);
 
 static bool gCelShadingEnabled = true;
 static bool gCelShadingObjectEnabled = false;
@@ -449,7 +448,6 @@ void SetFrameSharpeningEnabled(bool enabled)
 {
     LoadSharpeningConfiguration();
     gFrameSharpeningEnabled = enabled;
-    SetFrameSharpeningRuntimeEnabled(enabled);
     WriteSharpeningConfiguration();
 }
 
