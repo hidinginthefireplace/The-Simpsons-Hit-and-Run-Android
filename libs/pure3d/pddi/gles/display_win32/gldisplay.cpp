@@ -99,6 +99,15 @@ int gCelRenderbufferFailedWidth = 0;
 int gCelRenderbufferFailedHeight = 0;
 int gCelRenderFboFailedWidth = 0;
 int gCelRenderFboFailedHeight = 0;
+
+// After a live Android Surface resize, render directly to framebuffer 0 for a
+// few frames before rebuilding/using the cel FBO at the new size. This avoids
+// drawing into an off-screen target while Surface/EGL resize work is settling.
+static int gCelLastResizeWidth = 0;
+static int gCelLastResizeHeight = 0;
+static int gCelResizeWarmupFrames = 0;
+static const int SHAR_CEL_RESIZE_WARMUP_FRAMES = 3;
+
 int gFrameSharpenFailedWidth = 0;
 int gFrameSharpenFailedHeight = 0;
 int gCRTFailedWidth = 0;
@@ -928,11 +937,47 @@ static void ApplyCelPostProcess(int width, int height)
 
     GLint currentFramebuffer = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFramebuffer);
-    if ((GLuint)currentFramebuffer != gCelRenderFbo || !gCelRenderFboReady)
+    if (!gCelRenderFboReady)
+    {
+        if (currentFramebuffer != 0)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+                "SHAR cel compositor fallback: target not ready at %dx%d; currentFbo=%d",
+                width, height, (int)currentFramebuffer);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, width, height);
+            gCelResizeWarmupFrames = SHAR_CEL_RESIZE_WARMUP_FRAMES;
+        }
         return;
+    }
+
+    if ((GLuint)currentFramebuffer != gCelRenderFbo)
+    {
+        // Framebuffer 0 means the scene was already rendered directly, so the
+        // normal path can continue. A different nonzero FBO is unsafe to leave
+        // bound for presentation: fall back to the default surface next frame.
+        if (currentFramebuffer != 0)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+                "SHAR cel compositor fallback: unexpected FBO=%d (expected %u) at %dx%d",
+                (int)currentFramebuffer, (unsigned)gCelRenderFbo, width, height);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, width, height);
+            gCelResizeWarmupFrames = SHAR_CEL_RESIZE_WARMUP_FRAMES;
+        }
+        return;
+    }
 
     if (!EnsureCelPostProcessResources(width, height))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+            "SHAR cel compositor fallback: resources unavailable at %dx%d",
+            width, height);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
+        gCelResizeWarmupFrames = SHAR_CEL_RESIZE_WARMUP_FRAMES;
         return;
+    }
 
     const bool bloomReady = EnsureCelBloomResources(width, height);
 
@@ -1074,9 +1119,46 @@ static void ApplyCelPostProcess(int width, int height)
 
 bool BeginCelPostProcessFrame(int width, int height)
 {
-    if (!IsCelShadingEnabled())
+    const bool celEnabled = IsCelShadingEnabled();
+
+    if (width > 0 && height > 0 &&
+        (width != gCelLastResizeWidth || height != gCelLastResizeHeight))
     {
+        const int previousWidth = gCelLastResizeWidth;
+        const int previousHeight = gCelLastResizeHeight;
+        gCelLastResizeWidth = width;
+        gCelLastResizeHeight = height;
+
+        if (celEnabled)
+        {
+            gCelResizeWarmupFrames = SHAR_CEL_RESIZE_WARMUP_FRAMES;
+            SDL_Log("SHAR cel resize stabilization: %dx%d -> %dx%d; bypassing cel FBO for %d frames",
+                previousWidth, previousHeight, width, height,
+                SHAR_CEL_RESIZE_WARMUP_FRAMES);
+        }
+        else
+        {
+            gCelResizeWarmupFrames = 0;
+        }
+    }
+
+    if (!celEnabled)
+    {
+        gCelResizeWarmupFrames = 0;
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return false;
+    }
+
+    if (gCelResizeWarmupFrames > 0)
+    {
+        --gCelResizeWarmupFrames;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
+        if (gCelResizeWarmupFrames == 0)
+        {
+            SDL_Log("SHAR cel resize stabilization complete at %dx%d; cel FBO may resume",
+                width, height);
+        }
         return false;
     }
 
