@@ -45,6 +45,21 @@
 
 #if defined(RAD_ANDROID)
 #include <data/config/androidconfigurationmanager.h>
+
+// Rendering toggles exposed by the GLES renderer.
+bool IsCelShadingEnabled();
+void SetCelShadingEnabled(bool enabled);
+bool IsCRTFilterEnabled();
+void SetCRTFilterEnabled(bool enabled);
+bool IsFrameSharpeningEnabled();
+void SetFrameSharpeningEnabled(bool enabled);
+
+static bool gAndroidGraphicsSettingsRequested = false;
+
+void RequestAndroidGraphicsSettings()
+{
+    gAndroidGraphicsSettingsRequested = true;
+}
 #endif
 
 
@@ -258,6 +273,9 @@ CGuiScreenPauseSettings::CGuiScreenPauseSettings
 )
 :   CGuiScreen( pScreen, pParent, GUI_SCREEN_ID_SETTINGS ),
     m_pMenu( NULL ),
+#if defined(RAD_ANDROID)
+    m_graphicsSettingsMode( false ),
+#endif
     m_currentCameraSelectionMode( CAMERA_SELECTION_NOT_AVAILABLE )
 {
 MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
@@ -488,6 +506,190 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
 
 MEMTRACK_POP_GROUP( "CGuiScreenPauseSettings" );
 }
+#if defined(RAD_ANDROID)
+
+void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
+{
+    const int logicalItems[4] =
+    {
+        MENU_ITEM_CAMERA,
+        MENU_ITEM_JUMP_CAMERAS,
+        MENU_ITEM_INTERSECT_NAV_SYSTEM,
+        MENU_ITEM_RADAR
+    };
+
+    const char* labels[4] =
+    {
+        "Cel Shading",
+        "CRT Filter",
+        "Sharpening",
+        "Back"
+    };
+
+    const bool enabled[3] =
+    {
+        IsCelShadingEnabled(),
+        IsCRTFilterEnabled(),
+        IsFrameSharpeningEnabled()
+    };
+
+    for( int i = 0; i < 4; ++i )
+    {
+        const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
+        if( guiIndex < 0 )
+        {
+            continue;
+        }
+
+        GuiMenuItem* item = m_pMenu->GetMenuItem( guiIndex );
+        if( item == NULL )
+        {
+            continue;
+        }
+
+        Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
+        Scrooby::Text* value = dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
+
+        if( label != NULL )
+        {
+            label->SetString( 0, labels[i] );
+            label->SetVisible( true );
+        }
+
+        if( value != NULL )
+        {
+            if( i < 3 )
+            {
+                value->SetString( 0, "OFF" );
+                value->SetString( 1, "ON" );
+                value->SetVisible( true );
+                m_pMenu->SetSelectionValueCount( guiIndex, 2 );
+                m_pMenu->SetSelectionValue( guiIndex, enabled[i] ? 1 : 0 );
+            }
+            else
+            {
+                value->SetVisible( false );
+            }
+        }
+
+        if( item->m_itemValueArrowL != NULL )
+        {
+            item->m_itemValueArrowL->SetVisible( i < 3 );
+        }
+        if( item->m_itemValueArrowR != NULL )
+        {
+            item->m_itemValueArrowR->SetVisible( i < 3 );
+        }
+
+        m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
+    }
+
+    // Hide the two Android-only gameplay rows while the four-row graphics
+    // submenu is using the original four-row Settings layout.
+    const int optionalItems[2] =
+    {
+        MENU_ITEM_INVERT_CAM_CONTROL,
+        MENU_ITEM_VIBRATION
+    };
+
+    for( int i = 0; i < 2; ++i )
+    {
+        const int guiIndex = GetGuiMenuIndexFromMenuItem( optionalItems[i] );
+        if( guiIndex >= 0 )
+        {
+            m_pMenu->SetMenuItemEnabled( guiIndex, false, true );
+        }
+    }
+
+    // Put selection on the first graphics option.
+    m_pMenu->Reset( 0 );
+}
+
+void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
+{
+    const int logicalItems[6] =
+    {
+        MENU_ITEM_CAMERA,
+        MENU_ITEM_JUMP_CAMERAS,
+        MENU_ITEM_INTERSECT_NAV_SYSTEM,
+        MENU_ITEM_RADAR,
+        MENU_ITEM_INVERT_CAM_CONTROL,
+        MENU_ITEM_VIBRATION
+    };
+
+    const char* labels[6] =
+    {
+        "Camera",
+        "Jump Cameras",
+        "Navigation System",
+        "Radar",
+        "Invert Camera",
+        "Controller Vibration"
+    };
+
+    for( int i = 0; i < 6; ++i )
+    {
+        const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
+        if( guiIndex < 0 )
+        {
+            continue;
+        }
+
+        GuiMenuItem* item = m_pMenu->GetMenuItem( guiIndex );
+        if( item == NULL )
+        {
+            continue;
+        }
+
+        Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
+        Scrooby::Text* value = dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
+
+        if( label != NULL )
+        {
+            label->SetString( 0, labels[i] );
+            label->SetVisible( true );
+        }
+
+        if( value != NULL )
+        {
+            value->SetVisible( true );
+        }
+
+        if( item->m_itemValueArrowL != NULL )
+        {
+            item->m_itemValueArrowL->SetVisible( false );
+        }
+        if( item->m_itemValueArrowR != NULL )
+        {
+            item->m_itemValueArrowR->SetVisible( false );
+        }
+
+        bool enableItem = true;
+        if( logicalItems[i] == MENU_ITEM_INVERT_CAM_CONTROL )
+        {
+            enableItem = mHasInvertCamControl;
+        }
+        else if( logicalItems[i] == MENU_ITEM_VIBRATION )
+        {
+            enableItem = mHasGamepadVibration;
+        }
+
+        m_pMenu->SetMenuItemEnabled( guiIndex, enableItem, true );
+    }
+
+    m_pMenu->Reset( 0 );
+}
+
+void CGuiScreenPauseSettings::LeaveAndroidGraphicsMenu()
+{
+    m_graphicsSettingsMode = false;
+    gAndroidGraphicsSettingsRequested = false;
+    RestoreAndroidSettingsMenu();
+    m_pParent->HandleMessage( GUI_MSG_BACK_SCREEN );
+}
+
+#endif
+
 //===========================================================================
 // CGuiScreenPauseSettings::~CGuiScreenPauseSettings
 //===========================================================================
