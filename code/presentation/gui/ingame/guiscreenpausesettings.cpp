@@ -979,7 +979,11 @@ CGuiScreenPauseSettings::OnCheatEntered( eCheatID cheatID, bool isEnabled )
 void CGuiScreenPauseSettings::InitIntro()
 {
 #if defined(RAD_ANDROID)
-    m_graphicsSettingsMode = gAndroidGraphicsSettingsRequested;
+    const bool openGraphicsMenu = gAndroidGraphicsSettingsRequested;
+    // Keep graphics mode disabled while normal Settings values are synced.
+    // CGuiMenu::SetSelectionValue notifies this screen, so treating these
+    // normal values as graphics toggles would write the wrong settings.
+    m_graphicsSettingsMode = false;
     gAndroidGraphicsSettingsRequested = false;
 
     // Always restore and initialize the normal settings state first. The
@@ -1190,8 +1194,9 @@ void CGuiScreenPauseSettings::InitIntro()
     // has completed its normal state synchronization. This preserves direct
     // Graphics entry after a fresh map load without restoring Settings rows
     // during the Graphics outro transition.
-    if( m_graphicsSettingsMode )
+    if( openGraphicsMenu )
     {
+        m_graphicsSettingsMode = true;
         ConfigureAndroidGraphicsMenu();
     }
 #endif
