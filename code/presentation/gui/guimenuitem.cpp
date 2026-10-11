@@ -31,7 +31,10 @@ GuiMenuItem::GuiMenuItem()
     m_defaultColour( 0, 0, 0 ),
     m_itemValueArrowL( NULL ),
     m_itemValueArrowR( NULL ),
-    m_itemValueCount( 0 )
+    m_itemValueCount( 0 ),
+    m_originalItemValueCount( 0 ),
+    m_showValueArrows( true ),
+    m_useBackSoundOnSelection( false )
 {
 }
 

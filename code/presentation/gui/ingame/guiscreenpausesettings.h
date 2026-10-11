@@ -91,7 +91,7 @@ private:
 
     void ConfigureAndroidGraphicsMenu();
     void RestoreAndroidSettingsMenu();
-    void LeaveAndroidGraphicsMenu();
+    void LeaveAndroidGraphicsMenu( bool backSoundAlreadyPlayed );
 
     bool mHasInvertCamControl=false;
     bool mHasGamepadVibration=false;

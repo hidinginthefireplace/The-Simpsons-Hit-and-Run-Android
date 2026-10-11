@@ -53,6 +53,8 @@ bool IsCRTFilterEnabled();
 void SetCRTFilterEnabled(bool enabled);
 bool IsFrameSharpeningEnabled();
 void SetFrameSharpeningEnabled(bool enabled);
+int GetFrameSharpeningLevel();
+void SetFrameSharpeningLevel(int level);
 
 static bool gAndroidGraphicsSettingsRequested = false;
 
@@ -171,6 +173,27 @@ static void CopyAndroidMenuSpriteAppearance( FeSprite* destination, const FeSpri
     destination->SetVerticalJustification( source->GetVerticalJustification() );
     destination->SetColour( source->GetColour() );
     destination->SetAlpha( source->GetAlpha() );
+}
+
+static bool EnsureAndroidTextStringCount( Scrooby::Text* pText, int requiredCount )
+{
+    if( pText == NULL )
+    {
+        return false;
+    }
+
+    FeText* pFeText = dynamic_cast<FeText*>( pText );
+    if( pFeText == NULL )
+    {
+        return pText->GetNumOfStrings() >= requiredCount;
+    }
+
+    while( pText->GetNumOfStrings() < requiredCount )
+    {
+        pFeText->AddHardCodedString( "" );
+    }
+
+    return pText->GetNumOfStrings() >= requiredCount;
 }
 
 static bool GetAndroidSettingsRowGeometry
@@ -526,12 +549,17 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         "Back"
     };
 
-    const bool enabled[3] =
+    const bool enabled[2] =
     {
         IsCelShadingEnabled(),
-        IsCRTFilterEnabled(),
-        IsFrameSharpeningEnabled()
+        IsCRTFilterEnabled()
     };
+
+    const char* sharpeningValues[6] =
+    {
+        "OFF", "20%", "40%", "60%", "80%", "MAX"
+    };
+    const int sharpeningLevel = GetFrameSharpeningLevel();
 
     for( int i = 0; i < 4; ++i )
     {
@@ -556,6 +584,8 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         {
             item->m_attributes &= ~SELECTABLE;
         }
+        item->m_showValueArrows = ( i < 3 );
+        item->m_useBackSoundOnSelection = ( i == 3 );
 
         m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
 
@@ -572,11 +602,34 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         {
             if( i < 3 )
             {
-                value->SetString( 0, "OFF" );
-                value->SetString( 1, "ON" );
                 value->SetVisible( true );
-                m_pMenu->SetSelectionValueCount( guiIndex, 2 );
-                m_pMenu->SetSelectionValue( guiIndex, enabled[i] ? 1 : 0 );
+                if( i == 2 )
+                {
+                    if( EnsureAndroidTextStringCount( value, 6 ) )
+                    {
+                        for( int valueIndex = 0; valueIndex < 6; ++valueIndex )
+                        {
+                            value->SetString( valueIndex, sharpeningValues[valueIndex] );
+                        }
+                        m_pMenu->SetSelectionValueCount( guiIndex, 6 );
+                        m_pMenu->SetSelectionValue( guiIndex, sharpeningLevel );
+                    }
+                    else
+                    {
+                        LOGE("Graphics menu could not expand the sharpening value text to six options");
+                        value->SetString( 0, "OFF" );
+                        value->SetString( 1, "ON" );
+                        m_pMenu->SetSelectionValueCount( guiIndex, 2 );
+                        m_pMenu->SetSelectionValue( guiIndex, 0 );
+                    }
+                }
+                else
+                {
+                    value->SetString( 0, "OFF" );
+                    value->SetString( 1, "ON" );
+                    m_pMenu->SetSelectionValueCount( guiIndex, 2 );
+                    m_pMenu->SetSelectionValue( guiIndex, enabled[i] ? 1 : 0 );
+                }
             }
             else
             {
@@ -584,13 +637,15 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
             }
         }
 
+        // Hide every arrow before resetting selection. CGuiMenu will reveal
+        // arrows only for the selected value row.
         if( item->m_itemValueArrowL != NULL )
         {
-            item->m_itemValueArrowL->SetVisible( i < 3 );
+            item->m_itemValueArrowL->SetVisible( false );
         }
         if( item->m_itemValueArrowR != NULL )
         {
-            item->m_itemValueArrowR->SetVisible( i < 3 );
+            item->m_itemValueArrowR->SetVisible( false );
         }
 
     }
@@ -652,8 +707,11 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
             continue;
         }
 
-        // Restore the original non-selectable value-row behaviour.
+        // Restore the original non-selectable value-row behaviour and normal
+        // menu item interaction after leaving the graphics submenu.
         item->m_attributes &= ~SELECTABLE;
+        item->m_showValueArrows = true;
+        item->m_useBackSoundOnSelection = false;
 
         Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
         Scrooby::Text* value = dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
@@ -666,7 +724,16 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
 
         if( value != NULL )
         {
+            // The graphics submenu temporarily replaces the first three
+            // toggle strings and expands Sharpening to six entries. Restore
+            // the normal toggle text and original value count here.
+            if( i < 3 )
+            {
+                if( value->GetNumOfStrings() > 0 ) value->SetString( 0, "OFF" );
+                if( value->GetNumOfStrings() > 1 ) value->SetString( 1, "ON" );
+            }
             value->SetVisible( true );
+            m_pMenu->SetSelectionValueCount( guiIndex, item->m_originalItemValueCount );
         }
 
         if( item->m_itemValueArrowL != NULL )
@@ -694,12 +761,19 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
     m_pMenu->Reset( 0 );
 }
 
-void CGuiScreenPauseSettings::LeaveAndroidGraphicsMenu()
+void CGuiScreenPauseSettings::LeaveAndroidGraphicsMenu( bool backSoundAlreadyPlayed )
 {
-    // Keep graphics mode active until InitOutro runs, so it cannot apply the
-    // graphics labels/values as camera and gameplay settings.
+    // Keep graphics mode active through the outro so the custom labels/values
+    // are not applied as camera and gameplay settings.
     gAndroidGraphicsSettingsRequested = false;
     m_pParent->HandleMessage( GUI_MSG_BACK_SCREEN );
+
+    // The Back row plays this sound through CGuiMenu::MakeSelection. The B
+    // button bypasses that path, so play the normal back sound here instead.
+    if( !backSoundAlreadyPlayed )
+    {
+        GetEventManager()->TriggerEvent( EVENT_FE_MENU_BACK );
+    }
 }
 
 #endif
@@ -756,7 +830,7 @@ void CGuiScreenPauseSettings::HandleMessage
             {
                 if( m_graphicsSettingsMode )
                 {
-                    LeaveAndroidGraphicsMenu();
+                    LeaveAndroidGraphicsMenu( false );
                     return;
                 }
                 break;
@@ -777,7 +851,7 @@ void CGuiScreenPauseSettings::HandleMessage
                 if( m_graphicsSettingsMode &&
                     GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) ) == MENU_ITEM_RADAR )
                 {
-                    LeaveAndroidGraphicsMenu();
+                    LeaveAndroidGraphicsMenu( true );
                     return;
                 }
 #endif
@@ -1145,9 +1219,10 @@ void CGuiScreenPauseSettings::InitOutro()
 #if defined(RAD_ANDROID)
     if( m_graphicsSettingsMode )
     {
-        m_graphicsSettingsMode = false;
+        // Do not restore the Settings rows while this screen is fading out:
+        // that caused a brief flash of the normal menu behind the transition.
+        // InitIntro restores them the next time normal Settings is entered.
         gAndroidGraphicsSettingsRequested = false;
-        RestoreAndroidSettingsMenu();
         return;
     }
 #endif

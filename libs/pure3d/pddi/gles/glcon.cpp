@@ -199,9 +199,9 @@ static void WriteSharpeningConfiguration()
         return;
 
     fprintf(file, "# Simpsons Hit & Run Android - Sharpening\n");
-    fprintf(file, "# Adjust the values to increase or decrease  the amount of sharpening.\n");
-    fprintf(file, "# 0=Off / 0.2=Light / 0.4=Average / 0.6=Stronger / 0.8=Very Strong / 1.0=Max\n");
-    fprintf(file, "# Restart the game after changing this file.\n");
+    fprintf(file, "# Choose OFF, 20%%, 40%%, 60%%, 80%%, or MAX in the Graphics menu.\n");
+    fprintf(file, "# Changes made in the Graphics menu are saved immediately.\n");
+    fprintf(file, "# sharpen=0.00 / 0.20 / 0.40 / 0.60 / 0.80 / 1.00\n");
     fprintf(file, "\n");
     fprintf(file, "sharpen=%.2f\n", gFrameSharpenStrength);
     fprintf(file, "sharpening_enabled=%s\n", gFrameSharpeningEnabled ? "true" : "false");
@@ -448,6 +448,33 @@ void SetFrameSharpeningEnabled(bool enabled)
 {
     LoadSharpeningConfiguration();
     gFrameSharpeningEnabled = enabled;
+    WriteSharpeningConfiguration();
+}
+
+int GetFrameSharpeningLevel()
+{
+    LoadSharpeningConfiguration();
+
+    if( !gFrameSharpeningEnabled )
+    {
+        return 0;
+    }
+
+    int level = static_cast<int>( gFrameSharpenStrength * 5.0f + 0.5f );
+    if( level < 0 ) level = 0;
+    if( level > 5 ) level = 5;
+    return level;
+}
+
+void SetFrameSharpeningLevel( int level )
+{
+    LoadSharpeningConfiguration();
+
+    if( level < 0 ) level = 0;
+    if( level > 5 ) level = 5;
+
+    gFrameSharpenStrength = static_cast<float>( level ) * 0.2f;
+    gFrameSharpeningEnabled = ( level > 0 );
     WriteSharpeningConfiguration();
 }
 

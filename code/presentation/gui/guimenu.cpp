@@ -320,6 +320,7 @@ GuiMenuItem* CGuiMenu::AddMenuItem( Scrooby::BoundedDrawable* pItem,
 
     m_menuItems[ m_numItems ]->m_attributes = attributes;
     m_menuItems[ m_numItems ]->m_defaultColour = pItem->GetColour();
+    m_menuItems[ m_numItems ]->m_originalItemValueCount = m_menuItems[ m_numItems ]->m_itemValueCount;
     m_numItems++;
 
     // select first item by default
@@ -569,7 +570,12 @@ void CGuiMenu::MakeSelection( bool isSelectionMade )
 
                 m_selectionMadeElapsedTime = 0;
 
-                GetEventManager()->TriggerEvent( EVENT_FE_MENU_SELECT );
+                GetEventManager()->TriggerEvent
+                (
+                    m_menuItems[ m_selection ]->m_useBackSoundOnSelection
+                        ? EVENT_FE_MENU_BACK
+                        : EVENT_FE_MENU_SELECT
+                );
 
                 // tell parent screen to ignore all controller inputs until
                 // selection-made effect is completed
@@ -656,8 +662,9 @@ void CGuiMenu::SelectItem( int index )
         if( m_menuItems[ index ]->m_itemValueArrowL != NULL &&
             m_menuItems[ index ]->m_itemValueArrowR != NULL )
         {
-            m_menuItems[ index ]->m_itemValueArrowL->SetVisible( true );
-            m_menuItems[ index ]->m_itemValueArrowR->SetVisible( true );
+            const bool showValueArrows = m_menuItems[ index ]->m_showValueArrows;
+            m_menuItems[ index ]->m_itemValueArrowL->SetVisible( showValueArrows );
+            m_menuItems[ index ]->m_itemValueArrowR->SetVisible( showValueArrows );
         }
     }
 /*

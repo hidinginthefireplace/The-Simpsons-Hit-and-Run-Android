@@ -77,6 +77,9 @@ struct GuiMenuItem
     Scrooby::Sprite* m_itemValueArrowL;
     Scrooby::Sprite* m_itemValueArrowR;
     int m_itemValueCount;
+    int m_originalItemValueCount;
+    bool m_showValueArrows;
+    bool m_useBackSoundOnSelection;
 
     ImageSlider m_slider;
 
