@@ -46,6 +46,12 @@
 
 #if defined(RAD_ANDROID)
 #include <data/config/androidconfigurationmanager.h>
+#include <SDL.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
 
 // Rendering toggles exposed by the GLES renderer.
 bool IsCelShadingEnabled();
@@ -86,6 +92,195 @@ void RequestAndroidGraphicsSettings()
   #include <cstdio>
   #define LOGI(...) do { std::printf(__VA_ARGS__); std::printf("\n"); std::fflush(stdout); } while(0)
   #define LOGE(...) do { std::printf(__VA_ARGS__); std::printf("\n"); std::fflush(stdout); } while(0)
+#endif
+
+#if defined(RAD_ANDROID)
+
+// Resolution choices shown by the Android Graphics submenu. The existing Java
+// startup code consumes target_height from /files/Graphics/Simpsons_resolution.txt.
+// No Surface/GL resize is requested here; the new value is applied at next launch.
+static const int SHAR_GRAPHICS_RESOLUTION_HEIGHTS[5] =
+{
+    480, 720, 1080, 1440, 2160
+};
+
+static int GetSHARGraphicsResolutionHeight( int selection )
+{
+    if( selection < 0 || selection >= SHAR_GRAPHICS_RESOLUTION_COUNT )
+    {
+        selection = 3;
+    }
+    return SHAR_GRAPHICS_RESOLUTION_HEIGHTS[ selection ];
+}
+
+static int GetSHARGraphicsResolutionSelectionForHeight( int height )
+{
+    if( height <= 0 )
+    {
+        return 3;
+    }
+
+    int bestSelection = 0;
+    int bestDistance = abs( height - SHAR_GRAPHICS_RESOLUTION_HEIGHTS[0] );
+
+    for( int i = 1; i < SHAR_GRAPHICS_RESOLUTION_COUNT; ++i )
+    {
+        const int distance = abs( height - SHAR_GRAPHICS_RESOLUTION_HEIGHTS[i] );
+        // Prefer the higher profile when a custom value lies exactly between
+        // two menu choices.
+        if( distance <= bestDistance )
+        {
+            bestDistance = distance;
+            bestSelection = i;
+        }
+    }
+    return bestSelection;
+}
+
+static int LoadSHARGraphicsResolutionSelection()
+{
+    const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if( basePath == NULL || basePath[0] == '\\0' )
+    {
+        return 3;
+    }
+
+    char path[512];
+    const int pathLength = snprintf(
+        path, sizeof(path), "%s/Graphics/Simpsons_resolution.txt", basePath );
+    if( pathLength < 0 || pathLength >= static_cast<int>( sizeof(path) ) )
+    {
+        LOGE("[SHAR-RESOLUTION] Config path too long; defaulting to 1440p");
+        return 3;
+    }
+
+    FILE* file = fopen( path, "r" );
+    if( file == NULL )
+    {
+        LOGI("[SHAR-RESOLUTION] Config not present yet; defaulting to 1440p");
+        return 3;
+    }
+
+    char line[256];
+    int selection = 3;
+    while( fgets( line, sizeof(line), file ) != NULL )
+    {
+        char* cursor = line;
+        while( *cursor == ' ' || *cursor == '\\t' )
+        {
+            ++cursor;
+        }
+        if( *cursor == '\\0' || *cursor == '#' )
+        {
+            continue;
+        }
+
+        if( strncmp( cursor, "target_height", 13 ) != 0 )
+        {
+            continue;
+        }
+
+        char* equals = strchr( cursor, '=' );
+        if( equals == NULL )
+        {
+            continue;
+        }
+
+        char* value = equals + 1;
+        while( *value == ' ' || *value == '\\t' )
+        {
+            ++value;
+        }
+
+        if( strncmp( value, "MAX", 3 ) == 0 ||
+            strncmp( value, "max", 3 ) == 0 )
+        {
+            selection = SHAR_GRAPHICS_RESOLUTION_COUNT - 1;
+        }
+        else
+        {
+            const int height = static_cast<int>( strtol( value, NULL, 10 ) );
+            if( height > 0 )
+            {
+                selection = GetSHARGraphicsResolutionSelectionForHeight( height );
+            }
+        }
+        break;
+    }
+
+    fclose( file );
+    LOGI("[SHAR-RESOLUTION] Loaded selector value %dp from %s",
+         GetSHARGraphicsResolutionHeight(selection), path);
+    return selection;
+}
+
+static bool SaveSHARGraphicsResolutionSelection( int selection )
+{
+    const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if( basePath == NULL || basePath[0] == '\\0' )
+    {
+        LOGE("[SHAR-RESOLUTION] Cannot save selection: app files path unavailable");
+        return false;
+    }
+
+    char directory[512];
+    int written = snprintf( directory, sizeof(directory), "%s/Graphics", basePath );
+    if( written < 0 || written >= static_cast<int>( sizeof(directory) ) )
+    {
+        LOGE("[SHAR-RESOLUTION] Cannot save selection: Graphics path too long");
+        return false;
+    }
+
+    struct stat directoryInfo;
+    if( mkdir( directory, 0777 ) != 0 &&
+        ( errno != EEXIST || stat( directory, &directoryInfo ) != 0 ||
+          !S_ISDIR( directoryInfo.st_mode ) ) )
+    {
+        LOGE("[SHAR-RESOLUTION] Cannot create config directory %s (errno=%d)",
+             directory, errno);
+        return false;
+    }
+
+    char path[512];
+    written = snprintf( path, sizeof(path),
+                        "%s/Simpsons_resolution.txt", directory );
+    if( written < 0 || written >= static_cast<int>( sizeof(path) ) )
+    {
+        LOGE("[SHAR-RESOLUTION] Cannot save selection: config path too long");
+        return false;
+    }
+
+    FILE* file = fopen( path, "w" );
+    if( file == NULL )
+    {
+        LOGE("[SHAR-RESOLUTION] Cannot open config for writing: %s (errno=%d)",
+             path, errno);
+        return false;
+    }
+
+    const int height = GetSHARGraphicsResolutionHeight( selection );
+    const int result = fprintf(
+        file,
+        "# Simpsons Hit & Run Android adaptive render resolution\\n"
+        "# Selected in the in-game Graphics menu.\\n"
+        "# Changes take effect after fully restarting the game.\\n"
+        "# The render width is calculated automatically from the display aspect ratio.\\n"
+        "# Supported menu values: 480, 720, 1080, 1440, 2160.\\n"
+        "target_height=%d\\n",
+        height );
+    const int closeResult = fclose( file );
+
+    if( result < 0 || closeResult != 0 )
+    {
+        LOGE("[SHAR-RESOLUTION] Failed writing selector value to %s", path);
+        return false;
+    }
+
+    LOGI("[SHAR-RESOLUTION] Saved target_height=%d to %s (applies next launch)",
+         height, path);
+    return true;
+}
+
 #endif
 
 
