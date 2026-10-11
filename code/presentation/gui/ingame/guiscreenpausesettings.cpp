@@ -823,7 +823,10 @@ MEMTRACK_POP_GROUP( "CGuiScreenPauseSettings" );
 
 void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
 {
-    LOGI("[SHAR-RESOLUTION-MENU] ConfigureAndroidGraphicsMenu begin");
+    m_configuringAndroidGraphicsMenu = true;
+    gSHARGraphicsResolutionSelection = LoadSHARGraphicsResolutionSelection();
+    LOGI("[SHAR-RESOLUTION-MENU] ConfigureAndroidGraphicsMenu begin; selected=%dp",
+         GetSHARGraphicsResolutionHeight(gSHARGraphicsResolutionSelection));
 
     // Reuse five existing Settings rows without editing any Scrooby/game assets.
     // Camera is used as the temporary Resolution row, and Invert Camera is
@@ -991,6 +994,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
     }
 
     m_pMenu->Reset( 0 );
+    m_configuringAndroidGraphicsMenu = false;
 }
 
 void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
@@ -1211,14 +1215,28 @@ void CGuiScreenPauseSettings::HandleMessage
 
                 if( m_graphicsSettingsMode )
                 {
+                    // SetSelectionValue is used while the submenu is being
+                    // configured. Ignore those synthetic notifications so they
+                    // cannot overwrite user settings or the resolution config.
+                    if( m_configuringAndroidGraphicsMenu )
+                    {
+                        break;
+                    }
+
                     const bool enabled = ( param2 == 1 );
                     if( logicalMenuItem == MENU_ITEM_CAMERA )
                     {
-                        // UI-only diagnostic: changing this value has no effect
-                        // on configuration, Java, the surface, or native rendering.
                         if( param2 < SHAR_GRAPHICS_RESOLUTION_COUNT )
                         {
-                            gSHARGraphicsResolutionSelection = static_cast<int>( param2 );
+                            const int newSelection = static_cast<int>( param2 );
+                            if( newSelection != gSHARGraphicsResolutionSelection )
+                            {
+                                gSHARGraphicsResolutionSelection = newSelection;
+                                // Persist to the canonical app-internal config.
+                                // SDLSurface reads this at full app startup, so
+                                // the active renderer is never resized mid-frame.
+                                SaveSHARGraphicsResolutionSelection( newSelection );
+                            }
                         }
                     }
                     else if( logicalMenuItem == MENU_ITEM_JUMP_CAMERAS )
