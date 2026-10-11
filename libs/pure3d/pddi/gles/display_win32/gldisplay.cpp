@@ -1311,10 +1311,16 @@ static void ApplyCelPostProcess(int width, int height)
         DrawCelPostFullscreenQuad();
     }
 
+    // The scene texture uses the internal render-size snapshot, while the
+    // final fullscreen pass covers the actual EGL default framebuffer.
+    int outputWidth = width;
+    int outputHeight = height;
+    QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
+
     // Final pass: combine scene, bloom and distance-aware screen-space outlines.
     // If depth textures are unavailable, bloom and the rest of post-processing continue normally.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, width, height);
+    glViewport(0, 0, outputWidth, outputHeight);
     glUseProgram(gCelPostProgram);
 
     glActiveTexture(GL_TEXTURE0);
@@ -1372,9 +1378,6 @@ static void ApplyCelPostProcess(int width, int height)
 
     // Keep the GUI and all later passes on the onscreen framebuffer.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    int outputWidth = width;
-    int outputHeight = height;
-    QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
     glViewport(0, 0, outputWidth, outputHeight);
     gCelWorldInFbo = false;
 }
@@ -1735,6 +1738,7 @@ static void ApplyCRTFilter(int width, int height)
 static SDL_SpinLock gSHARAndroidRenderResolutionLock = 0;
 static int gSHARAndroidRenderWidth = 0;
 static int gSHARAndroidRenderHeight = 0;
+static int gSHARAndroidRenderResizeSerial = 0;
 
 static int gSHARLastLoggedDisplayWidth = 0;
 static int gSHARLastLoggedDisplayHeight = 0;
@@ -1760,15 +1764,19 @@ Java_org_libsdl_app_SDLSurface_nativeSetSHARRenderResolution(
 
     gSHARAndroidRenderWidth = (int)width;
     gSHARAndroidRenderHeight = (int)height;
+    if (changed)
+        ++gSHARAndroidRenderResizeSerial;
     const int loggedWidth = gSHARAndroidRenderWidth;
     const int loggedHeight = gSHARAndroidRenderHeight;
+    const int loggedSerial = gSHARAndroidRenderResizeSerial;
     SDL_AtomicUnlock(&gSHARAndroidRenderResolutionLock);
 
     if (changed) {
         SDL_Log(
-            "SHAR Android Java render resolution received: %dx%d",
+            "SHAR Android Java render resolution received: %dx%d serial=%d",
             loggedWidth,
-            loggedHeight
+            loggedHeight,
+            loggedSerial
         );
     }
 }
@@ -1906,6 +1914,91 @@ LogSHARDisplayResolutionIfChanged(const char* reason, int width, int height)
         width,
         height
     );
+}
+#endif
+
+#ifdef RAD_ANDROID
+void pglDisplay::CommitPendingResize()
+{
+    static int committedSerial = 0;
+    static int waitingSerial = -1;
+    static int waitFrames = 0;
+
+    int requestedWidth = 0;
+    int requestedHeight = 0;
+    int serial = 0;
+    SDL_AtomicLock(&gSHARAndroidRenderResolutionLock);
+    requestedWidth = gSHARAndroidRenderWidth;
+    requestedHeight = gSHARAndroidRenderHeight;
+    serial = gSHARAndroidRenderResizeSerial;
+    SDL_AtomicUnlock(&gSHARAndroidRenderResolutionLock);
+
+    int surfaceWidth = 0;
+    int surfaceHeight = 0;
+    const bool surfaceSizeKnown =
+        QueryDefaultFramebufferSize(&surfaceWidth, &surfaceHeight);
+
+    // If Android's EGL surface changes before surfaceChanged publishes its
+    // matching size, suspend the cel FBO until a consistent target is ready.
+    if (surfaceSizeKnown &&
+        (surfaceWidth != winWidth || surfaceHeight != winHeight))
+    {
+        gSHARResizePendingOnGLThread = true;
+    }
+
+    if (serial == committedSerial || requestedWidth <= 0 || requestedHeight <= 0)
+    {
+        if (surfaceSizeKnown &&
+            surfaceWidth == winWidth && surfaceHeight == winHeight)
+        {
+            gSHARResizePendingOnGLThread = false;
+        }
+        return;
+    }
+
+    if (waitingSerial != serial)
+    {
+        waitingSerial = serial;
+        waitFrames = 0;
+    }
+
+    const bool requestedSurfaceReady =
+        surfaceSizeKnown &&
+        surfaceWidth == requestedWidth &&
+        surfaceHeight == requestedHeight;
+
+    if (!requestedSurfaceReady && waitFrames < 120)
+    {
+        ++waitFrames;
+        gSHARResizePendingOnGLThread = true;
+        if (waitFrames == 1 || (waitFrames % 30) == 0)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+                "[SHAR-RESIZE] waiting for EGL surface: requested=%dx%d fb0=%dx%d known=%d frame=%d/120 serial=%d",
+                requestedWidth, requestedHeight,
+                surfaceWidth, surfaceHeight,
+                surfaceSizeKnown ? 1 : 0, waitFrames, serial);
+        }
+        return;
+    }
+
+    const int previousWidth = winWidth;
+    const int previousHeight = winHeight;
+    const bool timedOut = !requestedSurfaceReady;
+    winWidth = requestedWidth;
+    winHeight = requestedHeight;
+    committedSerial = serial;
+    waitFrames = 0;
+    gSHARResizePendingOnGLThread = false;
+
+    SDL_Log(
+        "[SHAR-RESIZE] GL-thread commit %dx%d -> %dx%d fb0=%dx%d known=%d timeout=%d serial=%d",
+        previousWidth, previousHeight, winWidth, winHeight,
+        surfaceWidth, surfaceHeight, surfaceSizeKnown ? 1 : 0,
+        timedOut ? 1 : 0, serial);
+
+    ResetAndroidPostProcess();
+    glViewport(0, 0, winWidth, winHeight);
 }
 #endif
 
