@@ -663,11 +663,6 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
     };
     const int sharpeningLevel = GetFrameSharpeningLevel();
 
-    const char* resolutionValues[SHAR_GRAPHICS_RESOLUTION_COUNT] =
-    {
-        "480p", "720p", "1080p", "1440p", "2160p"
-    };
-
     if( gSHARGraphicsResolutionSelection < 0 ||
         gSHARGraphicsResolutionSelection >= SHAR_GRAPHICS_RESOLUTION_COUNT )
     {
