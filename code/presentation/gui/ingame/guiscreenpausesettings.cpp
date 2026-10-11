@@ -682,9 +682,9 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
 
 void CGuiScreenPauseSettings::LeaveAndroidGraphicsMenu()
 {
-    m_graphicsSettingsMode = false;
+    // Keep graphics mode active until InitOutro runs, so it cannot apply the
+    // graphics labels/values as camera and gameplay settings.
     gAndroidGraphicsSettingsRequested = false;
-    RestoreAndroidSettingsMenu();
     m_pParent->HandleMessage( GUI_MSG_BACK_SCREEN );
 }
 
@@ -737,6 +737,17 @@ void CGuiScreenPauseSettings::HandleMessage
     {
         switch( message )
         {
+#if defined(RAD_ANDROID)
+            case GUI_MSG_CONTROLLER_BACK:
+            {
+                if( m_graphicsSettingsMode )
+                {
+                    LeaveAndroidGraphicsMenu();
+                    return;
+                }
+                break;
+            }
+#endif
             case GUI_MSG_CONTROLLER_START:
             {
                 // resume game
@@ -746,11 +757,42 @@ void CGuiScreenPauseSettings::HandleMessage
                 break;
             }
 
+            case GUI_MSG_MENU_SELECTION_MADE:
+            {
+#if defined(RAD_ANDROID)
+                if( m_graphicsSettingsMode &&
+                    GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) ) == MENU_ITEM_RADAR )
+                {
+                    LeaveAndroidGraphicsMenu();
+                    return;
+                }
+#endif
+                break;
+            }
+
             case GUI_MSG_MENU_SELECTION_VALUE_CHANGED:
             {
             #if defined(RAD_ANDROID)
                 const int logicalMenuItem =
                     GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) );
+
+                if( m_graphicsSettingsMode )
+                {
+                    const bool enabled = ( param2 == 1 );
+                    if( logicalMenuItem == MENU_ITEM_CAMERA )
+                    {
+                        SetCelShadingEnabled( enabled );
+                    }
+                    else if( logicalMenuItem == MENU_ITEM_JUMP_CAMERAS )
+                    {
+                        SetCRTFilterEnabled( enabled );
+                    }
+                    else if( logicalMenuItem == MENU_ITEM_INTERSECT_NAV_SYSTEM )
+                    {
+                        SetFrameSharpeningEnabled( enabled );
+                    }
+                    break;
+                }
             #else
                 const int logicalMenuItem = static_cast<int>( param1 );
             #endif
@@ -845,8 +887,18 @@ CGuiScreenPauseSettings::OnCheatEntered( eCheatID cheatID, bool isEnabled )
 //===========================================================================
 void CGuiScreenPauseSettings::InitIntro()
 {
+#if defined(RAD_ANDROID)
+    m_graphicsSettingsMode = gAndroidGraphicsSettingsRequested;
+    gAndroidGraphicsSettingsRequested = false;
 
+    if( m_graphicsSettingsMode )
+    {
+        ConfigureAndroidGraphicsMenu();
+        return;
+    }
 
+    RestoreAndroidSettingsMenu();
+#endif
 
     bool allowCameraToggle = GetSuperCamManager()->GetSCC( 0 )->AllowCameraToggle();
 
@@ -1076,6 +1128,16 @@ void CGuiScreenPauseSettings::InitRunning()
 //===========================================================================
 void CGuiScreenPauseSettings::InitOutro()
 {
+#if defined(RAD_ANDROID)
+    if( m_graphicsSettingsMode )
+    {
+        m_graphicsSettingsMode = false;
+        gAndroidGraphicsSettingsRequested = false;
+        RestoreAndroidSettingsMenu();
+        return;
+    }
+#endif
+
     // apply new gameplay settings
     //
     rAssert( m_pMenu != NULL );
