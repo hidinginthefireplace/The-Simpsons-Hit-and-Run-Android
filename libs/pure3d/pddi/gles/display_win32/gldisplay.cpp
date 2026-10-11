@@ -929,10 +929,36 @@ static void ApplyCelPostProcess(int width, int height)
     GLint currentFramebuffer = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFramebuffer);
     if ((GLuint)currentFramebuffer != gCelRenderFbo || !gCelRenderFboReady)
+    {
+        static int lastLoggedWidth = 0;
+        static int lastLoggedHeight = 0;
+        static GLint lastLoggedFramebuffer = -1;
+        static bool lastLoggedReady = false;
+        if (lastLoggedWidth != width || lastLoggedHeight != height ||
+                lastLoggedFramebuffer != currentFramebuffer ||
+                lastLoggedReady != gCelRenderFboReady)
+        {
+            SDL_LogWarn(
+                SDL_LOG_CATEGORY_RENDER,
+                "[SHAR-RESIZE-DIAG] Cel compositor skipped: size=%dx%d currentFbo=%d expectedFbo=%u fboReady=%d",
+                width, height, (int)currentFramebuffer,
+                (unsigned)gCelRenderFbo, gCelRenderFboReady ? 1 : 0);
+            lastLoggedWidth = width;
+            lastLoggedHeight = height;
+            lastLoggedFramebuffer = currentFramebuffer;
+            lastLoggedReady = gCelRenderFboReady;
+        }
         return;
+    }
 
     if (!EnsureCelPostProcessResources(width, height))
+    {
+        SDL_LogWarn(
+            SDL_LOG_CATEGORY_RENDER,
+            "[SHAR-RESIZE-DIAG] Cel compositor resources unavailable at %dx%d",
+            width, height);
         return;
+    }
 
     const bool bloomReady = EnsureCelBloomResources(width, height);
 
@@ -1660,6 +1686,8 @@ long pglDisplay ::ProcessWindowMessage(SDL_Window* win, const SDL_WindowEvent* e
         case SDL_WINDOWEVENT_SIZE_CHANGED:
         {
 #if defined(RAD_ANDROID)
+            const int previousWidth = winWidth;
+            const int previousHeight = winHeight;
             int renderW = 0;
             int renderH = 0;
 
@@ -1691,10 +1719,16 @@ long pglDisplay ::ProcessWindowMessage(SDL_Window* win, const SDL_WindowEvent* e
 #endif
             }
 #if defined(RAD_ANDROID)
-            if (winWidth > 0 && winHeight > 0) {
-                glViewport(0, 0, winWidth, winHeight);
-                SDL_Log("SHAR Android GL viewport refreshed after resize: %dx%d",
-                    winWidth, winHeight);
+            if (winWidth > 0 && winHeight > 0 &&
+                    (winWidth != previousWidth || winHeight != previousHeight)) {
+                reset = true;
+                int drawableWidth = 0;
+                int drawableHeight = 0;
+                SDL_GL_GetDrawableSize(win, &drawableWidth, &drawableHeight);
+                SDL_Log(
+                    "[SHAR-RESIZE-DIAG] SDL2-size-event: PDDI %dx%d -> %dx%d; SDL drawable=%dx%d; reset pending",
+                    previousWidth, previousHeight, winWidth, winHeight,
+                    drawableWidth, drawableHeight);
             }
 #endif
             break;
@@ -1714,6 +1748,8 @@ long pglDisplay ::ProcessWindowMessage(SDL_Window* win, const SDL_WindowEvent* e
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
         {
 #if defined(RAD_ANDROID)
+            const int previousWidth = winWidth;
+            const int previousHeight = winHeight;
             int renderW = 0;
             int renderH = 0;
 
@@ -1745,10 +1781,16 @@ long pglDisplay ::ProcessWindowMessage(SDL_Window* win, const SDL_WindowEvent* e
 #endif
             }
 #if defined(RAD_ANDROID)
-            if (winWidth > 0 && winHeight > 0) {
-                glViewport(0, 0, winWidth, winHeight);
-                SDL_Log("SHAR Android GL viewport refreshed after resize: %dx%d",
-                    winWidth, winHeight);
+            if (winWidth > 0 && winHeight > 0 &&
+                    (winWidth != previousWidth || winHeight != previousHeight)) {
+                reset = true;
+                int drawableWidth = 0;
+                int drawableHeight = 0;
+                SDL_GetWindowSizeInPixels(win, &drawableWidth, &drawableHeight);
+                SDL_Log(
+                    "[SHAR-RESIZE-DIAG] SDL3-pixel-size-event: PDDI %dx%d -> %dx%d; SDL drawable=%dx%d; reset pending",
+                    previousWidth, previousHeight, winWidth, winHeight,
+                    drawableWidth, drawableHeight);
             }
 #endif
             break;
@@ -2062,7 +2104,6 @@ void pglDisplay::SwapBuffers(void)
     ApplyCRTFilter(winWidth, winHeight);
 #endif
     SDL_GL_SwapWindow(win);
-    reset = false;
     #ifdef RAD_ANDROID
     /*
      * Manual 60 FPS cap for Android.
