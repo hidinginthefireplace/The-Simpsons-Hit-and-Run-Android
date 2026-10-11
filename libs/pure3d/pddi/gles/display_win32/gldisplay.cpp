@@ -1077,6 +1077,8 @@ static void FallbackResolveToScreen(int width, int height)
         glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
         if (gCelFallbackTextureLocation >= 0)
             glUniform1i(gCelFallbackTextureLocation, 0);
+        // Keep the game-owned VAO untouched while configuring the fallback quad.
+        glBindVertexArrayOES(0);
         glBindBuffer(GL_ARRAY_BUFFER, gCelFallbackVbo);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)0);
@@ -1090,12 +1092,14 @@ static void FallbackResolveToScreen(int width, int height)
             width, height);
     }
 
+    // Restore the original VAO's attribute-enable state, without having
+    // changed its vertex pointer or buffer association during fallback drawing.
+    glBindVertexArrayOES((GLuint)oldVao);
     if (oldAttrib0Enabled)
         glEnableVertexAttribArray(0);
     else
         glDisableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, (GLuint)oldArrayBuffer);
-    glBindVertexArrayOES((GLuint)oldVao);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, (GLuint)oldTexture0);
     glActiveTexture((GLenum)oldActiveTexture);
