@@ -96,6 +96,8 @@ private:
     bool mHasInvertCamControl=false;
     bool mHasGamepadVibration=false;
 
+    Scrooby::Text* m_pOriginalResolutionValue = NULL;
+    Scrooby::Text* m_pGraphicsResolutionValue = NULL;
     Scrooby::Text* m_pOriginalSharpeningValue = NULL;
     Scrooby::Text* m_pGraphicsSharpeningValue = NULL;
 
