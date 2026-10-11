@@ -356,12 +356,15 @@ static bool EnsureCelRenderTarget(int width, int height)
         0
     );
 
-    // Prefer a sampleable depth texture when the device exposes GLES 2.0's
-    // depth-texture extension. If allocation/completeness fails, fall back to
-    // the original depth renderbuffer and disable only depth-aware fading.
+    // A full-screen sampleable depth texture costs about another 32 MiB at
+    // 3840x2160. Above four megapixels, use the smaller depth renderbuffer
+    // instead; the toon pass remains active, but depth-aware fading is omitted.
+    const size_t renderPixels = (size_t)width * (size_t)height;
+    const bool allowDepthTexture = renderPixels <= (size_t)4 * 1024 * 1024;
     gCelDepthTextureActive = false;
     bool depthTextureReady = false;
-    if (gCelDepthTextureExtensionAvailable && !gCelDepthTextureFailed)
+    if (gCelDepthTextureExtensionAvailable &&
+        !gCelDepthTextureFailed && allowDepthTexture)
     {
         if (gCelRenderDepthTexture == 0)
             glGenTextures(1, &gCelRenderDepthTexture);
@@ -374,6 +377,7 @@ static bool EnsureCelRenderTarget(int width, int height)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+            bool depthStorageReady = true;
             if (gCelDepthTextureWidth != width || gCelDepthTextureHeight != height)
             {
                 glTexImage2D(
@@ -387,27 +391,39 @@ static bool EnsureCelRenderTarget(int width, int height)
                     GL_UNSIGNED_INT,
                     NULL
                 );
-                gCelDepthTextureWidth = width;
-                gCelDepthTextureHeight = height;
+                depthStorageReady = CheckSHARAllocationError(
+                    "cel depth texture", width, height);
+                if (depthStorageReady)
+                {
+                    gCelDepthTextureWidth = width;
+                    gCelDepthTextureHeight = height;
+                }
+                else
+                {
+                    gCelDepthTextureFailed = true;
+                }
             }
 
-            glFramebufferTexture2D(
-                GL_FRAMEBUFFER,
-                GL_DEPTH_ATTACHMENT,
-                GL_TEXTURE_2D,
-                gCelRenderDepthTexture,
-                0
-            );
-            GLenum depthTextureStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-            depthTextureReady = (depthTextureStatus == GL_FRAMEBUFFER_COMPLETE);
-            if (!depthTextureReady)
+            if (depthStorageReady)
             {
-                SDL_LogWarn(
-                    SDL_LOG_CATEGORY_RENDER,
-                    "SHAR Android depth texture unsupported by framebuffer (0x%04x); using depth renderbuffer",
-                    (unsigned)depthTextureStatus
+                glFramebufferTexture2D(
+                    GL_FRAMEBUFFER,
+                    GL_DEPTH_ATTACHMENT,
+                    GL_TEXTURE_2D,
+                    gCelRenderDepthTexture,
+                    0
                 );
-                gCelDepthTextureFailed = true;
+                GLenum depthTextureStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+                depthTextureReady = (depthTextureStatus == GL_FRAMEBUFFER_COMPLETE);
+                if (!depthTextureReady)
+                {
+                    SDL_LogWarn(
+                        SDL_LOG_CATEGORY_RENDER,
+                        "SHAR Android depth texture unsupported by framebuffer (0x%04x); using depth renderbuffer",
+                        (unsigned)depthTextureStatus
+                    );
+                    gCelDepthTextureFailed = true;
+                }
             }
         }
         else
@@ -423,24 +439,48 @@ static bool EnsureCelRenderTarget(int width, int height)
     }
     else
     {
+        bool depthRenderbufferReady = true;
         glBindRenderbuffer(GL_RENDERBUFFER, gCelRenderDepth);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
-        glFramebufferRenderbuffer(
-            GL_FRAMEBUFFER,
-            GL_DEPTH_ATTACHMENT,
-            GL_RENDERBUFFER,
-            gCelRenderDepth
-        );
-
-        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-        gCelRenderFboReady = (status == GL_FRAMEBUFFER_COMPLETE);
-        if (!gCelRenderFboReady)
+        if (gCelRenderbufferWidth != width || gCelRenderbufferHeight != height)
         {
-            SDL_LogError(
-                SDL_LOG_CATEGORY_RENDER,
-                "SHAR Android cel render FBO incomplete: 0x%04x",
-                (unsigned)status
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
+            depthRenderbufferReady = CheckSHARAllocationError(
+                "cel depth renderbuffer", width, height);
+            if (depthRenderbufferReady)
+            {
+                gCelRenderbufferWidth = width;
+                gCelRenderbufferHeight = height;
+            }
+            else
+            {
+                gCelRenderbufferWidth = 0;
+                gCelRenderbufferHeight = 0;
+            }
+        }
+
+        if (depthRenderbufferReady)
+        {
+            glFramebufferRenderbuffer(
+                GL_FRAMEBUFFER,
+                GL_DEPTH_ATTACHMENT,
+                GL_RENDERBUFFER,
+                gCelRenderDepth
             );
+
+            GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            gCelRenderFboReady = (status == GL_FRAMEBUFFER_COMPLETE);
+            if (!gCelRenderFboReady)
+            {
+                SDL_LogError(
+                    SDL_LOG_CATEGORY_RENDER,
+                    "SHAR Android cel render FBO incomplete: 0x%04x",
+                    (unsigned)status
+                );
+            }
+        }
+        else
+        {
+            gCelRenderFboReady = false;
         }
     }
 
