@@ -205,11 +205,20 @@ static int LoadSHARGraphicsResolutionSelection()
             if( height > 0 )
             {
                 selection = GetSHARGraphicsResolutionSelectionForHeight( height );
-                if( height > GetSHARGraphicsResolutionHeight(
-                                 SHAR_GRAPHICS_RESOLUTION_COUNT - 1 ) )
+                bool supportedProfile = false;
+                for( int profile = 0; profile < SHAR_GRAPHICS_RESOLUTION_COUNT; ++profile )
                 {
-                    // The 2160p choice is intentionally not applied until
-                    // texture/framebuffer allocation guards are implemented.
+                    if( height == SHAR_GRAPHICS_RESOLUTION_HEIGHTS[profile] )
+                    {
+                        supportedProfile = true;
+                        break;
+                    }
+                }
+
+                if( !supportedProfile )
+                {
+                    // Unsupported custom/MAX/2160p values are normalized to the
+                    // nearest supported menu profile before a future app launch.
                     gSHARGraphicsResolutionNeedsNormalization = true;
                 }
             }
@@ -838,8 +847,14 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
     {
         // Migrate unsupported MAX/2160p selections to the safe 1440p ceiling
         // so the next full launch cannot unexpectedly use the unguarded 4K path.
-        SaveSHARGraphicsResolutionSelection( gSHARGraphicsResolutionSelection );
-        gSHARGraphicsResolutionNeedsNormalization = false;
+        if( SaveSHARGraphicsResolutionSelection( gSHARGraphicsResolutionSelection ) )
+        {
+            gSHARGraphicsResolutionNeedsNormalization = false;
+        }
+        else
+        {
+            LOGE("[SHAR-RESOLUTION] Could not normalize unsupported config; retrying next Graphics visit");
+        }
     }
     LOGI("[SHAR-RESOLUTION-MENU] ConfigureAndroidGraphicsMenu begin; selected=%dp",
          GetSHARGraphicsResolutionHeight(gSHARGraphicsResolutionSelection));
