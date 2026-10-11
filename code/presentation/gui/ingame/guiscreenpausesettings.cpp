@@ -272,10 +272,10 @@ CGuiScreenPauseSettings::CGuiScreenPauseSettings
     CGuiEntity* pParent
 )
 :   CGuiScreen( pScreen, pParent, GUI_SCREEN_ID_SETTINGS ),
-    m_pMenu( NULL ),
 #if defined(RAD_ANDROID)
     m_graphicsSettingsMode( false ),
 #endif
+    m_pMenu( NULL ),
     m_currentCameraSelectionMode( CAMERA_SELECTION_NOT_AVAILABLE )
 {
 MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
