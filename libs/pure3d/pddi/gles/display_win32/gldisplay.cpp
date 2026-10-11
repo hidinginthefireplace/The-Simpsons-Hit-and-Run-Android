@@ -94,6 +94,8 @@ int gCelRenderbufferWidth = 0;
 int gCelRenderbufferHeight = 0;
 int gCelRenderbufferFailedWidth = 0;
 int gCelRenderbufferFailedHeight = 0;
+int gCelRenderFboFailedWidth = 0;
+int gCelRenderFboFailedHeight = 0;
 int gFrameSharpenFailedWidth = 0;
 int gFrameSharpenFailedHeight = 0;
 int gCRTFailedWidth = 0;
@@ -315,6 +317,15 @@ static bool EnsureCelRenderTarget(int width, int height)
         return false;
     }
 
+    if ((gCelRenderbufferFailedWidth == width &&
+         gCelRenderbufferFailedHeight == height) ||
+        (gCelRenderFboFailedWidth == width &&
+         gCelRenderFboFailedHeight == height))
+    {
+        gCelRenderFboReady = false;
+        return false;
+    }
+
     if (gCelRenderFbo == 0)
         glGenFramebuffers(1, &gCelRenderFbo);
     if (gCelRenderDepth == 0)
@@ -452,11 +463,15 @@ static bool EnsureCelRenderTarget(int width, int height)
             {
                 gCelRenderbufferWidth = width;
                 gCelRenderbufferHeight = height;
+                gCelRenderbufferFailedWidth = 0;
+                gCelRenderbufferFailedHeight = 0;
             }
             else
             {
                 gCelRenderbufferWidth = 0;
                 gCelRenderbufferHeight = 0;
+                gCelRenderbufferFailedWidth = width;
+                gCelRenderbufferFailedHeight = height;
             }
         }
 
@@ -488,12 +503,19 @@ static bool EnsureCelRenderTarget(int width, int height)
 
     if (gCelRenderFboReady)
     {
+        gCelRenderFboFailedWidth = 0;
+        gCelRenderFboFailedHeight = 0;
         SDL_Log(
             "SHAR Android cel render FBO ready: %dx%d (depth texture %s)",
             width,
             height,
             gCelDepthTextureActive ? "enabled" : "disabled"
         );
+    }
+    else
+    {
+        gCelRenderFboFailedWidth = width;
+        gCelRenderFboFailedHeight = height;
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
