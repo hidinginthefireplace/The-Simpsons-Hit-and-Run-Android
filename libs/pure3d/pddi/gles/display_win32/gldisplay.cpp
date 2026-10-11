@@ -103,10 +103,11 @@ int gCRTFailedHeight = 0;
 
 // Budget for auxiliary full-screen post-processing targets. This deliberately
 // excludes game assets and the Android default framebuffer, so it is only a
-// conservative guard—not a claim about total free GPU memory. At high resolution,
-// prefer cel shading and CRT; skip sharpening if all three would exceed the budget.
+// conservative guard—not a claim about total free GPU memory. At 2160p, the
+// estimated targets for cel shading, sharpening, and CRT total about 115 MiB;
+// allow a 128 MiB test budget while retaining per-target GL allocation checks.
 static const size_t SHAR_POSTPROCESS_BUDGET_BYTES =
-    (size_t)96 * 1024 * 1024;
+    (size_t)128 * 1024 * 1024;
 static int gSHARLastRejectedWidth = 0;
 static int gSHARLastRejectedHeight = 0;
 static int gSHARLastRejectedReason = 0;
@@ -223,8 +224,9 @@ static bool CheckSHARRenderTargetSize(
         {
             char message[192];
             snprintf(message, sizeof(message),
-                "%s would exceed the 96 MiB auxiliary post-process budget (estimate=%u MiB)",
+                "%s would exceed the %u MiB auxiliary post-process budget (estimate=%u MiB)",
                 label ? label : "target",
+                (unsigned)(SHAR_POSTPROCESS_BUDGET_BYTES / (1024 * 1024)),
                 (unsigned)(estimatedBytes / (1024 * 1024)));
             LogSHARRenderTargetRejectedOnce(
                 width, height, reasonCode, message);
