@@ -140,7 +140,7 @@ static int GetSHARGraphicsResolutionSelectionForHeight( int height )
 static int LoadSHARGraphicsResolutionSelection()
 {
     const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
-    if( basePath == NULL || basePath[0] == '\\0' )
+    if( basePath == NULL || basePath[0] == '\0' )
     {
         return 3;
     }
@@ -166,11 +166,11 @@ static int LoadSHARGraphicsResolutionSelection()
     while( fgets( line, sizeof(line), file ) != NULL )
     {
         char* cursor = line;
-        while( *cursor == ' ' || *cursor == '\\t' )
+        while( *cursor == ' ' || *cursor == '\t' )
         {
             ++cursor;
         }
-        if( *cursor == '\\0' || *cursor == '#' )
+        if( *cursor == '\0' || *cursor == '#' )
         {
             continue;
         }
@@ -187,7 +187,7 @@ static int LoadSHARGraphicsResolutionSelection()
         }
 
         char* value = equals + 1;
-        while( *value == ' ' || *value == '\\t' )
+        while( *value == ' ' || *value == '\t' )
         {
             ++value;
         }
@@ -217,7 +217,7 @@ static int LoadSHARGraphicsResolutionSelection()
 static bool SaveSHARGraphicsResolutionSelection( int selection )
 {
     const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
-    if( basePath == NULL || basePath[0] == '\\0' )
+    if( basePath == NULL || basePath[0] == '\0' )
     {
         LOGE("[SHAR-RESOLUTION] Cannot save selection: app files path unavailable");
         return false;
@@ -261,12 +261,12 @@ static bool SaveSHARGraphicsResolutionSelection( int selection )
     const int height = GetSHARGraphicsResolutionHeight( selection );
     const int result = fprintf(
         file,
-        "# Simpsons Hit & Run Android adaptive render resolution\\n"
-        "# Selected in the in-game Graphics menu.\\n"
-        "# Changes take effect after fully restarting the game.\\n"
-        "# The render width is calculated automatically from the display aspect ratio.\\n"
-        "# Supported menu values: 480, 720, 1080, 1440, 2160.\\n"
-        "target_height=%d\\n",
+        "# Simpsons Hit & Run Android adaptive render resolution\n"
+        "# Selected in the in-game Graphics menu.\n"
+        "# Changes take effect after fully restarting the game.\n"
+        "# The render width is calculated automatically from the display aspect ratio.\n"
+        "# Supported menu values: 480, 720, 1080, 1440, 2160.\n"
+        "target_height=%d\n",
         height );
     const int closeResult = fclose( file );
 
