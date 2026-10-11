@@ -982,12 +982,10 @@ void CGuiScreenPauseSettings::InitIntro()
     m_graphicsSettingsMode = gAndroidGraphicsSettingsRequested;
     gAndroidGraphicsSettingsRequested = false;
 
-    if( m_graphicsSettingsMode )
-    {
-        ConfigureAndroidGraphicsMenu();
-        return;
-    }
-
+    // Always restore and initialize the normal settings state first. The
+    // Graphics entry can be opened before Settings has ever been visited in
+    // the current level; skipping this initialization leaves the reused menu
+    // in an incomplete state and can crash when Graphics is opened directly.
     RestoreAndroidSettingsMenu();
 #endif
 
@@ -1187,6 +1185,16 @@ void CGuiScreenPauseSettings::InitIntro()
     }
 #endif
 
+#if defined(RAD_ANDROID)
+    // Apply the graphics labels/values only after the shared Settings screen
+    // has completed its normal state synchronization. This preserves direct
+    // Graphics entry after a fresh map load without restoring Settings rows
+    // during the Graphics outro transition.
+    if( m_graphicsSettingsMode )
+    {
+        ConfigureAndroidGraphicsMenu();
+    }
+#endif
 }
 //===========================================================================
 // CGuiScreenPauseSettings::InitRunning
