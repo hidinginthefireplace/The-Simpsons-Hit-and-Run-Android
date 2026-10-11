@@ -92,6 +92,8 @@ int gCelPostFailedWidth = 0;
 int gCelPostFailedHeight = 0;
 int gCelRenderbufferWidth = 0;
 int gCelRenderbufferHeight = 0;
+int gCelRenderbufferFailedWidth = 0;
+int gCelRenderbufferFailedHeight = 0;
 int gFrameSharpenFailedWidth = 0;
 int gFrameSharpenFailedHeight = 0;
 int gCRTFailedWidth = 0;
@@ -2062,11 +2064,13 @@ unsigned pglDisplay::Screenshot(pddiColour* buffer, int nBytes)
 
     glReadPixels(0, 0, winWidth, winHeight,
                  GL_BGRA_EXT, GL_UNSIGNED_BYTE, buffer);
+#if defined(RAD_ANDROID)
     if (!CheckSHARAllocationError("screenshot readback", winWidth, winHeight))
     {
         free(temporaryRow);
         return 0;
     }
+#endif
 
     for (int row = 0; row < winHeight / 2; ++row)
     {
