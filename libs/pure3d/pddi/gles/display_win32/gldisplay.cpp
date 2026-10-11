@@ -1196,11 +1196,19 @@ static void ResetAndroidPostProcess()
     gCelWorldInFbo = false;
     gSHARHoldDirectFrames = SHAR_RESIZE_DIRECT_FRAMES;
 
-    GLenum error = glGetError();
-    if (error != GL_NO_ERROR)
+    GLenum error = GL_NO_ERROR;
+    int resetErrors = 0;
+    for (int i = 0; i < 32; ++i)
+    {
+        error = glGetError();
+        if (error == GL_NO_ERROR)
+            break;
+        ++resetErrors;
+    }
+    if (resetErrors > 0)
         SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
-            "[SHAR-RESIZE] GL error 0x%04x while resetting post-process resources",
-            (unsigned)error);
+            "[SHAR-RESIZE] encountered %d GL error(s) during post-process reset (last=0x%04x)",
+            resetErrors, (unsigned)error);
 }
 
 static void ApplyCelPostProcess(int width, int height)
@@ -1923,6 +1931,8 @@ void pglDisplay::CommitPendingResize()
     static int committedSerial = 0;
     static int waitingSerial = -1;
     static int waitFrames = 0;
+    static int unannouncedSurfaceMismatchFrames = 0;
+    static bool firstCommit = true;
 
     int requestedWidth = 0;
     int requestedHeight = 0;
@@ -1938,20 +1948,46 @@ void pglDisplay::CommitPendingResize()
     const bool surfaceSizeKnown =
         QueryDefaultFramebufferSize(&surfaceWidth, &surfaceHeight);
 
-    // If Android's EGL surface changes before surfaceChanged publishes its
-    // matching size, suspend the cel FBO until a consistent target is ready.
-    if (surfaceSizeKnown &&
-        (surfaceWidth != winWidth || surfaceHeight != winHeight))
-    {
-        gSHARResizePendingOnGLThread = true;
-    }
-
     if (serial == committedSerial || requestedWidth <= 0 || requestedHeight <= 0)
     {
-        if (surfaceSizeKnown &&
-            surfaceWidth == winWidth && surfaceHeight == winHeight)
+        const bool matchesActive =
+            surfaceSizeKnown &&
+            surfaceWidth == winWidth &&
+            surfaceHeight == winHeight;
+
+        if (matchesActive)
         {
             gSHARResizePendingOnGLThread = false;
+            unannouncedSurfaceMismatchFrames = 0;
+        }
+        else
+        {
+            // Surface size changes can precede Java's size-confirmation callback
+            // by a few frames. Temporarily use framebuffer 0, but don't leave cel
+            // rendering disabled forever if EGL intentionally reports a different
+            // size or the callback never arrives.
+            if (unannouncedSurfaceMismatchFrames < 15)
+            {
+                ++unannouncedSurfaceMismatchFrames;
+                gSHARResizePendingOnGLThread = true;
+                if (unannouncedSurfaceMismatchFrames == 1)
+                {
+                    SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+                        "[SHAR-RESIZE] surface changed before new Java size serial: active=%dx%d fb0=%dx%d known=%d",
+                        winWidth, winHeight, surfaceWidth, surfaceHeight,
+                        surfaceSizeKnown ? 1 : 0);
+                }
+            }
+            else
+            {
+                if (unannouncedSurfaceMismatchFrames == 15)
+                {
+                    SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+                        "[SHAR-RESIZE] no matching Java size serial after 15 frames; continuing with committed %dx%d",
+                        winWidth, winHeight);
+                }
+                gSHARResizePendingOnGLThread = false;
+            }
         }
         return;
     }
@@ -1962,10 +1998,19 @@ void pglDisplay::CommitPendingResize()
         waitFrames = 0;
     }
 
+    // On startup InitDisplay may already be using the initial Java dimensions.
+    // Don't stall the first frame just because EGL exposes a differently-sized
+    // surface; screen-space passes will query the actual framebuffer dimensions.
+    const bool initialDimensionsAlreadyApplied =
+        firstCommit &&
+        requestedWidth == winWidth &&
+        requestedHeight == winHeight;
+
     const bool requestedSurfaceReady =
-        surfaceSizeKnown &&
-        surfaceWidth == requestedWidth &&
-        surfaceHeight == requestedHeight;
+        initialDimensionsAlreadyApplied ||
+        (surfaceSizeKnown &&
+         surfaceWidth == requestedWidth &&
+         surfaceHeight == requestedHeight);
 
     if (!requestedSurfaceReady && waitFrames < 120)
     {
@@ -1988,7 +2033,9 @@ void pglDisplay::CommitPendingResize()
     winWidth = requestedWidth;
     winHeight = requestedHeight;
     committedSerial = serial;
+    firstCommit = false;
     waitFrames = 0;
+    unannouncedSurfaceMismatchFrames = 0;
     gSHARResizePendingOnGLThread = false;
 
     SDL_Log(
