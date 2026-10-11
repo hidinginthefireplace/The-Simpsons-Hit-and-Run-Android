@@ -286,12 +286,23 @@ bool TouchAssetExtractor::CopyAssetFile( const char* relativePath )
 
     char outputPath[ MAX_TOUCH_PATH ];
 
+    // The packaged asset keeps the original APK path "touch_controls/...".
+    // On-device, place its contents directly inside /files/Touch so that the
+    // touch runtime reads /files/Touch/character, /vehicle, /frontend, etc.
+    static const char* LEGACY_ASSET_PREFIX = "touch_controls/";
+    const size_t legacyPrefixLength = strlen( LEGACY_ASSET_PREFIX );
+    const char* outputRelativePath = relativePath;
+    if ( strncmp( outputRelativePath, LEGACY_ASSET_PREFIX, legacyPrefixLength ) == 0 )
+    {
+        outputRelativePath += legacyPrefixLength;
+    }
+
     snprintf(
         outputPath,
         sizeof( outputPath ),
-        "%s/%s",
+        "%s/Touch/%s",
         storagePath,
-        relativePath
+        outputRelativePath
     );
 
     if ( !EnsureParentDirectoryForFile( outputPath ) )
