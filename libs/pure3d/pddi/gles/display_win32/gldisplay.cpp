@@ -9,7 +9,6 @@
 #include <SDL.h>
 #if defined(RAD_ANDROID)
 #include <SDL_system.h>
-#include <EGL/egl.h>
 #endif
 
 #include<stdio.h>
@@ -133,22 +132,25 @@ static bool QueryDefaultFramebufferSize(int* width, int* height)
     if (width == NULL || height == NULL)
         return false;
 
-    EGLDisplay eglDisplay = eglGetCurrentDisplay();
-    EGLSurface eglSurface = eglGetCurrentSurface(EGL_DRAW);
-    if (eglDisplay == EGL_NO_DISPLAY || eglSurface == EGL_NO_SURFACE)
+    // Query the drawable through SDL rather than calling EGL directly. This
+    // keeps the Pure3D static library linkable by Android's small SDL test
+    // targets as well as the main game library.
+    SDL_Window* currentWindow = SDL_GL_GetCurrentWindow();
+    if (currentWindow == NULL)
         return false;
 
-    EGLint surfaceWidth = 0;
-    EGLint surfaceHeight = 0;
-    if (eglQuerySurface(eglDisplay, eglSurface, EGL_WIDTH, &surfaceWidth) != EGL_TRUE ||
-        eglQuerySurface(eglDisplay, eglSurface, EGL_HEIGHT, &surfaceHeight) != EGL_TRUE ||
-        surfaceWidth <= 0 || surfaceHeight <= 0)
-    {
+    int drawableWidth = 0;
+    int drawableHeight = 0;
+#if SDL_MAJOR_VERSION < 3
+    SDL_GL_GetDrawableSize(currentWindow, &drawableWidth, &drawableHeight);
+#else
+    SDL_GetWindowSizeInPixels(currentWindow, &drawableWidth, &drawableHeight);
+#endif
+    if (drawableWidth <= 0 || drawableHeight <= 0)
         return false;
-    }
 
-    *width = (int)surfaceWidth;
-    *height = (int)surfaceHeight;
+    *width = drawableWidth;
+    *height = drawableHeight;
     return true;
 }
 
@@ -1324,7 +1326,7 @@ static void ApplyCelPostProcess(int width, int height)
     }
 
     // The scene texture uses the internal render-size snapshot, while the
-    // final fullscreen pass covers the actual EGL default framebuffer.
+    // final fullscreen pass covers the actual default framebuffer.
     int outputWidth = width;
     int outputHeight = height;
     QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
@@ -2023,7 +2025,7 @@ void pglDisplay::CommitPendingResize()
         if (waitFrames == 1 || (waitFrames % 30) == 0)
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
-                "[SHAR-RESIZE] waiting for EGL surface: requested=%dx%d fb0=%dx%d known=%d frame=%d/120 serial=%d",
+                "[SHAR-RESIZE] waiting for SDL drawable: requested=%dx%d fb0=%dx%d known=%d frame=%d/120 serial=%d",
                 requestedWidth, requestedHeight,
                 surfaceWidth, surfaceHeight,
                 surfaceSizeKnown ? 1 : 0, waitFrames, serial);
