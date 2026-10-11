@@ -1,9 +1,6 @@
-name: Build Shield Resolution Selector Diagnostic Experiment
+name: Build Shield Resolution Selector Menu Diagnostic (Manual)
 
 on:
-  push:
-    branches:
-      - android11-resolution-selector-experiment
   workflow_dispatch:
 
 permissions:
