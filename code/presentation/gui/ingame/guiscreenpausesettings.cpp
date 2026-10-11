@@ -176,27 +176,6 @@ static void CopyAndroidMenuSpriteAppearance( FeSprite* destination, const FeSpri
     destination->SetAlpha( source->GetAlpha() );
 }
 
-static bool EnsureAndroidTextStringCount( Scrooby::Text* pText, int requiredCount )
-{
-    if( pText == NULL )
-    {
-        return false;
-    }
-
-    FeText* pFeText = dynamic_cast<FeText*>( pText );
-    if( pFeText == NULL )
-    {
-        return pText->GetNumOfStrings() >= requiredCount;
-    }
-
-    while( pText->GetNumOfStrings() < requiredCount )
-    {
-        pFeText->AddHardCodedString( "" );
-    }
-
-    return pText->GetNumOfStrings() >= requiredCount;
-}
-
 static bool GetAndroidSettingsRowGeometry
 (
     Scrooby::Page* pPage,
@@ -528,12 +507,70 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
 
     GetCheatInputSystem()->RegisterCallback( this );
 
+#if defined(RAD_ANDROID)
+    // Do not expand the original Scrooby Settings value object to six strings.
+    // Build a separate value object in the same row group and swap it in only
+    // while the Graphics submenu is displayed. This keeps the resource's
+    // original OFF/ON strings intact for the regular Settings menu.
+    {
+        Scrooby::Group* pSharpeningGroup = pPage->GetGroup( "IntersectNavSystem" );
+        FeGroup* pFeSharpeningGroup = dynamic_cast<FeGroup*>( pSharpeningGroup );
+        FeText* pOriginalValue = pSharpeningGroup != NULL
+            ? dynamic_cast<FeText*>( pSharpeningGroup->GetText( "IntersectNavSystem_Value" ) )
+            : NULL;
+
+        if( pFeSharpeningGroup != NULL && pOriginalValue != NULL )
+        {
+            m_pOriginalSharpeningValue = pOriginalValue;
+            FeText* pGraphicsValue =
+                pFeSharpeningGroup->AddText( "AndroidGraphicsSharpeningValue", 0, 0 );
+
+            if( pGraphicsValue != NULL )
+            {
+                CopyAndroidMenuTextAppearance( pGraphicsValue, pOriginalValue );
+
+                int width = 0;
+                int height = 0;
+                int centerX = 0;
+                int centerY = 0;
+                pOriginalValue->GetBoundingBoxSize( width, height );
+                pOriginalValue->GetBoundingBoxCenter( centerX, centerY );
+                pGraphicsValue->SetBoundingBoxSize( width, height );
+                pGraphicsValue->SetPositionOfCenter( centerX, centerY );
+
+                const char* sharpeningValues[6] =
+                {
+                    "OFF", "20%", "40%", "60%", "80%", "MAX"
+                };
+                for( int valueIndex = 0; valueIndex < 6; ++valueIndex )
+                {
+                    pGraphicsValue->AddHardCodedString( sharpeningValues[valueIndex] );
+                }
+
+                pGraphicsValue->SetIndex( 0 );
+                pGraphicsValue->SetVisible( false );
+                m_pGraphicsSharpeningValue = pGraphicsValue;
+                LOGI("[SHAR-GRAPHICS-DIAG] Created dedicated six-value sharpening text");
+            }
+            else
+            {
+                LOGE("[SHAR-GRAPHICS-DIAG] Failed to create dedicated sharpening text");
+            }
+        }
+        else
+        {
+            LOGE("[SHAR-GRAPHICS-DIAG] Could not find sharpening row group/value text");
+        }
+    }
+#endif
+
 MEMTRACK_POP_GROUP( "CGuiScreenPauseSettings" );
 }
 #if defined(RAD_ANDROID)
 
 void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
 {
+    LOGI("[SHAR-GRAPHICS-DIAG] ConfigureAndroidGraphicsMenu begin");
     const int logicalItems[4] =
     {
         MENU_ITEM_CAMERA,
@@ -576,6 +613,16 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
             continue;
         }
 
+        // Use an independently-created text object for the six sharpening
+        // levels; never grow or rewrite the original Scrooby value resource.
+        if( i == 2 && m_pGraphicsSharpeningValue != NULL )
+        {
+            item->SetItemValue( m_pGraphicsSharpeningValue );
+            m_pOriginalSharpeningValue->SetVisible( false );
+            m_pGraphicsSharpeningValue->SetVisible( true );
+            LOGI("[SHAR-GRAPHICS-DIAG] Swapped in dedicated sharpening value text");
+        }
+
         // "Back" is an action row; the three graphics options use L/R values.
         if( i == 3 )
         {
@@ -606,18 +653,16 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
                 value->SetVisible( true );
                 if( i == 2 )
                 {
-                    if( EnsureAndroidTextStringCount( value, 6 ) )
+                    if( m_pGraphicsSharpeningValue != NULL &&
+                        value == m_pGraphicsSharpeningValue )
                     {
-                        for( int valueIndex = 0; valueIndex < 6; ++valueIndex )
-                        {
-                            value->SetString( valueIndex, sharpeningValues[valueIndex] );
-                        }
                         m_pMenu->SetSelectionValueCount( guiIndex, 6 );
                         m_pMenu->SetSelectionValue( guiIndex, sharpeningLevel );
                     }
                     else
                     {
-                        LOGE("Graphics menu could not expand the sharpening value text to six options");
+                        // Safe fallback if the dedicated value text could not
+                        // be created: retain the original two-entry toggle.
                         value->SetString( 0, "OFF" );
                         value->SetString( 1, "ON" );
                         m_pMenu->SetSelectionValueCount( guiIndex, 2 );
@@ -706,6 +751,18 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
         if( item == NULL )
         {
             continue;
+        }
+
+        // Restore the original sharpening value text before normal Settings
+        // updates are applied. Its OFF/ON string table was never modified.
+        if( logicalItems[i] == MENU_ITEM_INTERSECT_NAV_SYSTEM &&
+            m_pOriginalSharpeningValue != NULL &&
+            item->GetItemValue() == m_pGraphicsSharpeningValue )
+        {
+            m_pGraphicsSharpeningValue->SetVisible( false );
+            m_pOriginalSharpeningValue->SetVisible( true );
+            item->SetItemValue( m_pOriginalSharpeningValue );
+            LOGI("[SHAR-GRAPHICS-DIAG] Restored original Settings sharpening value text");
         }
 
         // Restore the original non-selectable value-row behaviour and normal
@@ -1196,8 +1253,10 @@ void CGuiScreenPauseSettings::InitIntro()
     // during the Graphics outro transition.
     if( openGraphicsMenu )
     {
+        LOGI("[SHAR-GRAPHICS-DIAG] Normal Settings init finished; entering Graphics layout");
         m_graphicsSettingsMode = true;
         ConfigureAndroidGraphicsMenu();
+        LOGI("[SHAR-GRAPHICS-DIAG] ConfigureAndroidGraphicsMenu finished");
     }
 #endif
 }

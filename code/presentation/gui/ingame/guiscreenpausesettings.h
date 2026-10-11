@@ -96,6 +96,9 @@ private:
     bool mHasInvertCamControl=false;
     bool mHasGamepadVibration=false;
 
+    Scrooby::Text* m_pOriginalSharpeningValue = NULL;
+    Scrooby::Text* m_pGraphicsSharpeningValue = NULL;
+
     int mMenuItemToGuiMenuIndex[ NUM_PAUSE_SETTINGS_MENU_ITEMS ];
     int mGuiMenuIndexToMenuItem[ NUM_PAUSE_SETTINGS_MENU_ITEMS ];
     int mNumActiveMenuItems=0;
