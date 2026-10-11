@@ -65,8 +65,9 @@ void SetFrameSharpeningLevel(int level);
 
 static bool gAndroidGraphicsSettingsRequested = false;
 
-// Diagnostic Graphics-menu-only selector. This deliberately does not write the
-// resolution config or request an Android Surface/native renderer resize.
+// Graphics-menu selector. The selected target is persisted to the existing
+// internal resolution config and applied by SDLSurface only at the next full launch.
+// This menu path never resizes the Android Surface or GL renderer while running.
 static const int SHAR_GRAPHICS_RESOLUTION_COUNT = 5;
 static int gSHARGraphicsResolutionSelection = 3; // 480p, 720p, 1080p, 1440p, 2160p
 
