@@ -915,7 +915,8 @@ void pglContext::BeginFrame()
 
     SDL_GL_SetSwapInterval(display->GetForceVSync() ? 1 : 0);
 
-    if(display->HasReset())
+    const bool displayResetPending = display->HasReset();
+    if(displayResetPending)
     {
         contextID++;
 
@@ -926,6 +927,13 @@ void pglContext::BeginFrame()
 #endif
 
         SyncState(0xffffffff);
+        display->ClearReset();
+
+#ifdef RAD_ANDROID
+        SDL_Log(
+            "[SHAR-RESIZE-DIAG] PDDI full state sync consumed: render=%dx%d",
+            display->GetWidth(), display->GetHeight());
+#endif
     }
 
     projection.Identity();
@@ -938,7 +946,44 @@ void pglContext::BeginFrame()
      * When disabled or when the FBO cannot be created, framebuffer 0 remains
      * active and the original renderer path is untouched.
      */
-    BeginCelPostProcessFrame(display->GetWidth(), display->GetHeight());
+    const int sharRenderWidth = display->GetWidth();
+    const int sharRenderHeight = display->GetHeight();
+    const bool sharCelEnabled = gCelShadingEnabled;
+    const bool sharCelTargetActive =
+        BeginCelPostProcessFrame(sharRenderWidth, sharRenderHeight);
+
+    static int lastLoggedWidth = 0;
+    static int lastLoggedHeight = 0;
+    static bool lastLoggedCelEnabled = false;
+    static bool lastLoggedTargetActive = false;
+    static bool hasLoggedCelTargetState = false;
+
+    if (!hasLoggedCelTargetState ||
+        sharRenderWidth != lastLoggedWidth ||
+        sharRenderHeight != lastLoggedHeight ||
+        sharCelEnabled != lastLoggedCelEnabled ||
+        sharCelTargetActive != lastLoggedTargetActive ||
+        displayResetPending)
+    {
+        GLint framebuffer = 0;
+        GLint viewport[4] = {0, 0, 0, 0};
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        SDL_Log(
+            "[SHAR-RESIZE-DIAG] BeginFrame target=%dx%d celEnabled=%d celFboActive=%d fbo=%d viewport=%d,%d %dx%d resetSync=%d",
+            sharRenderWidth, sharRenderHeight,
+            sharCelEnabled ? 1 : 0,
+            sharCelTargetActive ? 1 : 0,
+            (int)framebuffer,
+            viewport[0], viewport[1], viewport[2], viewport[3],
+            displayResetPending ? 1 : 0);
+
+        lastLoggedWidth = sharRenderWidth;
+        lastLoggedHeight = sharRenderHeight;
+        lastLoggedCelEnabled = sharCelEnabled;
+        lastLoggedTargetActive = sharCelTargetActive;
+        hasLoggedCelTargetState = true;
+    }
 #endif
 }
 
