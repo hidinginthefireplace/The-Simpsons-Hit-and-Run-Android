@@ -103,9 +103,10 @@ int gCRTFailedHeight = 0;
 
 // Budget for auxiliary full-screen post-processing targets. This deliberately
 // excludes game assets and the Android default framebuffer, so it is only a
-// conservative guard—not a claim about total free GPU memory.
+// conservative guard—not a claim about total free GPU memory. At high resolution,
+// prefer cel shading and CRT; skip sharpening if all three would exceed the budget.
 static const size_t SHAR_POSTPROCESS_BUDGET_BYTES =
-    (size_t)128 * 1024 * 1024;
+    (size_t)96 * 1024 * 1024;
 static int gSHARLastRejectedWidth = 0;
 static int gSHARLastRejectedHeight = 0;
 static int gSHARLastRejectedReason = 0;
@@ -180,11 +181,21 @@ static bool CheckSHARRenderTargetSize(
         }
 
         const size_t pixels = pixelWidth * pixelHeight;
+        if (pixels > ((size_t)-1) / 14)
+        {
+            LogSHARRenderTargetRejectedOnce(
+                width, height, reasonCode,
+                "post-process memory estimate overflowed");
+            return false;
+        }
+
         size_t estimatedBytes = 0;
+        const bool celEnabled = IsCelShadingEnabled();
+        const bool sharpeningEnabled = IsFrameSharpeningEnabled();
 
         // Estimate RGBA color + 16-bit depth and two quarter-resolution RGBA
         // bloom textures when cel shading is enabled.
-        if (IsCelShadingEnabled())
+        if (celEnabled)
         {
             estimatedBytes += pixels * 6;
             const size_t bloomWidth = width > 3 ? (size_t)(width / 4) : 1;
@@ -193,8 +204,11 @@ static bool CheckSHARRenderTargetSize(
         }
 
         // Count RGB full-screen copies as four bytes per pixel to allow for
-        // drivers that pad RGB allocations internally.
-        if (IsFrameSharpeningEnabled())
+        // drivers that pad RGB allocations internally. Reason 5 (sharpening)
+        // reserves room for CRT too; if all effects exceed the cap, sharpening
+        // is bypassed first so CRT can still run. Reason 6 (CRT) assumes that
+        // higher-priority sharpening was already bypassed by reason 5.
+        if (reasonCode == 5 && sharpeningEnabled)
             estimatedBytes += pixels * 4;
 
         bool crtEnabled = false;
@@ -202,14 +216,14 @@ static bool CheckSHARRenderTargetSize(
         float corners = 0.0f, overscan = 0.0f, brightness = 1.0f, contrast = 1.0f;
         GetCRTFilterConfiguration(&crtEnabled, &scanline, &curvature, &glow,
                                   &corners, &overscan, &brightness, &contrast);
-        if (crtEnabled)
+        if (crtEnabled && (reasonCode == 5 || reasonCode == 6))
             estimatedBytes += pixels * 4;
 
         if (estimatedBytes > SHAR_POSTPROCESS_BUDGET_BYTES)
         {
             char message[192];
             snprintf(message, sizeof(message),
-                "%s would exceed the 128 MiB auxiliary post-process budget (estimate=%u MiB)",
+                "%s would exceed the 96 MiB auxiliary post-process budget (estimate=%u MiB)",
                 label ? label : "target",
                 (unsigned)(estimatedBytes / (1024 * 1024)));
             LogSHARRenderTargetRejectedOnce(
