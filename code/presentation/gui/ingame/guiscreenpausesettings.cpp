@@ -24,6 +24,7 @@
 #include <camera/supercammanager.h>
 #include <camera/supercamcentral.h>
 #include <input/inputmanager.h>
+#include <events/eventmanager.h>
 #include <memory/srrmemory.h>
 #include <mission/charactersheet/charactersheetmanager.h>
 #include <presentation/tutorialmanager.h>
@@ -877,7 +878,9 @@ void CGuiScreenPauseSettings::HandleMessage
                     }
                     else if( logicalMenuItem == MENU_ITEM_INTERSECT_NAV_SYSTEM )
                     {
-                        SetFrameSharpeningEnabled( enabled );
+                        // The sharpening row has six values: OFF, 20%, 40%,
+                        // 60%, 80%, and MAX. Persist the exact chosen strength.
+                        SetFrameSharpeningLevel( static_cast<int>( param2 ) );
                     }
                     break;
                 }
