@@ -306,8 +306,12 @@ static bool EnsureCelPostProcessResources(int width, int height);
 
 static bool EnsureCelRenderTarget(int width, int height)
 {
-    if (width <= 0 || height <= 0)
+    if (!CheckSHARRenderTargetSize(
+            width, height, "cel render target", 2, true, true))
+    {
+        gCelRenderFboReady = false;
         return false;
+    }
 
     if (gCelRenderFbo == 0)
         glGenFramebuffers(1, &gCelRenderFbo);
@@ -472,6 +476,13 @@ static bool EnsureCelPostProcessResources(int width, int height)
     if (width <= 0 || height <= 0)
         return false;
 
+    if (gCelPostFailedWidth == width && gCelPostFailedHeight == height)
+        return false;
+
+    if (!CheckSHARRenderTargetSize(
+            width, height, "cel color texture", 1, false, true))
+        return false;
+
     if (gCelPostProgram == 0)
     {
         const char* vertexSource =
@@ -620,6 +631,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
 
     if (gCelPostWidth != width || gCelPostHeight != height)
     {
+        GLint previousTexture = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
         glBindTexture(GL_TEXTURE_2D, gCelPostTexture);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -637,8 +650,19 @@ static bool EnsureCelPostProcessResources(int width, int height)
             NULL
         );
 
+        if (!CheckSHARAllocationError("cel color texture", width, height))
+        {
+            gCelPostFailedWidth = width;
+            gCelPostFailedHeight = height;
+            glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture);
+            return false;
+        }
+
         gCelPostWidth = width;
         gCelPostHeight = height;
+        gCelPostFailedWidth = 0;
+        gCelPostFailedHeight = 0;
+        glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture);
     }
 
     return gCelPostProgram != 0 && gCelPostTexture != 0;
