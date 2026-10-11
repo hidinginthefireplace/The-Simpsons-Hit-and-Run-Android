@@ -1690,6 +1690,13 @@ long pglDisplay ::ProcessWindowMessage(SDL_Window* win, const SDL_WindowEvent* e
                 );
 #endif
             }
+#if defined(RAD_ANDROID)
+            if (winWidth > 0 && winHeight > 0) {
+                glViewport(0, 0, winWidth, winHeight);
+                SDL_Log("SHAR Android GL viewport refreshed after resize: %dx%d",
+                    winWidth, winHeight);
+            }
+#endif
             break;
         }
 
@@ -1737,6 +1744,13 @@ long pglDisplay ::ProcessWindowMessage(SDL_Window* win, const SDL_WindowEvent* e
                 );
 #endif
             }
+#if defined(RAD_ANDROID)
+            if (winWidth > 0 && winHeight > 0) {
+                glViewport(0, 0, winWidth, winHeight);
+                SDL_Log("SHAR Android GL viewport refreshed after resize: %dx%d",
+                    winWidth, winHeight);
+            }
+#endif
             break;
         }
 
