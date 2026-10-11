@@ -19,7 +19,7 @@
 #include <errno.h>
 
 
-static bool gCelShadingEnabled = true;
+static bool gCelShadingEnabled = false;
 static bool gCelShadingObjectEnabled = false;
 static bool gCelShadingOutlinePass = false;
 static pglContext* gCelShadingContext = nullptr;
@@ -30,10 +30,10 @@ static bool gSharpeningConfigurationLoaded = false;
 
 static bool gCRTConfigurationLoaded = false;
 static bool gCRTEnabled = false;
-static float gCRTScanlineStrength = 0.35f;
-static float gCRTCurvature = 0.15f;
-static float gCRTGlowStrength = 0.10f;
-static float gCRTCornerDarkening = 0.05f;
+static float gCRTScanlineStrength = 0.5f;
+static float gCRTCurvature = 0.06f;
+static float gCRTGlowStrength = 0.25f;
+static float gCRTCornerDarkening = 0.33f;
 static float gCRTOverscan = 0.0f;
 static float gCRTBrightness = 1.0f;
 static float gCRTContrast = 1.0f;
@@ -152,7 +152,7 @@ static void LoadCelShadingConfiguration()
 
     if (file == nullptr)
     {
-        // New installs use cel_shading=true unless a config is supplied.
+        // New installs keep cel shading disabled unless explicitly enabled in the config.
         WriteCelShadingConfiguration();
         return;
     }
