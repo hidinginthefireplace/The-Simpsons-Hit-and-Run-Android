@@ -65,9 +65,9 @@ void SetFrameSharpeningLevel(int level);
 
 static bool gAndroidGraphicsSettingsRequested = false;
 
-// Restart-apply selector stage: 480p through 1440p are enabled.
-// 2160p remains deferred until GL allocation safeguards are added.
-static const int SHAR_GRAPHICS_RESOLUTION_COUNT = 4;
+// Restart-apply selector. A 2160p request is now permitted, but full-screen
+// effects use GL size, budget, and allocation guards and safely bypass if needed.
+static const int SHAR_GRAPHICS_RESOLUTION_COUNT = 5;
 static int gSHARGraphicsResolutionSelection = 3; // default: 1440p
 static bool gSHARGraphicsResolutionNeedsNormalization = false;
 
@@ -100,9 +100,9 @@ void RequestAndroidGraphicsSettings()
 // Resolution choices shown by the Android Graphics submenu. The existing Java
 // startup code consumes target_height from /files/Graphics/Simpsons_resolution.txt.
 // No Surface/GL resize is requested here; the new value is applied at next launch.
-static const int SHAR_GRAPHICS_RESOLUTION_HEIGHTS[4] =
+static const int SHAR_GRAPHICS_RESOLUTION_HEIGHTS[5] =
 {
-    480, 720, 1080, 1440
+    480, 720, 1080, 1440, 2160
 };
 
 static int GetSHARGraphicsResolutionHeight( int selection )
@@ -283,7 +283,7 @@ static bool SaveSHARGraphicsResolutionSelection( int selection )
         "# Selected in the in-game Graphics menu.\n"
         "# Changes take effect after fully restarting the game.\n"
         "# The render width is calculated automatically from the display aspect ratio.\n"
-        "# Supported menu values in this build: 480, 720, 1080, 1440.\n"
+        "# Supported menu values: 480, 720, 1080, 1440, 2160.\n"
         "target_height=%d\n",
         height );
     const int closeResult = fclose( file );
@@ -756,7 +756,7 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
 
                 const char* resolutionValues[SHAR_GRAPHICS_RESOLUTION_COUNT] =
                 {
-                    "480p", "720p", "1080p", "1440p"
+                    "480p", "720p", "1080p", "1440p", "2160p"
                 };
                 for( int valueIndex = 0; valueIndex < SHAR_GRAPHICS_RESOLUTION_COUNT; ++valueIndex )
                 {
