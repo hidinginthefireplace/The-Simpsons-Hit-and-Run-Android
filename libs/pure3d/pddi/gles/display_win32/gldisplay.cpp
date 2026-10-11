@@ -11,6 +11,7 @@
 #include<stdio.h>
 #include<string.h>
 #include<math.h>
+#include<stdlib.h>
 #include<vector>
 
 #if defined(RAD_ANDROID)
@@ -87,6 +88,155 @@ bool gCelBloomReady = false;
 
 int gCelPostWidth = 0;
 int gCelPostHeight = 0;
+int gCelPostFailedWidth = 0;
+int gCelPostFailedHeight = 0;
+int gCelRenderbufferWidth = 0;
+int gCelRenderbufferHeight = 0;
+int gFrameSharpenFailedWidth = 0;
+int gFrameSharpenFailedHeight = 0;
+int gCRTFailedWidth = 0;
+int gCRTFailedHeight = 0;
+
+// Budget for auxiliary full-screen post-processing targets. This deliberately
+// excludes game assets and the Android default framebuffer, so it is only a
+// conservative guard—not a claim about total free GPU memory.
+static const size_t SHAR_POSTPROCESS_BUDGET_BYTES =
+    (size_t)128 * 1024 * 1024;
+static int gSHARLastRejectedWidth = 0;
+static int gSHARLastRejectedHeight = 0;
+static int gSHARLastRejectedReason = 0;
+
+static void LogSHARRenderTargetRejectedOnce(
+    int width, int height, int reason, const char* message)
+{
+    if (gSHARLastRejectedWidth == width &&
+        gSHARLastRejectedHeight == height &&
+        gSHARLastRejectedReason == reason)
+    {
+        return;
+    }
+
+    gSHARLastRejectedWidth = width;
+    gSHARLastRejectedHeight = height;
+    gSHARLastRejectedReason = reason;
+    SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+        "SHAR Android render target %dx%d skipped: %s",
+        width, height, message ? message : "unsupported size");
+}
+
+static bool CheckSHARRenderTargetSize(
+    int width, int height, const char* label,
+    int reasonCode, bool needsRenderbuffer, bool checkBudget)
+{
+    if (width <= 0 || height <= 0)
+        return false;
+
+    GLint maxTextureSize = 0;
+    GLint maxRenderbufferSize = 0;
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
+
+    if (maxTextureSize <= 0 ||
+        width > maxTextureSize || height > maxTextureSize)
+    {
+        char message[192];
+        snprintf(message, sizeof(message),
+            "%s exceeds GL_MAX_TEXTURE_SIZE=%d",
+            label ? label : "target", (int)maxTextureSize);
+        LogSHARRenderTargetRejectedOnce(
+            width, height, reasonCode, message);
+        return false;
+    }
+
+    if (needsRenderbuffer)
+    {
+        glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maxRenderbufferSize);
+        if (maxRenderbufferSize <= 0 ||
+            width > maxRenderbufferSize || height > maxRenderbufferSize)
+        {
+            char message[192];
+            snprintf(message, sizeof(message),
+                "%s exceeds GL_MAX_RENDERBUFFER_SIZE=%d",
+                label ? label : "target", (int)maxRenderbufferSize);
+            LogSHARRenderTargetRejectedOnce(
+                width, height, reasonCode, message);
+            return false;
+        }
+    }
+
+    if (checkBudget)
+    {
+        const size_t pixelWidth = (size_t)width;
+        const size_t pixelHeight = (size_t)height;
+        if (pixelHeight > ((size_t)-1) / pixelWidth)
+        {
+            LogSHARRenderTargetRejectedOnce(
+                width, height, reasonCode,
+                "pixel-count calculation overflowed");
+            return false;
+        }
+
+        const size_t pixels = pixelWidth * pixelHeight;
+        size_t estimatedBytes = 0;
+
+        // Estimate RGBA color + 16-bit depth and two quarter-resolution RGBA
+        // bloom textures when cel shading is enabled.
+        if (IsCelShadingEnabled())
+        {
+            estimatedBytes += pixels * 6;
+            const size_t bloomWidth = width > 3 ? (size_t)(width / 4) : 1;
+            const size_t bloomHeight = height > 3 ? (size_t)(height / 4) : 1;
+            estimatedBytes += bloomWidth * bloomHeight * 8;
+        }
+
+        // Count RGB full-screen copies as four bytes per pixel to allow for
+        // drivers that pad RGB allocations internally.
+        if (IsFrameSharpeningEnabled())
+            estimatedBytes += pixels * 4;
+
+        bool crtEnabled = false;
+        float scanline = 0.0f, curvature = 0.0f, glow = 0.0f;
+        float corners = 0.0f, overscan = 0.0f, brightness = 1.0f, contrast = 1.0f;
+        GetCRTFilterConfiguration(&crtEnabled, &scanline, &curvature, &glow,
+                                  &corners, &overscan, &brightness, &contrast);
+        if (crtEnabled)
+            estimatedBytes += pixels * 4;
+
+        if (estimatedBytes > SHAR_POSTPROCESS_BUDGET_BYTES)
+        {
+            char message[192];
+            snprintf(message, sizeof(message),
+                "%s would exceed the 128 MiB auxiliary post-process budget (estimate=%u MiB)",
+                label ? label : "target",
+                (unsigned)(estimatedBytes / (1024 * 1024)));
+            LogSHARRenderTargetRejectedOnce(
+                width, height, reasonCode, message);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool CheckSHARAllocationError(
+    const char* label, int width, int height)
+{
+    const GLenum error = glGetError();
+    if (error == GL_NO_ERROR)
+        return true;
+
+    // Drain the remaining error flags after recording the first failure so
+    // subsequent GL work can proceed on the direct/default framebuffer.
+    GLenum pendingError = GL_NO_ERROR;
+    while ((pendingError = glGetError()) != GL_NO_ERROR)
+    {
+    }
+
+    SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+        "SHAR Android allocation failed for %s (%dx%d), GL error=0x%04x; bypassing that effect",
+        label ? label : "post-process target",
+        width, height, (unsigned)error);
+    return false;
+}
 
 static GLuint CompileCelPostShader(GLenum type, const char* source)
 {
