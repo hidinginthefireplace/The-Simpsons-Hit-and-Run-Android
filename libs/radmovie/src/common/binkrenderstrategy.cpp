@@ -24,11 +24,13 @@
 #include <p3d/utility.hpp>
 
 #include <radprofiler.hpp>
+#include <pddi/gles/gl.hpp>
 #include "binkrenderstrategy.hpp"
 
 #if defined(RAD_ANDROID)
 #include <android/log.h>
 #define SHAR_FMV_DIAG(...) __android_log_print(ANDROID_LOG_INFO, "SimpsonsHitAndRun", __VA_ARGS__)
+extern "C" bool SHARGetAndroidOutputSurfaceSize(int* width, int* height);
 #endif
 
 extern bool inLoop;
@@ -286,7 +288,7 @@ void radMovieRenderStrategyBink::UpdateDisplayLayout( void )
 #if defined(RAD_ANDROID)
     SHAR_FMV_DIAG(
         "[SHAR-FMV-DIAG] layout display=%dx%d movie=%ux%u multiplier=%.4f "
-        "pixelOffset=%d,%d mode=android-normalized-quad",
+        "pixelOffset=%d,%d mode=display-pixel-layout",
         displayWidth, displayHeight,
         m_MovieWidth, m_MovieHeight,
         m_DisplayMultiplier, m_MoviePosX, m_MoviePosY);
@@ -310,7 +312,76 @@ bool radMovieRenderStrategyBink::Render( void )
     p3d::pddi->SetProjectionMode(PDDI_PROJECTION_ORTHOGRAPHIC); //PDDI_PROJECTION_DEVICE
     #endif
     p3d::pddi->SetCullMode(PDDI_CULL_NONE);
-    
+
+#if defined(RAD_ANDROID)
+    /*
+     * Log once per distinct layout/render target. This is intentionally a cheap
+     * state query (no glReadPixels): it reveals whether the movie quad is using
+     * internal PDDI dimensions while GL is bound to the FBO or to framebuffer 0.
+     */
+    {
+        GLint framebuffer = -1;
+        GLint viewport[4] = { 0, 0, 0, 0 };
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
+        glGetIntegerv(GL_VIEWPORT, viewport);
+
+        int outputWidth = 0;
+        int outputHeight = 0;
+        const int outputKnown =
+            SHARGetAndroidOutputSurfaceSize(&outputWidth, &outputHeight) ? 1 : 0;
+
+        static int lastDisplayWidth = -1;
+        static int lastDisplayHeight = -1;
+        static int lastMovieWidth = -1;
+        static int lastMovieHeight = -1;
+        static int lastOutputWidth = -1;
+        static int lastOutputHeight = -1;
+        static int lastFramebuffer = -2;
+        static int lastViewport[4] = { -1, -1, -1, -1 };
+
+        const int displayWidth = p3d::display != NULL ? p3d::display->GetWidth() : 0;
+        const int displayHeight = p3d::display != NULL ? p3d::display->GetHeight() : 0;
+        const bool changed =
+            displayWidth != lastDisplayWidth ||
+            displayHeight != lastDisplayHeight ||
+            (int)m_MovieWidth != lastMovieWidth ||
+            (int)m_MovieHeight != lastMovieHeight ||
+            outputWidth != lastOutputWidth ||
+            outputHeight != lastOutputHeight ||
+            (int)framebuffer != lastFramebuffer ||
+            viewport[0] != lastViewport[0] ||
+            viewport[1] != lastViewport[1] ||
+            viewport[2] != lastViewport[2] ||
+            viewport[3] != lastViewport[3];
+
+        if (changed)
+        {
+#if defined(RAD_WIN32)
+            const char* coordinatePath = "RAD_WIN32-device-pixel";
+#else
+            const char* coordinatePath = "orthographic-normalized";
+#endif
+            SHAR_FMV_DIAG(
+                "[SHAR-FMV-DIAG] draw path=%s display=%dx%d output=%dx%d outputKnown=%d "
+                "movie=%ux%u multiplier=%.4f moviePos=%d,%d fbo=%d viewport=%d,%d,%d,%d",
+                coordinatePath, displayWidth, displayHeight,
+                outputWidth, outputHeight, outputKnown,
+                m_MovieWidth, m_MovieHeight, m_DisplayMultiplier,
+                m_MoviePosX, m_MoviePosY, (int)framebuffer,
+                viewport[0], viewport[1], viewport[2], viewport[3]);
+
+            lastDisplayWidth = displayWidth;
+            lastDisplayHeight = displayHeight;
+            lastMovieWidth = (int)m_MovieWidth;
+            lastMovieHeight = (int)m_MovieHeight;
+            lastOutputWidth = outputWidth;
+            lastOutputHeight = outputHeight;
+            lastFramebuffer = (int)framebuffer;
+            for (int i = 0; i < 4; ++i)
+                lastViewport[i] = viewport[i];
+        }
+    }
+#endif
 
     // Note: A faster render strategy is possible...
     //
@@ -372,25 +443,6 @@ bool radMovieRenderStrategyBink::Render( void )
         float z = 5.0f;     // arbitrary value greater than 0
         float dx = ( float ) m_DisplayMultiplier * m_pTile[ tile ].m_Width;
         float dy = ( float ) m_DisplayMultiplier * m_pTile[ tile ].m_Height;
-
-        #elif defined(RAD_ANDROID)
-
-        /*
-         * Android/GLES uses an orthographic projection with normalized device
-         * coordinates, not the pixel coordinates used by the Win32 strategy.
-         * Applying a display-pixel multiplier to x here mixes the two spaces:
-         * as the internal render height grows, the quad grows beyond the FBO
-         * and appears clipped/offset after the fixed-surface resolve.
-         *
-         * Keep the movie quad at the established fullscreen normalized bounds.
-         * The offscreen renderer then scales this complete image to the output
-         * surface, independently of the selected internal resolution.
-         */
-        float x = -0.5f;
-        float y = 0.5f / (4.0f / 3.0f);
-        float z = 5.0f;
-        float dx = 1.0f;
-        float dy = y * -2.0f;
 
         #else
 
