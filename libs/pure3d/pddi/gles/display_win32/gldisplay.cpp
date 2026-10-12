@@ -1653,9 +1653,34 @@ static void ApplyCelPostProcess(int width, int height)
 
 }
 #ifdef RAD_ANDROID
-extern "C" bool SHARGetAndroidOutputSurfaceSize(int* width, int* height)
+extern "C" bool SHARGetAndroidRenderState(
+    int* outputWidth,
+    int* outputHeight,
+    int* framebuffer,
+    int* viewport)
 {
-    return QueryDefaultFramebufferSize(width, height);
+    bool outputKnown = false;
+    int width = 0;
+    int height = 0;
+
+    if (QueryDefaultFramebufferSize(&width, &height))
+        outputKnown = true;
+
+    GLint boundFramebuffer = -1;
+    GLint currentViewport[4] = { 0, 0, 0, 0 };
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &boundFramebuffer);
+    glGetIntegerv(GL_VIEWPORT, currentViewport);
+
+    if (outputWidth != NULL) *outputWidth = width;
+    if (outputHeight != NULL) *outputHeight = height;
+    if (framebuffer != NULL) *framebuffer = (int)boundFramebuffer;
+    if (viewport != NULL)
+    {
+        for (int i = 0; i < 4; ++i)
+            viewport[i] = (int)currentViewport[i];
+    }
+
+    return outputKnown;
 }
 #endif
 
