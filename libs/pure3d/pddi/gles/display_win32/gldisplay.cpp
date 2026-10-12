@@ -38,8 +38,9 @@ GLuint gCelFallbackProgram = 0;
 GLuint gCelFallbackVbo = 0;
 GLint gCelFallbackTextureLocation = -1;
 
-// A frame uses one committed render-size snapshot. The active PDDI dimensions
-// are only modified on the GL thread, at the start of a frame.
+// A frame uses one committed world-render-size snapshot. PDDI dimensions are
+// restored to that target at frame start and temporarily switch to output size
+// after scene composition for GUI rendering.
 static int gSHARFrameWidth = 0;
 static int gSHARFrameHeight = 0;
 static bool gCelWorldInFbo = false;
@@ -2459,11 +2460,12 @@ bool pglDisplay ::InitDisplay(const pddiDisplayInit* init)
     /*
      * Android adaptive render resolution:
      *
-     * SDLSurface.java has already calculated the internal Surface buffer size
-     * and sent it through nativeSetSHARRenderResolution().
-     *
-     * Use that size as PDDI display size so pglContext::SetupHardwareProjection()
-     * later uses the adaptive resolution for glViewport/projection/scissor.
+     * SDLSurface.java sends the selected internal world-render size through
+     * nativeSetSHARRenderResolution(). The Android output Surface remains at its
+     * platform size; this target is used for world projection, viewport and scissor.
+     * After scene composition, ApplyCelPostProcessBeforeGui temporarily changes the
+     * PDDI dimensions to output size for GUI drawing. CommitPendingResize restores
+     * the internal render dimensions at the next frame start.
      */
     {
         int renderW = 0;
