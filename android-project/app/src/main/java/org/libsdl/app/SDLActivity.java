@@ -942,11 +942,10 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
     /**
      * This method is called by SDL using JNI.
-     */
-    /**
-     * Request a change to the game's internal render resolution while the game
-     * is running. The SurfaceView performs the resize on Android's UI thread;
-     * SDL then receives the normal surface/window resize callbacks.
+     *
+     * Request a change to the internal world-render resolution. SDLSurface posts
+     * the target size to the Android UI thread, but does not resize the output
+     * Surface. Native code commits the new offscreen target on the GL thread.
      */
     public static boolean requestSHARRenderResolutionHeight(int targetHeight) {
         SDLSurface surface = mSurface;
