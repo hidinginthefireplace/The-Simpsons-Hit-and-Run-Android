@@ -1652,6 +1652,12 @@ static void ApplyCelPostProcess(int width, int height)
 }
 
 }
+#ifdef RAD_ANDROID
+extern "C" bool SHARGetAndroidOutputSurfaceSize(int* width, int* height)
+{
+    return QueryDefaultFramebufferSize(width, height);
+}
+#endif
 
 bool BeginCelPostProcessFrame(int width, int height)
 {
