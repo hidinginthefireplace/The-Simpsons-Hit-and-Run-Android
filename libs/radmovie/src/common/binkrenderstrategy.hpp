@@ -89,6 +89,12 @@ class radMovieRenderStrategyBink
 
         virtual void ChangeParameters( unsigned int width, unsigned int height );
 
+    private:
+        // Recalculate movie quad placement when the active internal render target changes.
+        void UpdateDisplayLayout( void );
+
+    public:
+
         virtual bool Render( void );
 
     private:
@@ -109,6 +115,8 @@ class radMovieRenderStrategyBink
         int m_MoviePosY;
         unsigned int m_MovieWidth;
         unsigned int m_MovieHeight;
+        int m_DisplayWidth;
+        int m_DisplayHeight;
 		float m_DisplayMultiplier;
 
 		unsigned int m_NumTiles;
