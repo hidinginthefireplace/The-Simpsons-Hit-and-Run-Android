@@ -1704,6 +1704,62 @@ void ApplyCelPostProcessBeforeGui(int width, int height)
 }
 
 
+#ifdef RAD_ANDROID
+// Movies are presentation content, not part of the adaptive-resolution world
+// target. Render them directly to the real Android output Surface so the movie
+// quad's device-pixel projection and viewport use one consistent coordinate
+// system at every selected internal render resolution.
+void BeginSHARAndroidFMVOutputRender()
+{
+    int outputWidth = 0;
+    int outputHeight = 0;
+    if (!QueryDefaultFramebufferSize(&outputWidth, &outputHeight) ||
+        outputWidth <= 0 || outputHeight <= 0)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+            "[SHAR-FMV-DIAG] direct-output target unavailable; keeping current render target");
+        return;
+    }
+
+    const int previousWidth =
+        gSHARActiveDisplayWidthForGui != NULL ? *gSHARActiveDisplayWidthForGui : gSHARFrameWidth;
+    const int previousHeight =
+        gSHARActiveDisplayHeightForGui != NULL ? *gSHARActiveDisplayHeightForGui : gSHARFrameHeight;
+
+    if (gSHARActiveDisplayWidthForGui != NULL)
+        *gSHARActiveDisplayWidthForGui = outputWidth;
+    if (gSHARActiveDisplayHeightForGui != NULL)
+        *gSHARActiveDisplayHeightForGui = outputHeight;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, outputWidth, outputHeight);
+
+    // Do not let scissor or write masks preserve pixels from the previous
+    // open-world frame in the letterbox area surrounding the movie.
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_BLEND);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // The movie is now the frame being presented. The next BeginFrame will
+    // restore the internal world target and bind its FBO as usual.
+    gCelWorldInFbo = false;
+
+    GLint framebuffer = -1;
+    GLint viewport[4] = {0, 0, 0, 0};
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    SDL_Log(
+        "[SHAR-FMV-DIAG] direct-output target=%dx%d previousDisplay=%dx%d "
+        "fb=%d viewport=%d,%d %dx%d",
+        outputWidth, outputHeight, previousWidth, previousHeight,
+        (int)framebuffer, viewport[0], viewport[1], viewport[2], viewport[3]);
+}
+#endif
+
 static void ApplyFrameSharpening(int width, int height)
 {
     // The pause-menu setter updates the same state queried here, allowing
