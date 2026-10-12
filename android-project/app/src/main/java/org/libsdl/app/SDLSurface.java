@@ -45,11 +45,11 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     // Keep track of the surface size to normalize touch events
     protected float mWidth, mHeight;
 
-    // Internal render resolution used by the Android Surface buffer
+    // Internal world-render resolution used by the offscreen framebuffer
     private int mRenderWidth = 0;
     private int mRenderHeight = 0;
 
-    // Coalesce render-target changes on the Android UI thread.
+    // Pending render-target selection processed on the Android UI thread.
     private int mSHARPendingRenderHeight = 0;
 
     // Avoid repeatedly sending the same render resolution to native code
@@ -860,9 +860,8 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
             }
         } catch (UnsatisfiedLinkError e) {
             /*
-             * Temporary safety while the native side is being added.
-             * Once gldisplay.cpp implements nativeSetSHARRenderResolution(),
-             * this warning should disappear.
+             * The SurfaceView constructor can run before native libraries are
+             * ready. Later surface lifecycle callbacks retry this same target.
              */
             if (!mNativeResolutionHookWarned) {
                 mNativeResolutionHookWarned = true;
@@ -876,13 +875,6 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         }
     }
 
-    /**
-     * Request a new internal render height while the game is running.
-     *
-     * This method may be called by the SDL/game thread. All SurfaceView,
-     * SurfaceHolder and layout operations are posted to the Android UI thread.
-     * The existing surfaceChanged/native resize route then updates SDL/PDDI.
-     */
     /**
      * Request a new internal render height while leaving Android's output Surface
      * at its platform-provided full-screen size. The native renderer applies the
@@ -1079,8 +1071,8 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
     setOnTouchListener(this);
 
     /*
-     * Re-apply the fixed Surface size after resume in case Android recreated
-     * the Surface or display metrics changed.
+     * Recalculate the internal render target after resume in case Android
+     * recreated the Surface or display metrics changed.
      */
     applyAdaptiveRenderResolution("handleResume", true);
 
@@ -1235,8 +1227,8 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         sendSHARRenderResolutionToNative(mRenderWidth, mRenderHeight, "surfaceChanged");
 
         /*
-         * The SurfaceView remains fullscreen; only its underlying Surface buffer
-         * uses the selected internal render resolution.
+         * The SurfaceView remains fullscreen. Its output buffer is controlled by
+         * Android's platform layout, independently of the internal render target.
          */
         RelativeLayout.LayoutParams surfaceParams =
                 new RelativeLayout.LayoutParams(
@@ -1264,7 +1256,7 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         /*
          * Keep the standard SDL path informed.
          *
-         * surfaceWidth/surfaceHeight = internal Surface buffer size.
+         * surfaceWidth/surfaceHeight = Android output Surface size.
          * deviceWidth/deviceHeight   = physical device size.
          */
         SDLActivity.nativeSetScreenResolution(
