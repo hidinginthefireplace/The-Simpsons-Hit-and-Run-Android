@@ -46,6 +46,9 @@
 #include <radmemory.hpp>
 #include <radmemorymonitor.hpp>
 #include <pddi/pddi.hpp>
+#if defined(RAD_ANDROID)
+#include <pddi/gles/gldisplay.hpp>
+#endif
 
 #include <string.h>
 
@@ -698,6 +701,11 @@ void FMVPlayer::IterateLoop( IRadMoviePlayer2* pIRadMoviePlayer )
     p3d::pddi->SetZCompare(PDDI_COMPARE_ALWAYS);
 #endif
     // END NEW LINES 
+
+    // Android FMVs use output-pixel layout independent of the world render resolution.
+#if defined(RAD_ANDROID)
+    BeginSHARAndroidFMVOutputRender();
+#endif
 
     // Render del frame de vídeo (UNA sola vez)
     pIRadMoviePlayer->Render();
