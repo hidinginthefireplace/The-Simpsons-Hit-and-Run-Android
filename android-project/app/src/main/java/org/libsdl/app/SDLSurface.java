@@ -49,15 +49,7 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     private int mRenderWidth = 0;
     private int mRenderHeight = 0;
 
-    // Avoid repeatedly applying the same fixed Surface size
-    private int mLastFixedSurfaceWidth = 0;
-    private int mLastFixedSurfaceHeight = 0;
-
-    // Serialize live Surface resizes. While one size is being confirmed by
-    // surfaceChanged(), newer picker choices replace the pending target.
-    private boolean mSHARLiveResizeInProgress = false;
-    private int mSHARLiveResizeRequestedWidth = 0;
-    private int mSHARLiveResizeRequestedHeight = 0;
+    // Coalesce render-target changes on the Android UI thread.
     private int mSHARPendingRenderHeight = 0;
 
     // Avoid repeatedly sending the same render resolution to native code
@@ -124,7 +116,7 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     *     Use the physical display size in landscape terms as the touch
     *     normalization base.
     *     This is useful on some older/32-bit devices where getWidth()/getHeight()
-    *     does not match the actual touch coordinate space after setFixedSize().
+    *     does not match the actual touch coordinate space on all Android devices.
     */
     private static final int SHAR_TOUCH_MODE_VIEW = 1;
     private static final int SHAR_TOUCH_MODE_PHYSICAL_LANDSCAPE = 2;
@@ -170,7 +162,7 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
          * Simpsons Android:
          * Apply the internal render resolution before the native surface starts.
          */
-        applyAdaptiveFixedSurfaceSize("constructor", false);
+        applyAdaptiveRenderResolution("constructor", false);
 
         setOnGenericMotionListener(SDLActivity.getMotionListener());
 
@@ -891,117 +883,38 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
      * SurfaceHolder and layout operations are posted to the Android UI thread.
      * The existing surfaceChanged/native resize route then updates SDL/PDDI.
      */
+    /**
+     * Request a new internal render height while leaving Android's output Surface
+     * at its platform-provided full-screen size. The native renderer applies the
+     * request at the start of a GL frame.
+     */
     public boolean requestSHARRenderResolutionHeight(final int requestedHeight) {
         return post(new Runnable() {
             @Override
             public void run() {
-                final int targetHeight =
+                mSHARPendingRenderHeight =
                         sanitizeSHARTargetRenderHeight(requestedHeight);
-
-                // Keep only the most recent user selection. If a resize is
-                // already in flight, it will be applied after surfaceChanged
-                // confirms the current target.
-                mSHARPendingRenderHeight = targetHeight;
-
-                if (SHAR_LOG_RESOLUTION) {
-                    Log.v(
-                            "SDL",
-                            "SHAR live resolution request queued: targetHeight=" +
-                                    targetHeight +
-                                    " inProgress=" + mSHARLiveResizeInProgress +
-                                    " pendingLatest=" + mSHARPendingRenderHeight
-                    );
-                }
-
                 processPendingSHARRenderResolutionRequest();
             }
         });
     }
 
     /*
-     * Runs only on the Android UI thread. Do not publish the new native render
-     * dimensions here: setFixedSize() is asynchronous, and surfaceChanged()
-     * must confirm the actual buffer dimensions first.
+     * Runs on the Android UI thread. The selected size is an offscreen render target
+     * only; this method deliberately does not resize the Android Surface.
      */
     private void processPendingSHARRenderResolutionRequest() {
-        if (mSHARLiveResizeInProgress || mSHARPendingRenderHeight <= 0) {
+        if (mSHARPendingRenderHeight <= 0) {
             return;
         }
 
-        final int targetHeight =
+        mSHARTargetRenderHeight =
                 sanitizeSHARTargetRenderHeight(mSHARPendingRenderHeight);
         mSHARPendingRenderHeight = 0;
-
-        int[] size = getPhysicalDisplaySize();
-        int deviceWidth = size[0];
-        int deviceHeight = size[1];
-
-        if (!SHAR_USE_ADAPTIVE_RENDER_RESOLUTION ||
-                deviceWidth <= 0 || deviceHeight <= 0) {
-            Log.w("SDL", "SHAR live resize skipped: invalid adaptive/display state");
-            return;
-        }
-
-        int longSide = Math.max(deviceWidth, deviceHeight);
-        int shortSide = Math.min(deviceWidth, deviceHeight);
-        if (shortSide <= 0) {
-            Log.w("SDL", "SHAR live resize skipped: invalid short display side");
-            return;
-        }
-
-        int targetWidth = (int) Math.round(
-                targetHeight * (longSide / (double) shortSide));
-        targetWidth = roundToMultiple(targetWidth, SHAR_RENDER_WIDTH_ALIGNMENT);
-
-        if (targetWidth <= 0 || targetHeight <= 0) {
-            Log.w("SDL", "SHAR live resize skipped: invalid target " +
-                    targetWidth + "x" + targetHeight);
-            return;
-        }
-
-        // A choice that already matches the last confirmed Surface size does
-        // not need another setFixedSize() call (which may produce no callback).
-        if (targetWidth == mRenderWidth && targetHeight == mRenderHeight) {
-            mSHARTargetRenderHeight = targetHeight;
-            mLastFixedSurfaceWidth = targetWidth;
-            mLastFixedSurfaceHeight = targetHeight;
-            Log.v("SDL", "SHAR live resize already confirmed: " +
-                    targetWidth + "x" + targetHeight);
-            return;
-        }
-
-        mSHARTargetRenderHeight = targetHeight;
-        mSHARLiveResizeInProgress = true;
-        mSHARLiveResizeRequestedWidth = targetWidth;
-        mSHARLiveResizeRequestedHeight = targetHeight;
-
-        Log.i("SDL", "SHAR live resize begin: requested=" +
-                targetWidth + "x" + targetHeight +
-                " confirmed=" + mRenderWidth + "x" + mRenderHeight);
-
-        try {
-            // SurfaceHolder operations belong to the UI thread. Do not update
-            // mRenderWidth/mRenderHeight or the native size until confirmation.
-            getHolder().setFixedSize(targetWidth, targetHeight);
-
-            RelativeLayout.LayoutParams surfaceParams =
-                    new RelativeLayout.LayoutParams(
-                            RelativeLayout.LayoutParams.MATCH_PARENT,
-                            RelativeLayout.LayoutParams.MATCH_PARENT
-                    );
-            setLayoutParams(surfaceParams);
-            setScaleX(1.0f);
-            setScaleY(1.0f);
-        } catch (RuntimeException e) {
-            mSHARLiveResizeInProgress = false;
-            mSHARLiveResizeRequestedWidth = 0;
-            mSHARLiveResizeRequestedHeight = 0;
-            Log.e("SDL", "SHAR live resize request failed for " +
-                    targetWidth + "x" + targetHeight, e);
-        }
+        applyAdaptiveRenderResolution("live-selection", true);
     }
 
-    private void applyAdaptiveFixedSurfaceSize(String reason, boolean force) {
+    private void applyAdaptiveRenderResolution(String reason, boolean force) {
         if (!SHAR_USE_ADAPTIVE_RENDER_RESOLUTION) {
             setScaleX(1.0f);
             setScaleY(1.0f);
@@ -1009,75 +922,45 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         }
 
         int[] size = getPhysicalDisplaySize();
-
         int deviceWidth = size[0];
         int deviceHeight = size[1];
 
         if (deviceWidth <= 0 || deviceHeight <= 0) {
             if (SHAR_LOG_RESOLUTION) {
-                Log.v("SDL", "SHAR adaptive resolution skipped [" + reason + "]: invalid device size");
+                Log.v("SDL", "SHAR adaptive render resolution skipped [" +
+                        reason + "]: invalid device size");
             }
             return;
         }
 
-        /*
-         * Calculate the render resolution in landscape terms:
-         *
-         * physical screen: longSide x shortSide
-         * render target: adaptiveWidth x SHAR_TARGET_RENDER_HEIGHT
-         *
-         * Example:
-         * 2772x1280
-         * targetHeight = 720
-         * targetWidth = 720 * 2772 / 1280 = 1559.25 -> 1560
-         */
         int longSide = Math.max(deviceWidth, deviceHeight);
         int shortSide = Math.min(deviceWidth, deviceHeight);
-
         int targetHeight = sanitizeSHARTargetRenderHeight(mSHARTargetRenderHeight);
         mSHARTargetRenderHeight = targetHeight;
-        int targetWidth = (int) Math.round(targetHeight * (longSide / (double) shortSide));
-
+        int targetWidth = (int) Math.round(
+                targetHeight * (longSide / (double) shortSide));
         targetWidth = roundToMultiple(targetWidth, SHAR_RENDER_WIDTH_ALIGNMENT);
 
         if (targetWidth <= 0 || targetHeight <= 0) {
             if (SHAR_LOG_RESOLUTION) {
-                Log.v("SDL", "SHAR adaptive resolution skipped [" + reason + "]: invalid target size");
+                Log.v("SDL", "SHAR adaptive render resolution skipped [" +
+                        reason + "]: invalid target size");
             }
             return;
         }
 
         final boolean changed =
-                targetWidth != mLastFixedSurfaceWidth ||
-                        targetHeight != mLastFixedSurfaceHeight;
-
+                targetWidth != mRenderWidth || targetHeight != mRenderHeight;
         if (!changed && !force) {
             return;
         }
 
+        // These values describe the offscreen world-render target, not the Surface.
         mRenderWidth = targetWidth;
         mRenderHeight = targetHeight;
-
-        mLastFixedSurfaceWidth = targetWidth;
-        mLastFixedSurfaceHeight = targetHeight;
-
-        /*
-         * Send the selected adaptive render resolution to the native game layer.
-         * gldisplay.cpp will later use this as pglDisplay winWidth/winHeight.
-         */
         sendSHARRenderResolutionToNative(mRenderWidth, mRenderHeight, reason);
 
-        /*
-         * This is the key Android-side performance change:
-         * reduce the real Surface buffer size.
-         */
-        getHolder().setFixedSize(mRenderWidth, mRenderHeight);
-
-        /*
-         * Keep the View itself fullscreen. setFixedSize() controls only the
-         * underlying Surface buffer used for rendering; do not apply a second
-         * View transform, or lower internal resolutions become magnified/cropped.
-         */
+        // Keep the View full-screen; the native renderer scales its FBO to output.
         RelativeLayout.LayoutParams surfaceParams =
                 new RelativeLayout.LayoutParams(
                         RelativeLayout.LayoutParams.MATCH_PARENT,
@@ -1088,13 +971,7 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         setScaleY(1.0f);
 
         logAdaptiveResolutionIfNeeded(
-                reason,
-                longSide,
-                shortSide,
-                mRenderWidth,
-                mRenderHeight,
-                changed
-        );
+                reason, longSide, shortSide, mRenderWidth, mRenderHeight, changed);
     }
 
 
@@ -1205,7 +1082,7 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
      * Re-apply the fixed Surface size after resume in case Android recreated
      * the Surface or display metrics changed.
      */
-    applyAdaptiveFixedSurfaceSize("handleResume", true);
+    applyAdaptiveRenderResolution("handleResume", true);
 
     /*
      * Re-read touch mode on resume so users can change:
@@ -1310,18 +1187,8 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
         Log.v("SDL", "surfaceCreated()");
-        /*
-         * Ensure the Surface buffer size is applied before notifying native code.
-         */
-        if (mSHARLiveResizeInProgress &&
-                mSHARLiveResizeRequestedWidth > 0 &&
-                mSHARLiveResizeRequestedHeight > 0) {
-            getHolder().setFixedSize(
-                    mSHARLiveResizeRequestedWidth,
-                    mSHARLiveResizeRequestedHeight);
-        } else {
-            applyAdaptiveFixedSurfaceSize("surfaceCreated", true);
-        }
+        // Keep Android's platform-sized output Surface and refresh only the render target.
+        applyAdaptiveRenderResolution("surfaceCreated", true);
 
         SDLActivity.onNativeSurfaceCreated();
     }
@@ -1362,37 +1229,9 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         } catch(Exception ignored) {
         }
 
-        /*
-         * width/height are the actual Surface buffer size.
-         * With getHolder().setFixedSize(), these should normally match the adaptive
-         * render resolution, for example 1560x720.
-         */
-        mRenderWidth = width;
-        mRenderHeight = height;
-        mLastFixedSurfaceWidth = width;
-        mLastFixedSurfaceHeight = height;
-
-        if (mSHARLiveResizeInProgress) {
-            if (width == mSHARLiveResizeRequestedWidth &&
-                    height == mSHARLiveResizeRequestedHeight) {
-                Log.i("SDL", "SHAR live resize confirmed: " +
-                        width + "x" + height);
-                mSHARLiveResizeInProgress = false;
-                mSHARLiveResizeRequestedWidth = 0;
-                mSHARLiveResizeRequestedHeight = 0;
-            } else {
-                Log.v("SDL", "SHAR surface size callback while awaiting live resize: " +
-                        "callback=" + width + "x" + height +
-                        " waitingFor=" + mSHARLiveResizeRequestedWidth + "x" +
-                        mSHARLiveResizeRequestedHeight);
-            }
-        }
-
-        /*
-         * Send the confirmed Surface buffer size to the native display layer.
-         * This call is cheap because sendSHARRenderResolutionToNative() ignores
-         * duplicated width/height values.
-         */
+        // width/height describe the output Surface, not the selected internal render target.
+        // Preserve mRenderWidth/mRenderHeight and re-send that target if native startup
+        // happened after the constructor's first attempt.
         sendSHARRenderResolutionToNative(mRenderWidth, mRenderHeight, "surfaceChanged");
 
         /*
