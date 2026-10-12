@@ -56,17 +56,6 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     private int mLastNativeSentRenderWidth = 0;
     private int mLastNativeSentRenderHeight = 0;
 
-    // Avoid noisy resolution logs
-    private int mLastLoggedRenderWidth = 0;
-    private int mLastLoggedRenderHeight = 0;
-    private int mLastLoggedDeviceWidth = 0;
-    private int mLastLoggedDeviceHeight = 0;
-    private int mLastLoggedSurfaceWidth = 0;
-    private int mLastLoggedSurfaceHeight = 0;
-    private int mLastLoggedTouchWidth = 0;
-    private int mLastLoggedTouchHeight = 0;
-    private boolean mNativeResolutionHookWarned = false;
-
     /*
      * Simpsons Hit & Run Android adaptive resolution config.
      *
@@ -100,9 +89,6 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
     // Round render width to avoid odd framebuffer sizes.
     private static final int SHAR_RENDER_WIDTH_ALIGNMENT = 8;
-
-    // Keep logs useful but not invasive.
-    private static final boolean SHAR_LOG_RESOLUTION = true;
 
     /*
     * Touch coordinate normalization mode.
@@ -392,19 +378,7 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
             writer.flush();
             writer.close();
 
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR resolution config created: " + configFile.getAbsolutePath()
-                );
-            }
         } catch (Exception e) {
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR resolution config creation failed: " + e.getMessage()
-                );
-            }
         }
     }
 
@@ -436,19 +410,7 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
             writer.flush();
             writer.close();
 
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR touch mode config created: " + configFile.getAbsolutePath()
-                );
-            }
         } catch (Exception e) {
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR touch mode config creation failed: " + e.getMessage()
-                );
-            }
         }
     }
 
@@ -463,25 +425,12 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         File configFile = getSHARResolutionConfigFile();
 
         if (configFile == null) {
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR resolution config skipped: no valid config directory"
-                );
-            }
             return;
         }
 
         createDefaultSHARResolutionConfigIfNeeded(configFile);
 
         if (!configFile.exists()) {
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR resolution config missing, using default targetHeight=" +
-                                mSHARTargetRenderHeight
-                );
-            }
             return;
         }
 
@@ -531,45 +480,17 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
 
                 mSHARTargetRenderHeight = sanitizeSHARTargetRenderHeight(parsedValue);
 
-                if (SHAR_LOG_RESOLUTION) {
-                    Log.v(
-                            "SDL",
-                            "SHAR resolution config loaded: targetHeight=" +
-                                    mSHARTargetRenderHeight +
-                                    " maxDeviceTargetHeight=" +
-                                    getDeviceMaxTargetRenderHeight() +
-                                    " file=" +
-                                    configFile.getAbsolutePath()
-                    );
-                }
-
                 reader.close();
                 return;
             }
 
             reader.close();
 
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR resolution config has no valid value, using default targetHeight=" +
-                                mSHARTargetRenderHeight
-                );
-            }
         } catch (Exception e) {
             mSHARTargetRenderHeight = sanitizeSHARTargetRenderHeight(
                     SHAR_DEFAULT_TARGET_RENDER_HEIGHT
             );
 
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR resolution config read failed, using default targetHeight=" +
-                                mSHARTargetRenderHeight +
-                                " error=" +
-                                e.getMessage()
-                );
-            }
         }
     }
 
@@ -580,25 +501,12 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         File configFile = getSHARTouchModeConfigFile();
 
         if (configFile == null) {
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR touch mode config skipped: no valid config directory"
-                );
-            }
             return;
         }
 
         createDefaultSHARTouchModeConfigIfNeeded(configFile);
 
         if (!configFile.exists()) {
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR touch mode config missing, using default touchMode=" +
-                                mSHARTouchMode
-                );
-            }
             return;
         }
 
@@ -643,41 +551,15 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
 
                 mSHARTouchMode = sanitizeSHARTouchMode(parsedValue);
 
-                if (SHAR_LOG_RESOLUTION) {
-                    Log.v(
-                            "SDL",
-                            "SHAR touch mode config loaded: touchMode=" +
-                                    mSHARTouchMode +
-                                    " file=" +
-                                    configFile.getAbsolutePath()
-                    );
-                }
-
                 reader.close();
                 return;
             }
 
             reader.close();
 
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR touch mode config has no valid value, using default touchMode=" +
-                                mSHARTouchMode
-                );
-            }
         } catch (Exception e) {
             mSHARTouchMode = sanitizeSHARTouchMode(SHAR_DEFAULT_TOUCH_MODE);
 
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR touch mode config read failed, using default touchMode=" +
-                                mSHARTouchMode +
-                                " error=" +
-                                e.getMessage()
-                );
-            }
         }
     }
 
@@ -851,27 +733,11 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
             mLastNativeSentRenderWidth = width;
             mLastNativeSentRenderHeight = height;
 
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v(
-                        "SDL",
-                        "SHAR native render resolution sent [" + reason + "]: " +
-                                width + "x" + height
-                );
-            }
         } catch (UnsatisfiedLinkError e) {
             /*
              * The SurfaceView constructor can run before native libraries are
              * ready. Later surface lifecycle callbacks retry this same target.
              */
-            if (!mNativeResolutionHookWarned) {
-                mNativeResolutionHookWarned = true;
-
-                Log.v(
-                        "SDL",
-                        "SHAR native render resolution hook not available yet: " +
-                                e.getMessage()
-                );
-            }
         }
     }
 
@@ -918,10 +784,6 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         int deviceHeight = size[1];
 
         if (deviceWidth <= 0 || deviceHeight <= 0) {
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v("SDL", "SHAR adaptive render resolution skipped [" +
-                        reason + "]: invalid device size");
-            }
             return;
         }
 
@@ -934,10 +796,6 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         targetWidth = roundToMultiple(targetWidth, SHAR_RENDER_WIDTH_ALIGNMENT);
 
         if (targetWidth <= 0 || targetHeight <= 0) {
-            if (SHAR_LOG_RESOLUTION) {
-                Log.v("SDL", "SHAR adaptive render resolution skipped [" +
-                        reason + "]: invalid target size");
-            }
             return;
         }
 
@@ -962,102 +820,8 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         setScaleX(1.0f);
         setScaleY(1.0f);
 
-        logAdaptiveResolutionIfNeeded(
-                reason, longSide, shortSide, mRenderWidth, mRenderHeight, changed);
     }
 
-
-    private void logAdaptiveResolutionIfNeeded(
-            String reason,
-            int deviceLandscapeWidth,
-            int deviceLandscapeHeight,
-            int renderWidth,
-            int renderHeight,
-            boolean changed
-    ) {
-        if (!SHAR_LOG_RESOLUTION) {
-            return;
-        }
-
-        /*
-         * Log only when:
-         * - resolution changed,
-         * - first startup,
-         * - app resumes.
-         *
-         * Avoid logging repeatedly from surfaceCreated if values are unchanged.
-         */
-        boolean firstLog =
-                mLastLoggedRenderWidth <= 0 ||
-                        mLastLoggedRenderHeight <= 0;
-
-        boolean shouldLog =
-                changed ||
-                        firstLog ||
-                        "handleResume".equals(reason);
-
-        if (!shouldLog) {
-            return;
-        }
-
-        mLastLoggedRenderWidth = renderWidth;
-        mLastLoggedRenderHeight = renderHeight;
-        mLastLoggedDeviceWidth = deviceLandscapeWidth;
-        mLastLoggedDeviceHeight = deviceLandscapeHeight;
-
-        float scaleX = deviceLandscapeWidth / (float) renderWidth;
-        float scaleY = deviceLandscapeHeight / (float) renderHeight;
-
-        Log.v(
-                "SDL",
-                "SHAR adaptive resolution [" + reason + "]: " +
-                        "device=" + deviceLandscapeWidth + "x" + deviceLandscapeHeight +
-                        " render=" + renderWidth + "x" + renderHeight +
-                        " targetHeight=" + mSHARTargetRenderHeight +
-                        " scale=" + scaleX + "x" + scaleY
-        );
-    }
-
-    private void logSurfaceSizesIfChanged(
-            String reason,
-            int surfaceWidth,
-            int surfaceHeight,
-            int touchWidth,
-            int touchHeight,
-            int deviceWidth,
-            int deviceHeight
-    ) {
-        if (!SHAR_LOG_RESOLUTION) {
-            return;
-        }
-
-        boolean changed =
-                surfaceWidth != mLastLoggedSurfaceWidth ||
-                        surfaceHeight != mLastLoggedSurfaceHeight ||
-                        touchWidth != mLastLoggedTouchWidth ||
-                        touchHeight != mLastLoggedTouchHeight ||
-                        deviceWidth != mLastLoggedDeviceWidth ||
-                        deviceHeight != mLastLoggedDeviceHeight;
-
-        if (!changed) {
-            return;
-        }
-
-        mLastLoggedSurfaceWidth = surfaceWidth;
-        mLastLoggedSurfaceHeight = surfaceHeight;
-        mLastLoggedTouchWidth = touchWidth;
-        mLastLoggedTouchHeight = touchHeight;
-        mLastLoggedDeviceWidth = deviceWidth;
-        mLastLoggedDeviceHeight = deviceHeight;
-
-        Log.v(
-                "SDL",
-                "SHAR surface sizes [" + reason + "]: " +
-                        "surface=" + surfaceWidth + "x" + surfaceHeight +
-                        " touch=" + touchWidth + "x" + touchHeight +
-                        " device=" + deviceWidth + "x" + deviceHeight
-        );
-    }
 
     public void handlePause() {
         enableSensor(Sensor.TYPE_ACCELEROMETER, false);
@@ -1146,28 +910,6 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
     mWidth = touchWidth;
     mHeight = touchHeight;
 
-    logSurfaceSizesIfChanged(
-            reason,
-            surfaceWidth,
-            surfaceHeight,
-            touchWidth,
-            touchHeight,
-            deviceWidth,
-            deviceHeight
-    );
-
-    if (SHAR_LOG_RESOLUTION) {
-        Log.v(
-                "SDL",
-                "SHAR touch base [" + reason + "]: " +
-                        "mode=" + mSHARTouchMode +
-                        " touch=" + touchWidth + "x" + touchHeight +
-                        " view=" + getWidth() + "x" + getHeight() +
-                        " surface=" + surfaceWidth + "x" + surfaceHeight +
-                        " device=" + deviceWidth + "x" + deviceHeight +
-                        " render=" + mRenderWidth + "x" + mRenderHeight
-        );
-    }
 }
 
 

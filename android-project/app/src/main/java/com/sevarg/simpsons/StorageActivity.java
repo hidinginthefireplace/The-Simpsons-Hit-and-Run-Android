@@ -1,4 +1,4 @@
-package com.c4rlox.simpsons;
+package com.sevarg.simpsons;
 
 import android.app.Activity;
 import android.app.AlertDialog;

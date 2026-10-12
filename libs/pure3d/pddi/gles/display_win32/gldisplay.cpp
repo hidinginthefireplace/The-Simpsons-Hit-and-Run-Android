@@ -226,56 +226,6 @@ static void LogSHARRenderTargetRejectedOnce(
         width, height, message ? message : "unsupported size");
 }
 
-static void LogSHARResizePathOnce(
-    int width, int height, const char* stage, const char* route)
-{
-    struct CacheEntry
-    {
-        int width;
-        int height;
-        char stage[48];
-        char route[192];
-    };
-    // Keep an independent last-state record per stage. A single global last
-    // state would be overwritten by other stages each frame and spam the log.
-    static CacheEntry entries[8] = {};
-
-    const char* safeStage = stage ? stage : "unknown";
-    const char* safeRoute = route ? route : "unknown";
-    int slot = -1;
-    int firstUnused = -1;
-    for (int i = 0; i < 8; ++i)
-    {
-        if (entries[i].stage[0] == '\0')
-        {
-            if (firstUnused < 0)
-                firstUnused = i;
-            continue;
-        }
-        if (strcmp(entries[i].stage, safeStage) == 0)
-        {
-            slot = i;
-            break;
-        }
-    }
-    if (slot < 0)
-        slot = firstUnused >= 0 ? firstUnused : 0;
-
-    CacheEntry& entry = entries[slot];
-    if (entry.width == width && entry.height == height &&
-        strcmp(entry.stage, safeStage) == 0 &&
-        strcmp(entry.route, safeRoute) == 0)
-    {
-        return;
-    }
-
-    entry.width = width;
-    entry.height = height;
-    snprintf(entry.stage, sizeof(entry.stage), "%s", safeStage);
-    snprintf(entry.route, sizeof(entry.route), "%s", safeRoute);
-    SDL_Log("[SHAR-RESIZE-DIAG] stage=%s size=%dx%d %s",
-        safeStage, width, height, safeRoute);
-}
 
 static bool CheckSHARRenderTargetSize(
     int width, int height, const char* label,
@@ -709,71 +659,6 @@ static bool EnsureCelRenderTarget(int width, int height)
             targetError = pendingTargetError;
     }
 
-    static int lastDiagWidth = -1;
-    static int lastDiagHeight = -1;
-    static GLuint lastDiagFbo = 0;
-    static GLuint lastDiagColorTexture = 0;
-    static GLuint lastDiagDepthTexture = 0;
-    static GLuint lastDiagDepthRenderbuffer = 0;
-    static GLenum lastDiagStatus = 0xFFFFFFFF;
-    static GLenum lastDiagError = 0xFFFFFFFF;
-    static bool lastDiagDepthTextureActive = false;
-    static bool lastDiagReady = false;
-    const bool diagChanged =
-        lastDiagWidth != width || lastDiagHeight != height ||
-        lastDiagFbo != gCelRenderFbo ||
-        lastDiagColorTexture != gCelPostTexture ||
-        lastDiagDepthTexture != gCelRenderDepthTexture ||
-        lastDiagDepthRenderbuffer != gCelRenderDepth ||
-        lastDiagStatus != finalFramebufferStatus ||
-        lastDiagError != targetError ||
-        lastDiagDepthTextureActive != gCelDepthTextureActive ||
-        lastDiagReady != gCelRenderFboReady;
-
-    if (diagChanged)
-    {
-        SDL_Log(
-            "[SHAR-RESIZE-DIAG] cel-fbo ready=%d status=0x%04x glError=0x%04x "
-            "size=%dx%d fbo=%u colorTexture=%d name=%d storage=%dx%d "
-            "depthType=%d depthName=%d depthMode=%s depthTexture=%u depthStorage=%dx%d "
-            "depthRenderbuffer=%u depthRbStorage=%dx%d onscreen=%dx%d known=%d "
-            "viewport=%d,%d %dx%d maxTexture=%d maxRenderbuffer=%d",
-            gCelRenderFboReady ? 1 : 0,
-            (unsigned)finalFramebufferStatus,
-            (unsigned)targetError,
-            width, height,
-            (unsigned)gCelRenderFbo,
-            (int)colorAttachmentType, (int)colorAttachmentName,
-            gCelPostWidth, gCelPostHeight,
-            (int)depthAttachmentType, (int)depthAttachmentName,
-            gCelDepthTextureActive ? "texture" : "renderbuffer",
-            (unsigned)gCelRenderDepthTexture,
-            gCelDepthTextureWidth, gCelDepthTextureHeight,
-            (unsigned)gCelRenderDepth,
-            gCelRenderbufferWidth, gCelRenderbufferHeight,
-            onscreenWidth, onscreenHeight, onscreenSizeKnown ? 1 : 0,
-            currentViewport[0], currentViewport[1],
-            currentViewport[2], currentViewport[3],
-            (int)maxTextureSize, (int)maxRenderbufferSize);
-        if (gCelRenderFboReady)
-            SDL_Log("SHAR Android cel render FBO ready: %dx%d (depth texture %s)",
-                width, height, gCelDepthTextureActive ? "enabled" : "disabled");
-        else
-            SDL_LogError(SDL_LOG_CATEGORY_RENDER,
-                "SHAR Android cel render FBO not ready at %dx%d (status=0x%04x glError=0x%04x)",
-                width, height, (unsigned)finalFramebufferStatus, (unsigned)targetError);
-    }
-
-    lastDiagWidth = width;
-    lastDiagHeight = height;
-    lastDiagFbo = gCelRenderFbo;
-    lastDiagColorTexture = gCelPostTexture;
-    lastDiagDepthTexture = gCelRenderDepthTexture;
-    lastDiagDepthRenderbuffer = gCelRenderDepth;
-    lastDiagStatus = finalFramebufferStatus;
-    lastDiagError = targetError;
-    lastDiagDepthTextureActive = gCelDepthTextureActive;
-    lastDiagReady = gCelRenderFboReady;
 
     if (gCelRenderFboReady)
     {
@@ -1274,7 +1159,6 @@ static void ResolveSceneToScreen(int width, int height)
     int outputHeight = height;
     QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
 
-    bool resolved = false;
     if (gCelPostTexture != 0 && EnsureCelFallbackResolveResources())
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1295,12 +1179,11 @@ static void ResolveSceneToScreen(int width, int height)
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)0);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        resolved = true;
     }
     else
     {
         SDL_LogError(SDL_LOG_CATEGORY_RENDER,
-            "[SHAR-RESIZE] unable to create direct cel resolve fallback at %dx%d",
+            "Unable to create direct cel resolve fallback at %dx%d",
             width, height);
     }
 
@@ -1327,18 +1210,6 @@ static void ResolveSceneToScreen(int width, int height)
     glViewport(0, 0, outputWidth, outputHeight);
     gCelWorldInFbo = false;
 
-    char resolveRoute[160];
-    snprintf(resolveRoute, sizeof(resolveRoute),
-        "route=scene-resolve-%s scene=%dx%d onscreen=%dx%d texture=%u program=%u",
-        resolved ? "presented" : "unavailable",
-        width, height, outputWidth, outputHeight,
-        (unsigned)gCelPostTexture, (unsigned)gCelFallbackProgram);
-    LogSHARResizePathOnce(width, height, "resolve", resolveRoute);
-    if (!resolved)
-        SDL_LogError(SDL_LOG_CATEGORY_RENDER,
-            "[SHAR-RESIZE-DIAG] fallback resolve unavailable: scene=%dx%d onscreen=%dx%d texture=%u program=%u",
-            width, height, outputWidth, outputHeight,
-            (unsigned)gCelPostTexture, (unsigned)gCelFallbackProgram);
 }
 
 static void RecreateSHARTexture(GLuint& texture)
@@ -1353,19 +1224,6 @@ static void RecreateSHARTexture(GLuint& texture)
 
 static void ResetAndroidPostProcess()
 {
-    // Drain pre-existing errors first, so resource-reset errors are attributable.
-    int staleErrors = 0;
-    for (int i = 0; i < 32; ++i)
-    {
-        GLenum error = glGetError();
-        if (error == GL_NO_ERROR)
-            break;
-        ++staleErrors;
-    }
-    if (staleErrors > 0)
-        SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
-            "[SHAR-RESIZE] drained %d stale GL error(s) before resource reset", staleErrors);
-
     // Detach the old texture storage from FBOs before replacing texture names.
     if (gCelRenderFbo != 0)
     {
@@ -1419,19 +1277,6 @@ static void ResetAndroidPostProcess()
     gCelWorldInFbo = false;
     // Normal frames remain on the offscreen path immediately after a resize.
 
-    GLenum error = GL_NO_ERROR;
-    int resetErrors = 0;
-    for (int i = 0; i < 32; ++i)
-    {
-        error = glGetError();
-        if (error == GL_NO_ERROR)
-            break;
-        ++resetErrors;
-    }
-    if (resetErrors > 0)
-        SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
-            "[SHAR-RESIZE] encountered %d GL error(s) during post-process reset (last=0x%04x)",
-            resetErrors, (unsigned)error);
 }
 
 static void ApplyCelPostProcess(int width, int height)
@@ -1444,7 +1289,6 @@ static void ApplyCelPostProcess(int width, int height)
 
     if (!gCelWorldInFbo)
     {
-        LogSHARResizePathOnce(width, height, "compose", "route=direct-world-was-not-rendered-to-cel-fbo");
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return;
     }
@@ -1456,26 +1300,18 @@ static void ApplyCelPostProcess(int width, int height)
 
     if (!IsCelShadingEnabled())
     {
-        LogSHARResizePathOnce(width, height, "compose", "route=plain-resolve");
         ResolveSceneToScreen(width, height);
         return;
     }
 
     if ((GLuint)currentFramebuffer != gCelRenderFbo || !gCelRenderFboReady)
     {
-        char route[160];
-        snprintf(route, sizeof(route),
-            "route=fallback-framebuffer-mismatch bound=%u expected=%u ready=%d colorTexture=%u",
-            (unsigned)currentFramebuffer, (unsigned)gCelRenderFbo,
-            gCelRenderFboReady ? 1 : 0, (unsigned)gCelPostTexture);
-        LogSHARResizePathOnce(width, height, "compose", route);
         ResolveSceneToScreen(width, height);
         return;
     }
 
     if (!EnsureCelPostProcessResources(width, height))
     {
-        LogSHARResizePathOnce(width, height, "compose", "route=fallback-postprocess-resource-unavailable");
         ResolveSceneToScreen(width, height);
         return;
     }
@@ -1589,31 +1425,6 @@ static void ApplyCelPostProcess(int width, int height)
     glActiveTexture(GL_TEXTURE0);
     DrawCelPostFullscreenQuad();
 
-    // Capture errors immediately after the scene+outline+bloom resolve, before
-    // GUI rendering or the optional sharpening/CRT passes can add more errors.
-    GLenum celComposeError = glGetError();
-    GLenum pendingCelComposeError = GL_NO_ERROR;
-    while ((pendingCelComposeError = glGetError()) != GL_NO_ERROR)
-    {
-        if (celComposeError == GL_NO_ERROR)
-            celComposeError = pendingCelComposeError;
-    }
-    char composeRoute[192];
-    snprintf(composeRoute, sizeof(composeRoute),
-        "route=cel-postpass-%s error=0x%04x onscreen=%dx%d "
-        "fbo=%u colorTexture=%u program=%u bloom=%d depthTexture=%d",
-        celComposeError == GL_NO_ERROR ? "ok" : "gl-error",
-        (unsigned)celComposeError, outputWidth, outputHeight,
-        (unsigned)currentFramebuffer, (unsigned)gCelPostTexture,
-        (unsigned)gCelPostProgram, bloomReady ? 1 : 0,
-        gCelDepthTextureActive ? 1 : 0);
-    LogSHARResizePathOnce(width, height, "compose", composeRoute);
-    if (celComposeError != GL_NO_ERROR)
-        SDL_LogError(SDL_LOG_CATEGORY_RENDER,
-            "[SHAR-RESIZE-DIAG] cel resolve GL error=0x%04x size=%dx%d output=%dx%d texture=%u program=%u bloomReady=%d",
-            (unsigned)celComposeError, width, height, outputWidth, outputHeight,
-            (unsigned)gCelPostTexture, (unsigned)gCelPostProgram,
-            bloomReady ? 1 : 0);
 
     if (previousAttrib0Enabled)
         glEnableVertexAttribArray(0);
@@ -1662,17 +1473,10 @@ bool BeginCelPostProcessFrame(int width, int height)
     if (!BindCelRenderTarget(width, height))
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        LogSHARResizePathOnce(width, height, "begin-frame", "route=direct-cel-target-unavailable");
         return false;
     }
 
     gCelWorldInFbo = true;
-    char celRoute[160];
-    snprintf(celRoute, sizeof(celRoute),
-        "route=cel-fbo fbo=%u colorTexture=%u depthTexture=%d",
-        (unsigned)gCelRenderFbo, (unsigned)gCelPostTexture,
-        gCelDepthTextureActive ? 1 : 0);
-    LogSHARResizePathOnce(width, height, "begin-frame", celRoute);
     return true;
 }
 
@@ -1716,15 +1520,8 @@ void BeginSHARAndroidFMVOutputRender()
     if (!QueryDefaultFramebufferSize(&outputWidth, &outputHeight) ||
         outputWidth <= 0 || outputHeight <= 0)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
-            "[SHAR-FMV-DIAG] direct-output target unavailable; keeping current render target");
         return;
     }
-
-    const int previousWidth =
-        gSHARActiveDisplayWidthForGui != NULL ? *gSHARActiveDisplayWidthForGui : gSHARFrameWidth;
-    const int previousHeight =
-        gSHARActiveDisplayHeightForGui != NULL ? *gSHARActiveDisplayHeightForGui : gSHARFrameHeight;
 
     if (gSHARActiveDisplayWidthForGui != NULL)
         *gSHARActiveDisplayWidthForGui = outputWidth;
@@ -1748,29 +1545,6 @@ void BeginSHARAndroidFMVOutputRender()
     // restore the internal world target and bind its FBO as usual.
     gCelWorldInFbo = false;
 
-    static int lastLoggedOutputWidth = 0;
-    static int lastLoggedOutputHeight = 0;
-    static int lastLoggedPreviousWidth = 0;
-    static int lastLoggedPreviousHeight = 0;
-    if (outputWidth != lastLoggedOutputWidth ||
-        outputHeight != lastLoggedOutputHeight ||
-        previousWidth != lastLoggedPreviousWidth ||
-        previousHeight != lastLoggedPreviousHeight)
-    {
-        GLint framebuffer = -1;
-        GLint viewport[4] = {0, 0, 0, 0};
-        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
-        glGetIntegerv(GL_VIEWPORT, viewport);
-        SDL_Log(
-            "[SHAR-FMV-DIAG] direct-output target=%dx%d previousDisplay=%dx%d "
-            "fb=%d viewport=%d,%d %dx%d",
-            outputWidth, outputHeight, previousWidth, previousHeight,
-            (int)framebuffer, viewport[0], viewport[1], viewport[2], viewport[3]);
-        lastLoggedOutputWidth = outputWidth;
-        lastLoggedOutputHeight = outputHeight;
-        lastLoggedPreviousWidth = previousWidth;
-        lastLoggedPreviousHeight = previousHeight;
-    }
 }
 #endif
 
@@ -2069,9 +1843,6 @@ static int gSHARAndroidRenderWidth = 0;
 static int gSHARAndroidRenderHeight = 0;
 static int gSHARAndroidRenderResizeSerial = 0;
 
-static int gSHARLastLoggedDisplayWidth = 0;
-static int gSHARLastLoggedDisplayHeight = 0;
-
 extern "C" JNIEXPORT void JNICALL
 Java_org_libsdl_app_SDLSurface_nativeSetSHARRenderResolution(
     JNIEnv* env,
@@ -2095,19 +1866,8 @@ Java_org_libsdl_app_SDLSurface_nativeSetSHARRenderResolution(
     gSHARAndroidRenderHeight = (int)height;
     if (changed)
         ++gSHARAndroidRenderResizeSerial;
-    const int loggedWidth = gSHARAndroidRenderWidth;
-    const int loggedHeight = gSHARAndroidRenderHeight;
-    const int loggedSerial = gSHARAndroidRenderResizeSerial;
     SDL_AtomicUnlock(&gSHARAndroidRenderResolutionLock);
 
-    if (changed) {
-        SDL_Log(
-            "SHAR Android Java render resolution received: %dx%d serial=%d",
-            loggedWidth,
-            loggedHeight,
-            loggedSerial
-        );
-    }
 }
 
 // Called by the in-game Graphics menu. This only requests a Java/UI-thread
@@ -2178,17 +1938,10 @@ bool RequestSHARAndroidRenderResolutionHeight(int targetHeight)
         }
     }
 
-    if (queued)
+    if (!queued)
     {
-        SDL_Log(
-            "SHAR Android live render resolution requested: targetHeight=%d",
-            targetHeight);
-    }
-    else
-    {
-        SDL_LogError(
-            SDL_LOG_CATEGORY_APPLICATION,
-            "SHAR live resolution request could not be queued for targetHeight=%d; saved setting will apply at next launch",
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+            "Unable to queue live render resolution request for targetHeight=%d; saved setting will apply at next launch",
             targetHeight);
     }
 
@@ -2224,26 +1977,6 @@ GetSHARAndroidRenderResolution(int* width, int* height)
     return true;
 }
 
-static void
-LogSHARDisplayResolutionIfChanged(const char* reason, int width, int height)
-{
-    if (width <= 0 || height <= 0)
-        return;
-
-    if (gSHARLastLoggedDisplayWidth == width &&
-        gSHARLastLoggedDisplayHeight == height)
-        return;
-
-    gSHARLastLoggedDisplayWidth = width;
-    gSHARLastLoggedDisplayHeight = height;
-
-    SDL_Log(
-        "SHAR Android PDDI display resolution [%s]: %dx%d",
-        reason ? reason : "unknown",
-        width,
-        height
-    );
-}
 #endif
 
 #ifdef RAD_ANDROID
@@ -2272,22 +2005,9 @@ void pglDisplay::CommitPendingResize()
         return;
     }
 
-    const int previousWidth = winWidth;
-    const int previousHeight = winHeight;
     winWidth = requestedWidth;
     winHeight = requestedHeight;
     committedSerial = serial;
-
-    int surfaceWidth = 0;
-    int surfaceHeight = 0;
-    const bool surfaceSizeKnown =
-        QueryDefaultFramebufferSize(&surfaceWidth, &surfaceHeight);
-
-    SDL_Log(
-        "[SHAR-RESIZE] GL-thread internal-target commit %dx%d -> %dx%d "
-        "output=%dx%d outputKnown=%d serial=%d",
-        previousWidth, previousHeight, winWidth, winHeight,
-        surfaceWidth, surfaceHeight, surfaceSizeKnown ? 1 : 0, serial);
 
     // Only the offscreen world target changes here. The Android output Surface
     // remains platform-sized, so there is no EGL size match/wait to perform.
@@ -2397,8 +2117,6 @@ long pglDisplay ::ProcessWindowMessage(SDL_Window* win, const SDL_WindowEvent* e
             // Android Surface callbacks run on the UI thread. Do not mutate
             // active PDDI dimensions or call OpenGL here; the GL thread commits
             // the latest confirmed target from BeginFrame().
-            SDL_LogVerbose(SDL_LOG_CATEGORY_RENDER,
-                "[SHAR-RESIZE] SDL2 size event observed; GL-thread commit deferred");
 #else
             SDL_GL_GetDrawableSize(win, &winWidth, &winHeight);
 #endif
@@ -2421,8 +2139,6 @@ long pglDisplay ::ProcessWindowMessage(SDL_Window* win, const SDL_WindowEvent* e
 #if defined(RAD_ANDROID)
             // Defer active-size mutation and GL calls to CommitPendingResize()
             // on the render thread at the start of a frame.
-            SDL_LogVerbose(SDL_LOG_CATEGORY_RENDER,
-                "[SHAR-RESIZE] SDL3 pixel-size event observed; GL-thread commit deferred");
 #else
             SDL_GetWindowSizeInPixels(win, &winWidth, &winHeight);
 #endif
@@ -2550,22 +2266,12 @@ bool pglDisplay ::InitDisplay(const pddiDisplayInit* init)
             winWidth = renderW;
             winHeight = renderH;
 
-            LogSHARDisplayResolutionIfChanged(
-                "init-display-java",
-                winWidth,
-                winHeight
-            );
         } else {
 #if SDL_MAJOR_VERSION < 3
             SDL_GL_GetDrawableSize(win, &winWidth, &winHeight);
 #else
             SDL_GetWindowSizeInPixels(win, &winWidth, &winHeight);
 #endif
-            LogSHARDisplayResolutionIfChanged(
-                "init-display-sdl-fallback",
-                winWidth,
-                winHeight
-            );
         }
     }
 #else
@@ -2746,32 +2452,6 @@ void pglDisplay::SwapBuffers(void)
     ApplyFrameSharpening(outputWidth, outputHeight);
     ApplyCRTFilter(outputWidth, outputHeight);
 
-    GLint preSwapFramebuffer = -1;
-    GLint preSwapViewport[4] = {0, 0, 0, 0};
-    GLint preSwapProgram = 0;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &preSwapFramebuffer);
-    glGetIntegerv(GL_VIEWPORT, preSwapViewport);
-    glGetIntegerv(GL_CURRENT_PROGRAM, &preSwapProgram);
-    GLenum preSwapError = glGetError();
-    GLenum pendingPreSwapError = GL_NO_ERROR;
-    while ((pendingPreSwapError = glGetError()) != GL_NO_ERROR)
-    {
-        if (preSwapError == GL_NO_ERROR)
-            preSwapError = pendingPreSwapError;
-    }
-    char preSwapRoute[192];
-    snprintf(preSwapRoute, sizeof(preSwapRoute),
-        "route=pre-swap fb=%d viewport=%d,%d %dx%d program=%d error=0x%04x celEnabled=%d",
-        (int)preSwapFramebuffer, preSwapViewport[0], preSwapViewport[1],
-        preSwapViewport[2], preSwapViewport[3], (int)preSwapProgram,
-        (unsigned)preSwapError, IsCelShadingEnabled() ? 1 : 0);
-    LogSHARResizePathOnce(outputWidth, outputHeight, "pre-swap", preSwapRoute);
-    if (preSwapError != GL_NO_ERROR)
-        SDL_LogError(SDL_LOG_CATEGORY_RENDER,
-            "[SHAR-RESIZE-DIAG] GL error before swap=0x%04x output=%dx%d framebuffer=%d viewport=%d,%d %dx%d program=%d",
-            (unsigned)preSwapError, outputWidth, outputHeight,
-            (int)preSwapFramebuffer, preSwapViewport[0], preSwapViewport[1],
-            preSwapViewport[2], preSwapViewport[3], (int)preSwapProgram);
 #endif
     SDL_GL_SwapWindow(win);
     reset = false;

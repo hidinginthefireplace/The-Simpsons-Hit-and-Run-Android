@@ -228,8 +228,6 @@ static int LoadSHARGraphicsResolutionSelection()
     }
 
     fclose( file );
-    LOGI("[SHAR-RESOLUTION] Loaded selector value %dp from %s",
-         GetSHARGraphicsResolutionHeight(selection), path);
     return selection;
 }
 
@@ -767,16 +765,13 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
                 pGraphicsValue->SetIndex( 3 );
                 pGraphicsValue->SetVisible( false );
                 m_pGraphicsResolutionValue = pGraphicsValue;
-                LOGI("[SHAR-RESOLUTION-MENU] Created dedicated five-value Resolution text");
             }
             else
             {
-                LOGE("[SHAR-RESOLUTION-MENU] Failed to create dedicated Resolution value text");
             }
         }
         else
         {
-            LOGE("[SHAR-RESOLUTION-MENU] Could not find Camera row group/value text");
         }
     }
 
@@ -822,16 +817,13 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
                 pGraphicsValue->SetIndex( 0 );
                 pGraphicsValue->SetVisible( false );
                 m_pGraphicsSharpeningValue = pGraphicsValue;
-                LOGI("[SHAR-GRAPHICS-DIAG] Created dedicated six-value sharpening text");
             }
             else
             {
-                LOGE("[SHAR-GRAPHICS-DIAG] Failed to create dedicated sharpening text");
             }
         }
         else
         {
-            LOGE("[SHAR-GRAPHICS-DIAG] Could not find sharpening row group/value text");
         }
     }
 #endif
@@ -857,9 +849,6 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
             LOGE("[SHAR-RESOLUTION] Could not normalize unsupported config; retrying next Graphics visit");
         }
     }
-    LOGI("[SHAR-RESOLUTION-MENU] ConfigureAndroidGraphicsMenu begin; selected=%dp",
-         GetSHARGraphicsResolutionHeight(gSHARGraphicsResolutionSelection));
-
     // Reuse five existing Settings rows without editing any Scrooby/game assets.
     // Camera is used as the temporary Resolution row, and Invert Camera is
     // the temporary Back row. These values are UI-only in this diagnostic build.
@@ -904,14 +893,12 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
         if( guiIndex < 0 )
         {
-            LOGE("[SHAR-RESOLUTION-MENU] Missing GUI row for option %d", i);
             continue;
         }
 
         GuiMenuItem* item = m_pMenu->GetMenuItem( guiIndex );
         if( item == NULL )
         {
-            LOGE("[SHAR-RESOLUTION-MENU] Null GUI row for option %d", i);
             continue;
         }
 
@@ -1074,7 +1061,6 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
             m_pGraphicsResolutionValue->SetVisible( false );
             m_pOriginalResolutionValue->SetVisible( true );
             item->SetItemValue( m_pOriginalResolutionValue );
-            LOGI("[SHAR-RESOLUTION-MENU] Restored original Settings Camera value text");
         }
 
         // Restore the original sharpening value text. Its OFF/ON resource
@@ -1086,7 +1072,6 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
             m_pGraphicsSharpeningValue->SetVisible( false );
             m_pOriginalSharpeningValue->SetVisible( true );
             item->SetItemValue( m_pOriginalSharpeningValue );
-            LOGI("[SHAR-GRAPHICS-DIAG] Restored original Settings sharpening value text");
         }
 
         // Restore the original non-selectable value-row behaviour and normal
@@ -1608,10 +1593,8 @@ void CGuiScreenPauseSettings::InitIntro()
     // during the Graphics outro transition.
     if( openGraphicsMenu )
     {
-        LOGI("[SHAR-GRAPHICS-DIAG] Normal Settings init finished; entering Graphics layout");
         m_graphicsSettingsMode = true;
         ConfigureAndroidGraphicsMenu();
-        LOGI("[SHAR-GRAPHICS-DIAG] ConfigureAndroidGraphicsMenu finished");
     }
 #endif
 }

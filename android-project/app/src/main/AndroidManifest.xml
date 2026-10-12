@@ -81,7 +81,7 @@
         <meta-data android:name="SDL_ENV.SDL_ANDROID_TRAP_BACK_BUTTON" android:value="0"/>
          -->
 
-        <activity android:name="com.c4rlox.simpsons.StorageActivity"
+        <activity android:name="com.sevarg.simpsons.StorageActivity"
             android:label="@string/app_name"
             android:screenOrientation="landscape"
             android:exported="true">
@@ -91,7 +91,7 @@
             </intent-filter>
         </activity>
 
-        <activity android:name="com.c4rlox.simpsons.SimpsonsActivity"
+        <activity android:name="com.sevarg.simpsons.SimpsonsActivity"
             android:label="@string/app_name"
             android:alwaysRetainTaskState="true"
             android:launchMode="singleInstance"

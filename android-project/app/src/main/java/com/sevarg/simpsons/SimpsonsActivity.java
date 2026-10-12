@@ -1,4 +1,4 @@
-package com.c4rlox.simpsons;
+package com.sevarg.simpsons;
 
 import org.libsdl.app.SDLActivity;
 import android.content.Context;
