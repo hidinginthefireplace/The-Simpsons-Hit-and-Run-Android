@@ -43,6 +43,11 @@ GLint gCelFallbackTextureLocation = -1;
 static int gSHARFrameWidth = 0;
 static int gSHARFrameHeight = 0;
 static bool gCelWorldInFbo = false;
+// pglDisplay keeps the internal render size for the world. During the GUI phase,
+// briefly expose the actual Surface dimensions, then restore the render size at
+// the next frame start in CommitPendingResize().
+static int* gSHARActiveDisplayWidthForGui = NULL;
+static int* gSHARActiveDisplayHeightForGui = NULL;
 GLuint gCelRenderFbo = 0;
 GLuint gCelRenderDepth = 0;
 GLuint gCelRenderDepthTexture = 0;
@@ -195,9 +200,8 @@ static bool QueryEglSurfaceSize(int* width, int* height)
 
 static bool QueryDefaultFramebufferSize(int* width, int* height)
 {
-    // SDL's drawable size follows Android's SurfaceChanged event and can lead
-    // EGL during live resize. Prefer the active EGL draw surface; retain SDL as
-    // a fallback for startup or drivers that do not expose EGL query symbols.
+    // Query the actual output Surface independently of the internal FBO size.
+    // Prefer EGL's active draw surface, with SDL as a fallback for startup/drivers.
     if (QueryEglSurfaceSize(width, height))
         return true;
     return QuerySDLDrawableSize(width, height);
@@ -1669,12 +1673,28 @@ bool BeginCelPostProcessFrame(int width, int height)
 void ApplyCelPostProcessBeforeGui(int width, int height)
 {
     /*
-     * Use the frame-begin snapshot rather than a second display-dimension
-     * read. Width and height are committed only at the start of a GL frame.
+     * Use the frame-begin snapshot for the scene target. After compositing, switch
+     * the PDDI display dimensions to the physical output size so menus/HUD render
+     * at output resolution while remaining on framebuffer 0.
      */
     (void)width;
     (void)height;
     ApplyCelPostProcess(gSHARFrameWidth, gSHARFrameHeight);
+
+#ifdef RAD_ANDROID
+    int outputWidth = gSHARFrameWidth;
+    int outputHeight = gSHARFrameHeight;
+    QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
+    if (gSHARActiveDisplayWidthForGui != NULL &&
+        gSHARActiveDisplayHeightForGui != NULL &&
+        outputWidth > 0 && outputHeight > 0)
+    {
+        *gSHARActiveDisplayWidthForGui = outputWidth;
+        *gSHARActiveDisplayHeightForGui = outputHeight;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, outputWidth, outputHeight);
+    }
+#endif
 }
 
 
@@ -2164,8 +2184,17 @@ void pglDisplay::CommitPendingResize()
     serial = gSHARAndroidRenderResizeSerial;
     SDL_AtomicUnlock(&gSHARAndroidRenderResolutionLock);
 
-    if (serial == committedSerial || requestedWidth <= 0 || requestedHeight <= 0)
+    if (requestedWidth <= 0 || requestedHeight <= 0)
         return;
+
+    if (serial == committedSerial)
+    {
+        // The previous frame may have temporarily exposed output dimensions to
+        // the GUI. Restore the internal world target before the next frame.
+        winWidth = requestedWidth;
+        winHeight = requestedHeight;
+        return;
+    }
 
     const int previousWidth = winWidth;
     const int previousHeight = winHeight;
@@ -2393,6 +2422,10 @@ MessageCallback(GLenum source,
 
 bool pglDisplay ::InitDisplay(const pddiDisplayInit* init)
 {
+#ifdef RAD_ANDROID
+    gSHARActiveDisplayWidthForGui = &winWidth;
+    gSHARActiveDisplayHeightForGui = &winHeight;
+#endif
     displayInit = *init;
 
     int x = init->xsize;
