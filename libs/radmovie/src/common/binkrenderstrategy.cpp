@@ -24,13 +24,12 @@
 #include <p3d/utility.hpp>
 
 #include <radprofiler.hpp>
-#include <pddi/gles/gl.hpp>
 #include "binkrenderstrategy.hpp"
 
 #if defined(RAD_ANDROID)
 #include <android/log.h>
 #define SHAR_FMV_DIAG(...) __android_log_print(ANDROID_LOG_INFO, "SimpsonsHitAndRun", __VA_ARGS__)
-extern "C" bool SHARGetAndroidOutputSurfaceSize(int* width, int* height);
+extern "C" bool SHARGetAndroidRenderState(int* outputWidth, int* outputHeight, int* framebuffer, int* viewport);
 #endif
 
 extern bool inLoop;
@@ -320,15 +319,12 @@ bool radMovieRenderStrategyBink::Render( void )
      * internal PDDI dimensions while GL is bound to the FBO or to framebuffer 0.
      */
     {
-        GLint framebuffer = -1;
-        GLint viewport[4] = { 0, 0, 0, 0 };
-        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
-        glGetIntegerv(GL_VIEWPORT, viewport);
-
+        int framebuffer = -1;
+        int viewport[4] = { 0, 0, 0, 0 };
         int outputWidth = 0;
         int outputHeight = 0;
-        const int outputKnown =
-            SHARGetAndroidOutputSurfaceSize(&outputWidth, &outputHeight) ? 1 : 0;
+        const int outputKnown = SHARGetAndroidRenderState(
+            &outputWidth, &outputHeight, &framebuffer, viewport) ? 1 : 0;
 
         static int lastDisplayWidth = -1;
         static int lastDisplayHeight = -1;
@@ -348,7 +344,7 @@ bool radMovieRenderStrategyBink::Render( void )
             (int)m_MovieHeight != lastMovieHeight ||
             outputWidth != lastOutputWidth ||
             outputHeight != lastOutputHeight ||
-            (int)framebuffer != lastFramebuffer ||
+            framebuffer != lastFramebuffer ||
             viewport[0] != lastViewport[0] ||
             viewport[1] != lastViewport[1] ||
             viewport[2] != lastViewport[2] ||
