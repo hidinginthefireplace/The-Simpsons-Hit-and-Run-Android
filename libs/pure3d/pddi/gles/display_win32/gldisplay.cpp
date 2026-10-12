@@ -1841,6 +1841,9 @@ static void ApplyCRTFilter(int width, int height)
     if (cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
     if (scissor) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
     if (stencil) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
+    glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)oldFbo);
+}
+
 #ifdef RAD_ANDROID
 // Run full-frame filters after the game/UI scene is composed but before the
 // touch HUD is drawn. This keeps CRT curvature and sharpening from moving or
