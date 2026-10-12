@@ -40,6 +40,8 @@ radMovieRenderStrategyBink::radMovieRenderStrategyBink( void )
     m_MoviePosY( 0 ),
     m_MovieWidth( 0 ),
     m_MovieHeight( 0 ),
+    m_DisplayWidth( 0 ),
+    m_DisplayHeight( 0 ),
     m_DisplayMultiplier( 1.0f ),
     m_NumTiles( 0 ),
     m_CurrentDestIndex( 0 ),
@@ -146,32 +148,18 @@ void radMovieRenderStrategyBink::UnlockDestination( void )
 void radMovieRenderStrategyBink::ChangeParameters( unsigned int width, unsigned int height )
 {
     rAssert( width > 0 && height > 0 );
-    rAssert( width <= ( unsigned int ) p3d::display->GetWidth( ) );
-    rAssert( height <= ( unsigned int ) p3d::display->GetHeight( ) );
 
-    //
-    // Only allocate things if the width or height has changed
-    //
-
+    // Source movie dimensions may exceed the selected internal render size. The
+    // movie textures are tiled and the quad is scaled to the active render target.
+    // Only rebuild those source textures when the movie's own dimensions change.
     if( width != m_MovieWidth || height != m_MovieHeight )
     {
-        // Remember the new dimensions
-
         m_MovieWidth = width;
         m_MovieHeight = height;
 
-        // Assume that we'll fit the screen
-        if ( p3d::display->GetWidth( ) >= p3d::display->GetHeight( ) )
-        {
-            m_DisplayMultiplier = (float) p3d::display->GetHeight( ) / ( float ) m_MovieHeight;
-        }
-        else
-        {
-            m_DisplayMultiplier = (float) p3d::display->GetWidth( ) / ( float ) m_MovieWidth;
-        }
-
-        m_MoviePosX = (int) ( ( p3d::display->GetWidth( ) - m_MovieWidth * m_DisplayMultiplier ) / 2.0f );
-        m_MoviePosY = (int) ( ( p3d::display->GetHeight( ) - m_MovieHeight * m_DisplayMultiplier ) / 2.0f );
+        // Invalidate the cached placement so it is recomputed for this movie size.
+        m_DisplayWidth = 0;
+        m_DisplayHeight = 0;
 
         // How many tiles will this movie require?
 
@@ -239,6 +227,56 @@ void radMovieRenderStrategyBink::ChangeParameters( unsigned int width, unsigned 
             }
         }
     }
+
+    // Resolution can change while the decoded movie dimensions stay identical.
+    // Recompute placement separately from texture allocation so live changes
+    // never destroy/recreate the movie's source textures.
+    UpdateDisplayLayout();
+}
+
+//=============================================================================
+// radMovieRenderStrategyBink::UpdateDisplayLayout
+//=============================================================================
+
+void radMovieRenderStrategyBink::UpdateDisplayLayout( void )
+{
+    if( m_MovieWidth == 0 || m_MovieHeight == 0 || p3d::display == NULL )
+    {
+        return;
+    }
+
+    const int displayWidth = p3d::display->GetWidth();
+    const int displayHeight = p3d::display->GetHeight();
+    if( displayWidth <= 0 || displayHeight <= 0 )
+    {
+        return;
+    }
+
+    if( displayWidth == m_DisplayWidth && displayHeight == m_DisplayHeight )
+    {
+        return;
+    }
+
+    m_DisplayWidth = displayWidth;
+    m_DisplayHeight = displayHeight;
+
+    // Match the existing fullscreen/letterbox policy, but recalculate it for
+    // the currently active internal render dimensions.
+    if( displayWidth >= displayHeight )
+    {
+        m_DisplayMultiplier =
+            (float)displayHeight / (float)m_MovieHeight;
+    }
+    else
+    {
+        m_DisplayMultiplier =
+            (float)displayWidth / (float)m_MovieWidth;
+    }
+
+    m_MoviePosX = (int)(
+        (displayWidth - m_MovieWidth * m_DisplayMultiplier) / 2.0f);
+    m_MoviePosY = (int)(
+        (displayHeight - m_MovieHeight * m_DisplayMultiplier) / 2.0f);
 }
 
 //=============================================================================
@@ -247,6 +285,8 @@ void radMovieRenderStrategyBink::ChangeParameters( unsigned int width, unsigned 
 
 bool radMovieRenderStrategyBink::Render( void )
 {
+    UpdateDisplayLayout();
+
     // some camera settings
     p3d::pddi->PushState(PDDI_STATE_ALL);
     p3d::pddi->PushIdentityMatrix(PDDI_MATRIX_MODELVIEW);
