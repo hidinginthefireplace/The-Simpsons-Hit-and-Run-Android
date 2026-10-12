@@ -1449,6 +1449,11 @@ static void ApplyCelPostProcess(int width, int height)
         return;
     }
 
+    // Keep the framebuffer validity check used by the normal cel compose route.
+    // This is ordinary renderer state inspection; the costly pixel probes are gone.
+    GLint currentFramebuffer = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFramebuffer);
+
     if (!IsCelShadingEnabled())
     {
         LogSHARResizePathOnce(width, height, "compose", "route=plain-resolve");
@@ -2696,12 +2701,11 @@ void pglDisplay::SwapBuffers(void)
             "[SHAR-RESIZE-DIAG] GL error before swap=0x%04x output=%dx%d framebuffer=%d viewport=%d,%d %dx%d program=%d",
             (unsigned)preSwapError, outputWidth, outputHeight,
             (int)preSwapFramebuffer, preSwapViewport[0], preSwapViewport[1],
-            preSwapViewport[2], preSwapViewport[3]);
+            preSwapViewport[2], preSwapViewport[3], (int)preSwapProgram);
 #endif
     SDL_GL_SwapWindow(win);
     reset = false;
-#endif
-    #ifdef RAD_ANDROID
+#ifdef RAD_ANDROID
     /*
      * Manual 60 FPS cap for Android.
      *
