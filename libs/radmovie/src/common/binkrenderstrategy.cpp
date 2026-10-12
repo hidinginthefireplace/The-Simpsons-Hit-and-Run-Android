@@ -26,6 +26,11 @@
 #include <radprofiler.hpp>
 #include "binkrenderstrategy.hpp"
 
+#if defined(RAD_ANDROID)
+#include <android/log.h>
+#define SHAR_FMV_DIAG(...) __android_log_print(ANDROID_LOG_INFO, "SimpsonsHitAndRun", __VA_ARGS__)
+#endif
+
 extern bool inLoop;
 
 //=============================================================================
@@ -277,6 +282,15 @@ void radMovieRenderStrategyBink::UpdateDisplayLayout( void )
         (displayWidth - m_MovieWidth * m_DisplayMultiplier) / 2.0f);
     m_MoviePosY = (int)(
         (displayHeight - m_MovieHeight * m_DisplayMultiplier) / 2.0f);
+
+#if defined(RAD_ANDROID)
+    SHAR_FMV_DIAG(
+        "[SHAR-FMV-DIAG] layout display=%dx%d movie=%ux%u multiplier=%.4f "
+        "pixelOffset=%d,%d mode=android-normalized-quad",
+        displayWidth, displayHeight,
+        m_MovieWidth, m_MovieHeight,
+        m_DisplayMultiplier, m_MoviePosX, m_MoviePosY);
+#endif
 }
 
 //=============================================================================
@@ -358,6 +372,25 @@ bool radMovieRenderStrategyBink::Render( void )
         float z = 5.0f;     // arbitrary value greater than 0
         float dx = ( float ) m_DisplayMultiplier * m_pTile[ tile ].m_Width;
         float dy = ( float ) m_DisplayMultiplier * m_pTile[ tile ].m_Height;
+
+        #elif defined(RAD_ANDROID)
+
+        /*
+         * Android/GLES uses an orthographic projection with normalized device
+         * coordinates, not the pixel coordinates used by the Win32 strategy.
+         * Applying a display-pixel multiplier to x here mixes the two spaces:
+         * as the internal render height grows, the quad grows beyond the FBO
+         * and appears clipped/offset after the fixed-surface resolve.
+         *
+         * Keep the movie quad at the established fullscreen normalized bounds.
+         * The offscreen renderer then scales this complete image to the output
+         * surface, independently of the selected internal resolution.
+         */
+        float x = -0.5f;
+        float y = 0.5f / (4.0f / 3.0f);
+        float z = 5.0f;
+        float dx = 1.0f;
+        float dy = y * -2.0f;
 
         #else
 
