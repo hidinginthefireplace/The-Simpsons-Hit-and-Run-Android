@@ -937,11 +937,9 @@ void pglContext::BeginFrame()
 
 #ifdef RAD_ANDROID
     /*
-     * When enabled, route the complete game frame (including menus) into the
-     * off-screen cel render target before any draw calls occur.
-     *
-     * When disabled or when the FBO cannot be created, framebuffer 0 remains
-     * active and the original renderer path is untouched.
+     * Always route the world into the offscreen render target before draw calls.
+     * Cel shading selects either the toon compose or a plain resolve; GUI rendering
+     * then uses the actual output Surface dimensions.
      */
     BeginCelPostProcessFrame(display->GetWidth(), display->GetHeight());
 #endif
