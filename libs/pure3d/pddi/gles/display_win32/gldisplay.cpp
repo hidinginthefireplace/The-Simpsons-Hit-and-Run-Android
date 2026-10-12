@@ -43,9 +43,6 @@ GLint gCelFallbackTextureLocation = -1;
 static int gSHARFrameWidth = 0;
 static int gSHARFrameHeight = 0;
 static bool gCelWorldInFbo = false;
-static bool gSHARResizePendingOnGLThread = false;
-static int gSHARHoldDirectFrames = 0;
-static const int SHAR_RESIZE_DIRECT_FRAMES = 3;
 GLuint gCelRenderFbo = 0;
 GLuint gCelRenderDepth = 0;
 GLuint gCelRenderDepthTexture = 0;
@@ -204,19 +201,6 @@ static bool QueryDefaultFramebufferSize(int* width, int* height)
     if (QueryEglSurfaceSize(width, height))
         return true;
     return QuerySDLDrawableSize(width, height);
-}
-
-static int gSHARProbeFramesRemaining = 0;
-
-static void ProbePixel(const char* tag, int x, int y)
-{
-    unsigned char pixel[4] = {0, 0, 0, 0};
-    glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
-    const GLenum error = glGetError();
-    SDL_Log("[SHAR-PROBE] %s (%d,%d)=%u,%u,%u,%u readError=0x%04x",
-        tag ? tag : "pixel", x, y,
-        (unsigned)pixel[0], (unsigned)pixel[1],
-        (unsigned)pixel[2], (unsigned)pixel[3], (unsigned)error);
 }
 
 static void LogSHARRenderTargetRejectedOnce(
@@ -1250,7 +1234,7 @@ static bool EnsureCelFallbackResolveResources()
     return gCelFallbackVbo != 0;
 }
 
-static void ResolveSceneToScreen(int width, int height, bool holdDirectAfter)
+static void ResolveSceneToScreen(int width, int height)
 {
     if (!gCelWorldInFbo)
     {
@@ -1337,8 +1321,6 @@ static void ResolveSceneToScreen(int width, int height, bool holdDirectAfter)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, outputWidth, outputHeight);
     gCelWorldInFbo = false;
-    if (holdDirectAfter)
-        gSHARHoldDirectFrames = SHAR_RESIZE_DIRECT_FRAMES;
 
     char resolveRoute[160];
     snprintf(resolveRoute, sizeof(resolveRoute),
@@ -1431,7 +1413,6 @@ static void ResetAndroidPostProcess()
     gSHARLastRejectedWidth = gSHARLastRejectedHeight = gSHARLastRejectedReason = 0;
     gCelWorldInFbo = false;
     // Normal frames remain on the offscreen path immediately after a resize.
-    gSHARHoldDirectFrames = 0;
 
     GLenum error = GL_NO_ERROR;
     int resetErrors = 0;
@@ -1463,18 +1444,10 @@ static void ApplyCelPostProcess(int width, int height)
         return;
     }
 
-    GLint currentFramebuffer = 0;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFramebuffer);
-    if (gSHARProbeFramesRemaining > 0 &&
-        (GLuint)currentFramebuffer == gCelRenderFbo)
-    {
-        ProbePixel("fbo-scene", width / 2, height / 2);
-    }
-
     if (!IsCelShadingEnabled())
     {
         LogSHARResizePathOnce(width, height, "compose", "route=plain-resolve");
-        ResolveSceneToScreen(width, height, false);
+        ResolveSceneToScreen(width, height);
         return;
     }
 
@@ -1486,14 +1459,14 @@ static void ApplyCelPostProcess(int width, int height)
             (unsigned)currentFramebuffer, (unsigned)gCelRenderFbo,
             gCelRenderFboReady ? 1 : 0, (unsigned)gCelPostTexture);
         LogSHARResizePathOnce(width, height, "compose", route);
-        ResolveSceneToScreen(width, height, true);
+        ResolveSceneToScreen(width, height);
         return;
     }
 
     if (!EnsureCelPostProcessResources(width, height))
     {
         LogSHARResizePathOnce(width, height, "compose", "route=fallback-postprocess-resource-unavailable");
-        ResolveSceneToScreen(width, height, true);
+        ResolveSceneToScreen(width, height);
         return;
     }
 
@@ -1675,36 +1648,6 @@ bool BeginCelPostProcessFrame(int width, int height)
     gSHARFrameWidth = width;
     gSHARFrameHeight = height;
     gCelWorldInFbo = false;
-
-    if (gSHARResizePendingOnGLThread)
-    {
-        // While waiting for Android/EGL to settle, do not send the scene into
-        // an off-screen target whose size may no longer match the Surface.
-        LogSHARResizePathOnce(width, height, "begin-frame", "route=direct-resize-pending");
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        int outputWidth = width;
-        int outputHeight = height;
-        QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
-        glViewport(0, 0, outputWidth, outputHeight);
-        return false;
-    }
-
-    if (gSHARHoldDirectFrames > 0)
-    {
-        --gSHARHoldDirectFrames;
-        char warmupRoute[96];
-        snprintf(warmupRoute, sizeof(warmupRoute),
-            "route=direct-fallback-recovery remainingFrames=%d", gSHARHoldDirectFrames);
-        LogSHARResizePathOnce(width, height, "begin-frame", warmupRoute);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        int outputWidth = width;
-        int outputHeight = height;
-        QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
-        glViewport(0, 0, outputWidth, outputHeight);
-        if (gSHARHoldDirectFrames == 0)
-            SDL_Log("[SHAR-RESIZE] direct-fallback recovery finished at %dx%d", width, height);
-        return false;
-    }
 
     if (!BindCelRenderTarget(width, height))
     {
@@ -2211,138 +2154,47 @@ LogSHARDisplayResolutionIfChanged(const char* reason, int width, int height)
 void pglDisplay::CommitPendingResize()
 {
     static int committedSerial = 0;
-    static int waitingSerial = -1;
-    static int waitFrames = 0;
-    static int unannouncedSurfaceMismatchFrames = 0;
-    static bool firstCommit = true;
-
     int requestedWidth = 0;
     int requestedHeight = 0;
     int serial = 0;
+
     SDL_AtomicLock(&gSHARAndroidRenderResolutionLock);
     requestedWidth = gSHARAndroidRenderWidth;
     requestedHeight = gSHARAndroidRenderHeight;
     serial = gSHARAndroidRenderResizeSerial;
     SDL_AtomicUnlock(&gSHARAndroidRenderResolutionLock);
 
+    if (serial == committedSerial || requestedWidth <= 0 || requestedHeight <= 0)
+        return;
+
+    const int previousWidth = winWidth;
+    const int previousHeight = winHeight;
+    winWidth = requestedWidth;
+    winHeight = requestedHeight;
+    committedSerial = serial;
+
     int surfaceWidth = 0;
     int surfaceHeight = 0;
     const bool surfaceSizeKnown =
         QueryDefaultFramebufferSize(&surfaceWidth, &surfaceHeight);
 
-    if (serial == committedSerial || requestedWidth <= 0 || requestedHeight <= 0)
-    {
-        const bool matchesActive =
-            surfaceSizeKnown &&
-            surfaceWidth == winWidth &&
-            surfaceHeight == winHeight;
-
-        if (matchesActive)
-        {
-            gSHARResizePendingOnGLThread = false;
-            unannouncedSurfaceMismatchFrames = 0;
-        }
-        else
-        {
-            // Surface size changes can precede Java's size-confirmation callback
-            // by a few frames. Temporarily use framebuffer 0, but don't leave cel
-            // rendering disabled forever if EGL intentionally reports a different
-            // size or the callback never arrives.
-            if (unannouncedSurfaceMismatchFrames < 15)
-            {
-                ++unannouncedSurfaceMismatchFrames;
-                gSHARResizePendingOnGLThread = true;
-                if (unannouncedSurfaceMismatchFrames == 1)
-                {
-                    SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
-                        "[SHAR-RESIZE] surface changed before new Java size serial: active=%dx%d fb0=%dx%d known=%d",
-                        winWidth, winHeight, surfaceWidth, surfaceHeight,
-                        surfaceSizeKnown ? 1 : 0);
-                }
-            }
-            else
-            {
-                if (unannouncedSurfaceMismatchFrames == 15)
-                {
-                    SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
-                        "[SHAR-RESIZE] no matching Java size serial after 15 frames; continuing with committed %dx%d",
-                        winWidth, winHeight);
-                }
-                gSHARResizePendingOnGLThread = false;
-            }
-        }
-        return;
-    }
-
-    if (waitingSerial != serial)
-    {
-        waitingSerial = serial;
-        waitFrames = 0;
-    }
-
-    // On startup InitDisplay may already be using the initial Java dimensions.
-    // Don't stall the first frame just because EGL exposes a differently-sized
-    // surface; screen-space passes will query the actual framebuffer dimensions.
-    const bool initialDimensionsAlreadyApplied =
-        firstCommit &&
-        requestedWidth == winWidth &&
-        requestedHeight == winHeight;
-
-    const bool requestedSurfaceReady =
-        initialDimensionsAlreadyApplied ||
-        (surfaceSizeKnown &&
-         surfaceWidth == requestedWidth &&
-         surfaceHeight == requestedHeight);
-
-    if (!requestedSurfaceReady && waitFrames < 120)
-    {
-        ++waitFrames;
-        gSHARResizePendingOnGLThread = true;
-        if (waitFrames == 1 || (waitFrames % 30) == 0)
-        {
-            SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
-                "[SHAR-RESIZE] waiting for EGL surface: requested=%dx%d fb0=%dx%d known=%d frame=%d/120 serial=%d",
-                requestedWidth, requestedHeight,
-                surfaceWidth, surfaceHeight,
-                surfaceSizeKnown ? 1 : 0, waitFrames, serial);
-        }
-        return;
-    }
-
-    const int previousWidth = winWidth;
-    const int previousHeight = winHeight;
-    const bool timedOut = !requestedSurfaceReady;
-    winWidth = requestedWidth;
-    winHeight = requestedHeight;
-    committedSerial = serial;
-    firstCommit = false;
-    waitFrames = 0;
-    unannouncedSurfaceMismatchFrames = 0;
-    gSHARResizePendingOnGLThread = false;
-
     SDL_Log(
-        "[SHAR-RESIZE] GL-thread commit %dx%d -> %dx%d fb0=%dx%d known=%d timeout=%d serial=%d",
+        "[SHAR-RESIZE] GL-thread internal-target commit %dx%d -> %dx%d "
+        "output=%dx%d outputKnown=%d serial=%d",
         previousWidth, previousHeight, winWidth, winHeight,
-        surfaceWidth, surfaceHeight, surfaceSizeKnown ? 1 : 0,
-        timedOut ? 1 : 0, serial);
+        surfaceWidth, surfaceHeight, surfaceSizeKnown ? 1 : 0, serial);
 
+    // Only the offscreen world target changes here. The Android output Surface
+    // remains platform-sized, so there is no EGL size match/wait to perform.
     ResetAndroidPostProcess();
-    glViewport(0, 0, winWidth, winHeight);
-    gSHARProbeFramesRemaining = 150;
 
-    // Record the default-framebuffer configuration once per committed resize.
-    GLint depthBits = 0;
-    GLint redBits = 0;
-    int eglWidth = 0;
-    int eglHeight = 0;
-    const bool eglSizeKnown = QueryEglSurfaceSize(&eglWidth, &eglHeight);
+    int outputWidth = winWidth;
+    int outputHeight = winHeight;
+    QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glGetIntegerv(GL_DEPTH_BITS, &depthBits);
-    glGetIntegerv(GL_RED_BITS, &redBits);
-    SDL_Log("[SHAR-PROBE] fb0 depthBits=%d redBits=%d egl=%dx%d eglKnown=%d",
-        (int)depthBits, (int)redBits, eglWidth, eglHeight,
-        eglSizeKnown ? 1 : 0);
+    glViewport(0, 0, outputWidth, outputHeight);
 }
+
 #endif
 
 bool pglDisplay::CheckExtension( const char *extName )
@@ -2810,32 +2662,9 @@ void pglDisplay::SwapBuffers(void)
             (unsigned)preSwapError, outputWidth, outputHeight,
             (int)preSwapFramebuffer, preSwapViewport[0], preSwapViewport[1],
             preSwapViewport[2], preSwapViewport[3]);
-    if (gSHARProbeFramesRemaining > 0)
-    {
-        int probeWidth = outputWidth;
-        int probeHeight = outputHeight;
-        QueryDefaultFramebufferSize(&probeWidth, &probeHeight);
-        ProbePixel("fb0-mid", probeWidth / 2, probeHeight / 2);
-        ProbePixel("fb0-top", probeWidth / 2, (probeHeight * 3) / 4);
-        ProbePixel("fb0-bottom", probeWidth / 2, probeHeight / 4);
-        SDL_ClearError();
-    }
 #endif
     SDL_GL_SwapWindow(win);
     reset = false;
-#ifdef RAD_ANDROID
-    if (gSHARProbeFramesRemaining > 0)
-    {
-        const char* swapError = SDL_GetError();
-        if (swapError != NULL && swapError[0] != '\0')
-        {
-            SDL_Log("[SHAR-PROBE] SDL_GL_SwapWindow error: %s", swapError);
-            SDL_ClearError();
-        }
-        --gSHARProbeFramesRemaining;
-        if (gSHARProbeFramesRemaining == 0)
-            SDL_Log("[SHAR-PROBE] 150-frame probe window complete");
-    }
 #endif
     #ifdef RAD_ANDROID
     /*
