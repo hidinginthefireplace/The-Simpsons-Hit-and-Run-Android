@@ -1748,15 +1748,29 @@ void BeginSHARAndroidFMVOutputRender()
     // restore the internal world target and bind its FBO as usual.
     gCelWorldInFbo = false;
 
-    GLint framebuffer = -1;
-    GLint viewport[4] = {0, 0, 0, 0};
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
-    glGetIntegerv(GL_VIEWPORT, viewport);
-    SDL_Log(
-        "[SHAR-FMV-DIAG] direct-output target=%dx%d previousDisplay=%dx%d "
-        "fb=%d viewport=%d,%d %dx%d",
-        outputWidth, outputHeight, previousWidth, previousHeight,
-        (int)framebuffer, viewport[0], viewport[1], viewport[2], viewport[3]);
+    static int lastLoggedOutputWidth = 0;
+    static int lastLoggedOutputHeight = 0;
+    static int lastLoggedPreviousWidth = 0;
+    static int lastLoggedPreviousHeight = 0;
+    if (outputWidth != lastLoggedOutputWidth ||
+        outputHeight != lastLoggedOutputHeight ||
+        previousWidth != lastLoggedPreviousWidth ||
+        previousHeight != lastLoggedPreviousHeight)
+    {
+        GLint framebuffer = -1;
+        GLint viewport[4] = {0, 0, 0, 0};
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        SDL_Log(
+            "[SHAR-FMV-DIAG] direct-output target=%dx%d previousDisplay=%dx%d "
+            "fb=%d viewport=%d,%d %dx%d",
+            outputWidth, outputHeight, previousWidth, previousHeight,
+            (int)framebuffer, viewport[0], viewport[1], viewport[2], viewport[3]);
+        lastLoggedOutputWidth = outputWidth;
+        lastLoggedOutputHeight = outputHeight;
+        lastLoggedPreviousWidth = previousWidth;
+        lastLoggedPreviousHeight = previousHeight;
+    }
 }
 #endif
 
