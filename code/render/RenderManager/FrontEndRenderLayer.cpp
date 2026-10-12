@@ -34,6 +34,7 @@
 #ifdef RAD_ANDROID
 #include <presentation/fmvplayer/fmvplayer.h>
 #include <input/touch/touchhudrenderer.h>
+void ApplySHARPostProcessingBeforeTouchHud();
 #endif
 
 
@@ -316,7 +317,8 @@ void FrontEndRenderLayer::Render()
         
         
         #ifdef RAD_ANDROID
-        TouchHudRenderer::GetInstance().Render(); // Excelente sitio para renderizar pero hay que vigilar el caso de cinematica
+        ApplySHARPostProcessingBeforeTouchHud();
+        TouchHudRenderer::GetInstance().Render(); // Render touch controls after full-frame filters.
         #endif
         HeapMgr()->PopHeap( GMA_TEMP );
 

@@ -44,6 +44,8 @@ GLint gCelFallbackTextureLocation = -1;
 static int gSHARFrameWidth = 0;
 static int gSHARFrameHeight = 0;
 static bool gCelWorldInFbo = false;
+// Tracks whether full-frame filters have already run before touch controls.
+static bool gSHARPostProcessAppliedBeforeTouchHud = false;
 // pglDisplay keeps the internal render size for the world. During the GUI phase,
 // briefly expose the actual Surface dimensions, then restore the render size at
 // the next frame start in CommitPendingResize().
@@ -482,12 +484,13 @@ static bool EnsureCelRenderTarget(int width, int height)
         0
     );
 
-    // A full-screen sampleable depth texture costs about another 32 MiB at
-    // 3840x2160. Above four megapixels, use the smaller depth renderbuffer
-    // instead; the toon pass remains active, but depth-aware fading is omitted.
+    // Preserve depth-aware outline fading at 2160p by using a compact 16-bit
+    // depth texture for targets above four megapixels. This matches the nominal
+    // storage of the existing GL_DEPTH_COMPONENT16 fallback renderbuffer.
     const size_t renderPixels = (size_t)width * (size_t)height;
-    const bool allowDepthTexture = IsCelShadingEnabled() &&
-        renderPixels <= (size_t)4 * 1024 * 1024;
+    const bool allowDepthTexture = IsCelShadingEnabled();
+    const GLenum depthTextureType = renderPixels > (size_t)4 * 1024 * 1024
+        ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
     gCelDepthTextureActive = false;
     bool depthTextureReady = false;
     if (gCelDepthTextureExtensionAvailable &&
@@ -515,7 +518,7 @@ static bool EnsureCelRenderTarget(int width, int height)
                     height,
                     0,
                     GL_DEPTH_COMPONENT,
-                    GL_UNSIGNED_INT,
+                    depthTextureType,
                     NULL
                 );
                 depthStorageReady = CheckSHARAllocationError(
@@ -1464,11 +1467,15 @@ static void ApplyCelPostProcess(int width, int height)
 
 }
 
+static void ApplyFrameSharpening(int width, int height);
+static void ApplyCRTFilter(int width, int height);
+
 bool BeginCelPostProcessFrame(int width, int height)
 {
     gSHARFrameWidth = width;
     gSHARFrameHeight = height;
     gCelWorldInFbo = false;
+    gSHARPostProcessAppliedBeforeTouchHud = false;
 
     if (!BindCelRenderTarget(width, height))
     {
@@ -1834,9 +1841,29 @@ static void ApplyCRTFilter(int width, int height)
     if (cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
     if (scissor) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
     if (stencil) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
-    glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)oldFbo);
-}
+#ifdef RAD_ANDROID
+// Run full-frame filters after the game/UI scene is composed but before the
+// touch HUD is drawn. This keeps CRT curvature and sharpening from moving or
+// blurring the on-screen controls. SwapBuffers calls this as a fallback for
+// frames that do not render either touch-HUD path.
+void ApplySHARPostProcessingBeforeTouchHud()
+{
+    if (gSHARPostProcessAppliedBeforeTouchHud)
+        return;
 
+    int outputWidth = gSHARFrameWidth > 0 ? gSHARFrameWidth : 0;
+    int outputHeight = gSHARFrameHeight > 0 ? gSHARFrameHeight : 0;
+    QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
+    if (outputWidth <= 0 || outputHeight <= 0)
+        return;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, outputWidth, outputHeight);
+    ApplyFrameSharpening(outputWidth, outputHeight);
+    ApplyCRTFilter(outputWidth, outputHeight);
+    gSHARPostProcessAppliedBeforeTouchHud = true;
+}
+#endif
 
 static SDL_SpinLock gSHARAndroidRenderResolutionLock = 0;
 static int gSHARAndroidRenderWidth = 0;
@@ -2444,14 +2471,9 @@ void pglDisplay::SetGamma(float r, float g, float b)
 void pglDisplay::SwapBuffers(void)
 {
 #ifdef RAD_ANDROID
-    // Keep post-passes on the actual onscreen surface size. The source scene
-    // itself was rendered using the per-frame internal render-size snapshot.
-    int outputWidth = gSHARFrameWidth > 0 ? gSHARFrameWidth : winWidth;
-    int outputHeight = gSHARFrameHeight > 0 ? gSHARFrameHeight : winHeight;
-    QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
-    ApplyFrameSharpening(outputWidth, outputHeight);
-    ApplyCRTFilter(outputWidth, outputHeight);
-
+    // Fallback for frames where neither touch-HUD renderer ran. Normally the
+    // pass has already happened before the touch overlay was drawn.
+    ApplySHARPostProcessingBeforeTouchHud();
 #endif
     SDL_GL_SwapWindow(win);
     reset = false;

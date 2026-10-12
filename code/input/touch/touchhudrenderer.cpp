@@ -12,6 +12,8 @@
 #if defined(RAD_ANDROID)
 #include <android/log.h>
 
+void ApplySHARPostProcessingBeforeTouchHud();
+
 #define TOUCH_HUD_RENDERER_LOG_TAG "SimpsonsHitAndRun"
 #define TOUCH_HUD_RENDERER_LOGI(...) __android_log_print(ANDROID_LOG_INFO, TOUCH_HUD_RENDERER_LOG_TAG, __VA_ARGS__)
 #define TOUCH_HUD_RENDERER_LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TOUCH_HUD_RENDERER_LOG_TAG, __VA_ARGS__)
@@ -753,7 +755,9 @@ void TouchHudRenderer::RenderCinematicSkip()
     TouchHudSystem::GetInstance().IsControlPressed(TOUCH_HUD_CONTROL_CINEMATIC_SKIP);
 
     const float opacity = pressed ? mPressedOpacity : mOpacity;
-    
+
+    // The cinematic skip control also needs to stay outside CRT curvature.
+    ApplySHARPostProcessingBeforeTouchHud();
     BeginTouchHud2D();
 
     RenderSpriteInPixelRect(
