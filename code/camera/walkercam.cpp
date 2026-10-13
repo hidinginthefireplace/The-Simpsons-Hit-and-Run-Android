@@ -255,9 +255,18 @@ void WalkerCam::Update( unsigned int milliseconds )
 
     if ( !mTarget->IsCar() )
     {
-        // L2 zooms in; R2 supplies the opposite signed zoom value.
-        float zoom = mController->GetValue( SuperCamController::zToggle ) -
-                     mController->GetValue( SuperCamController::zToggleOut );
+        // L2 moves the FOV toward its usual minimum. R2 raises the maximum
+        // FOV while held, providing a real zoom-out rather than merely cancelling
+        // L2 back to the standard maximum. Cap the temporary wide view at 100°.
+        float zoom = mController->GetValue( SuperCamController::zToggle );
+        float zoomOut = mController->GetValue( SuperCamController::zToggleOut );
+        float minFOV = mData.GetMinFOV();
+        float maxFOV = mData.GetMaxFOV();
+        maxFOV += (maxFOV - minFOV) * zoomOut;
+        if (maxFOV > 100.0f)
+        {
+            maxFOV = 100.0f;
+        }
 
         float FOV = GetFOV();
         float pedPCT = IsTargetNearPed( milliseconds );
@@ -265,11 +274,11 @@ void WalkerCam::Update( unsigned int milliseconds )
 
         if ( GetFlag((Flag)CUT ) )
         {
-            FilterFov( zoom, mData.GetMinFOV(), mData.GetMaxFOV(), FOV, mFOVDelta, 1.0f, timeMod, offset );
+            FilterFov( zoom, minFOV, maxFOV, FOV, mFOVDelta, 1.0f, timeMod, offset );
         }
         else
         {
-            FilterFov( zoom, mData.GetMinFOV(), mData.GetMaxFOV(), FOV, mFOVDelta, mData.GetFOVLag(), timeMod, offset );
+            FilterFov( zoom, minFOV, maxFOV, FOV, mFOVDelta, mData.GetFOVLag(), timeMod, offset );
         }
 
         SetFOV( FOV );
