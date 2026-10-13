@@ -485,6 +485,21 @@ static void EnsureAndroidGameControllerMapping( int joystickIndex )
         return;
     }
 
+    /*
+     * Android can enumerate built-in hardware sensors as SDL joysticks.
+     * Do not manufacture a gamepad mapping for those non-controller devices.
+     */
+    if ( deviceName != NULL && SDL_strstr( deviceName, "Accelerometer" ) != NULL )
+    {
+        SDL_R2_DIAG(
+            "[R2-SDL] SKIP_SENSOR index=%d name=%s guid=%s",
+            joystickIndex,
+            deviceName,
+            guidString
+        );
+        return;
+    }
+
     char mapping[ 512 ];
     snprintf(
         mapping,
@@ -701,6 +716,79 @@ class radControllerInputPointSDL
                 rAssert( 0 );
             }
         }
+
+#if defined(RAD_ANDROID) && SDL_MAJOR_VERSION < 3
+        /*
+         * Some Shield controller firmware/backends expose R2 on physical axis 5
+         * but SDL's GameController trigger mapping reads as zero. Preserve SDL's
+         * logical value when it works; otherwise normalize the physical axis
+         * from its observed idle value (-32768) to full press (+32767).
+         */
+        if (
+            m_pType == g_Sdlipt[ 1 ] &&
+            m_Identifier == SDL_CONTROLLER_AXIS_TRIGGERRIGHT &&
+            newValue <= 0.0001f &&
+            m_pController != NULL
+        )
+        {
+            SDL_Joystick* pJoystick = SDL_GameControllerGetJoystick( m_pController );
+            const char* deviceName = pJoystick != NULL ? SDL_JoystickName( pJoystick ) : NULL;
+
+            if (
+                pJoystick != NULL &&
+                deviceName != NULL &&
+                SDL_strstr( deviceName, "NVIDIA" ) != NULL &&
+                SDL_JoystickNumAxes( pJoystick ) > SDL_CONTROLLER_AXIS_TRIGGERRIGHT
+            )
+            {
+                const Sint16 rawRightTrigger = SDL_JoystickGetAxis(
+                    pJoystick,
+                    SDL_CONTROLLER_AXIS_TRIGGERRIGHT
+                );
+                float fallbackValue =
+                    ( static_cast<float>( rawRightTrigger ) + 32768.0f ) / 65535.0f;
+
+                if ( fallbackValue < 0.0f )
+                {
+                    fallbackValue = 0.0f;
+                }
+                else if ( fallbackValue > 1.0f )
+                {
+                    fallbackValue = 1.0f;
+                }
+
+                newValue = fallbackValue;
+
+                static bool sHaveLastR2Fallback = false;
+                static SDL_JoystickID sLastR2InstanceId = -1;
+                static Sint16 sLastRawR2 = -32768;
+                const SDL_JoystickID instanceId = SDL_JoystickInstanceID( pJoystick );
+                int rawDelta = static_cast<int>( rawRightTrigger ) -
+                    static_cast<int>( sLastRawR2 );
+                if ( rawDelta < 0 )
+                {
+                    rawDelta = -rawDelta;
+                }
+
+                if ( !sHaveLastR2Fallback || instanceId != sLastR2InstanceId || rawDelta >= 256 )
+                {
+                    SDL_R2_DIAG(
+                        "[R2-SDL] RIGHT_TRIGGER_FALLBACK instance=%d rawAxis5=%d value=%.3f logicalRT=%d",
+                        static_cast<int>( instanceId ),
+                        static_cast<int>( rawRightTrigger ),
+                        fallbackValue,
+                        static_cast<int>( SDL_GameControllerGetAxis(
+                            m_pController,
+                            SDL_CONTROLLER_AXIS_TRIGGERRIGHT
+                        ) )
+                    );
+                    sHaveLastR2Fallback = true;
+                    sLastR2InstanceId = instanceId;
+                    sLastRawR2 = rawRightTrigger;
+                }
+            }
+        }
+#endif
 
 #if defined(RAD_ANDROID) && SDL_MAJOR_VERSION < 3
         /*
