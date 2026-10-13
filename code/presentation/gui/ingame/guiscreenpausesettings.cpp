@@ -1067,7 +1067,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
     const char* labels[6] =
     {
         "Moon Jump",
-        "Super Fast Cars",
+        "Faster Acceleration",
         "Vehicle Invincibility",
         "Car Horn Jump",
         "One Hit Tank Cars",
@@ -1078,8 +1078,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
     const bool enabled[5] =
     {
         cheats->IsMoonJumpEnabled(),
-        cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION ) &&
-            cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED ),
+        cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION ),
         cheats->IsCheatEnabled( CHEAT_ID_INVINCIBLE_CAR ),
         cheats->IsCheatEnabled( CHEAT_ID_CAR_JUMP_ON_HORN ),
         cheats->IsCheatEnabled( CHEAT_ID_ONE_TAP_TRAFFIC_DEATH )
@@ -1129,7 +1128,11 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
         {
             if( i == 5 )
             {
-                value->SetVisible( false );
+                // Keep the More Cheats action visibly marked as OPEN.
+                if( value->GetNumOfStrings() > 0 ) value->SetString( 0, "OPEN" );
+                value->SetVisible( true );
+                m_pMenu->SetSelectionValueCount( guiIndex, 1 );
+                m_pMenu->SetSelectionValue( guiIndex, 0 );
             }
             else
             {
@@ -1159,8 +1162,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidMoreCheatsMenu()
 {
     m_configuringAndroidSubmenu = true;
 
-    // Grid Mode is intentionally omitted; these five toggles reuse the
-    // existing Settings rows and value controls.
+    // Five toggles reuse existing Settings rows and value controls.
     const int logicalItems[5] =
     {
         MENU_ITEM_CAMERA,
@@ -1174,9 +1176,9 @@ void CGuiScreenPauseSettings::ConfigureAndroidMoreCheatsMenu()
     {
         "Noclip",
         "Character Swap",
-        "Red Brick Car",
         "Unlock All Cars",
-        "Psychedelic View"
+        "Unlimited Speed",
+        "Speedometer"
     };
 
     CheatInputSystem* cheats = GetCheatInputSystem();
@@ -1184,9 +1186,9 @@ void CGuiScreenPauseSettings::ConfigureAndroidMoreCheatsMenu()
     {
         IsSHARNoclipEnabled(),
         cheats->IsCheatEnabled( CHEAT_ID_KICK_TOGGLES_CHARACTER_MODEL ),
-        cheats->IsCheatEnabled( CHEAT_ID_REDBRICK ),
         cheats->IsCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES ),
-        cheats->IsCheatEnabled( CHEAT_ID_TRIPPY )
+        cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED ),
+        cheats->IsCheatEnabled( CHEAT_ID_SHOW_SPEEDOMETER )
     };
 
     for( int i = 0; i < 5; ++i )
@@ -1594,13 +1596,13 @@ void CGuiScreenPauseSettings::HandleMessage
                                     cheats->SetCheatEnabled( CHEAT_ID_KICK_TOGGLES_CHARACTER_MODEL, enabled );
                                     break;
                                 case MENU_ITEM_INTERSECT_NAV_SYSTEM:
-                                    cheats->SetCheatEnabled( CHEAT_ID_REDBRICK, enabled );
-                                    break;
-                                case MENU_ITEM_RADAR:
                                     cheats->SetCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES, enabled );
                                     break;
+                                case MENU_ITEM_RADAR:
+                                    cheats->SetCheatEnabled( CHEAT_ID_NO_TOP_SPEED, enabled );
+                                    break;
                                 case MENU_ITEM_INVERT_CAM_CONTROL:
-                                    cheats->SetCheatEnabled( CHEAT_ID_TRIPPY, enabled );
+                                    cheats->SetCheatEnabled( CHEAT_ID_SHOW_SPEEDOMETER, enabled );
                                     break;
                                 default:
                                     break;
@@ -1615,7 +1617,6 @@ void CGuiScreenPauseSettings::HandleMessage
                                     break;
                                 case MENU_ITEM_JUMP_CAMERAS:
                                     cheats->SetCheatEnabled( CHEAT_ID_HIGH_ACCELERATION, enabled );
-                                    cheats->SetCheatEnabled( CHEAT_ID_NO_TOP_SPEED, enabled );
                                     break;
                                 case MENU_ITEM_INTERSECT_NAV_SYSTEM:
                                     cheats->SetCheatEnabled( CHEAT_ID_INVINCIBLE_CAR, enabled );
@@ -1643,13 +1644,13 @@ void CGuiScreenPauseSettings::HandleMessage
                                     actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_KICK_TOGGLES_CHARACTER_MODEL );
                                     break;
                                 case MENU_ITEM_INTERSECT_NAV_SYSTEM:
-                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_REDBRICK );
-                                    break;
-                                case MENU_ITEM_RADAR:
                                     actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES );
                                     break;
+                                case MENU_ITEM_RADAR:
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED );
+                                    break;
                                 case MENU_ITEM_INVERT_CAM_CONTROL:
-                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_TRIPPY );
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_SHOW_SPEEDOMETER );
                                     break;
                                 default:
                                     break;
@@ -1664,8 +1665,7 @@ void CGuiScreenPauseSettings::HandleMessage
                                     break;
                                 case MENU_ITEM_JUMP_CAMERAS:
                                     actualEnabled =
-                                        cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION ) &&
-                                        cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED );
+                                        cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION );
                                     break;
                                 case MENU_ITEM_INTERSECT_NAV_SYSTEM:
                                     actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_INVINCIBLE_CAR );
