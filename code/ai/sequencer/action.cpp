@@ -303,7 +303,7 @@ void WalkerLocomotionAction::DoSimulation( float timeins)
     // Smoother 180 turns, but left right motion is jerkier.
     //  [6/21/2002]
     //
-    if ( CharacterTune::bLocoTest || mpCharacter->IsTurbo() )
+    if ( CharacterTune::bLocoTest )
     {
         mpLocomotionDriver->SetDesiredMotionAngle( mpCharacter->GetFacingDir( ) );
         mpLocomotionDriver->SetDesiredFacingAngle( mpCharacter->GetFacingDir( ) );
