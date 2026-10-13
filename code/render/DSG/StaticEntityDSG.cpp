@@ -52,8 +52,9 @@ void SetCelShadingOutlinePass(bool enabled);
 //
 //========================================================================
 StaticEntityDSG::StaticEntityDSG()
+: mIsGeo( NOT_GEO ),
+  mpDrawstuff( NULL )
 {
-   mpDrawstuff = NULL;
 }
 //========================================================================
 // StaticEntityDSG::
@@ -235,25 +236,47 @@ void StaticEntityDSG::Display()
 #endif
     DSG_BEGIN_PROFILE(profileName)
 
+    // GEO identifies a real mesh; IS_SHADOW marks a mesh participating in the
+    // existing shadow-caster path. Neither should suppress toon treatment.
+#ifdef RAD_ANDROID
+    const bool applyWorldToon = ((mIsGeo & GEO) != 0) &&
+                                IsCelShadingEnabled();
+#endif
+
     if(mIsGeo & IS_SHADOW)
     {
-        // Shadow-only geometry keeps its existing transparent/shadow pass.
+        // Keep the original no-depth-write behaviour of shadow-caster meshes.
         p3d::pddi->SetZWrite(false);
-        mpDrawstuff->Display();
+#ifdef RAD_ANDROID
+        if(applyWorldToon)
+        {
+            SetCelShadingObjectEnabled(true);
+            SetCelShadingOutlinePass(true);
+            mpDrawstuff->Display(); // Expanded silhouette.
+            SetCelShadingOutlinePass(false);
+            // Outline state restoration temporarily enables depth writes.
+            // Restore the original state before drawing the visible surface.
+            p3d::pddi->SetZWrite(false);
+            mpDrawstuff->Display();
+            SetCelShadingObjectEnabled(false);
+        }
+        else
+#endif
+        {
+            mpDrawstuff->Display();
+        }
         p3d::pddi->SetZWrite(true);
     }
     else
     {
 #ifdef RAD_ANDROID
-        // Apply model-level toon shading to actual static geometry only.
-        // Non-geometry drawables continue through the original single draw.
-        if ((mIsGeo & GEO) != 0 && IsCelShadingEnabled())
+        if(applyWorldToon)
         {
             SetCelShadingObjectEnabled(true);
             SetCelShadingOutlinePass(true);
-            mpDrawstuff->Display();
+            mpDrawstuff->Display(); // Expanded silhouette.
             SetCelShadingOutlinePass(false);
-            mpDrawstuff->Display();
+            mpDrawstuff->Display(); // Original material and toon-lit surface.
             SetCelShadingObjectEnabled(false);
         }
         else
@@ -264,7 +287,6 @@ void StaticEntityDSG::Display()
     }
     DSG_END_PROFILE(profileName)
 }
-
 #ifndef RAD_RELEASE
 //========================================================================
 // StaticEntityDSG::

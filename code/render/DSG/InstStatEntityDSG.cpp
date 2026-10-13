@@ -118,15 +118,15 @@ void InstStatEntityDSG::Display()
     }
     p3d::pddi->PushMultMatrix(PDDI_MATRIX_MODELVIEW, mpMatrix);
 #ifdef RAD_ANDROID
-        // Instanced static geometry covers repeated world objects, potentially
-        // including trees and foliage. Keep non-geometry/shadow meshes untouched.
-        if ((mIsGeo & GEO) != 0 && (mIsGeo & IS_SHADOW) == 0 && IsCelShadingEnabled())
+        // LoadSetUp explicitly identifies geometry so repeated world meshes can
+        // use the native toon pass rather than depending on uninitialised flags.
+        if ((mIsGeo & GEO) != 0 && IsCelShadingEnabled())
         {
             SetCelShadingObjectEnabled(true);
             SetCelShadingOutlinePass(true);
-            mpDrawstuff->Display();
+            mpDrawstuff->Display(); // Expanded silhouette.
             SetCelShadingOutlinePass(false);
-            mpDrawstuff->Display();
+            mpDrawstuff->Display(); // Original material and toon-lit surface.
             SetCelShadingObjectEnabled(false);
         }
         else
@@ -143,10 +143,9 @@ void InstStatEntityDSG::Display()
         BillboardQuadManager::Disable();
         DisplaySimpleShadow();
     }
-    
+
     DSG_END_PROFILE(profileName)
 }
-
 //========================================================================
 // InstStatEntityDSG::DisplaySimpleShadow
 //========================================================================
@@ -338,6 +337,11 @@ void InstStatEntityDSG::LoadSetUp
 {
     mpMatrix    = ipMatrix;
     mpDrawstuff = ipGeo;
+    mIsGeo      = GEO;
+    if (ipGeo->CastsShadow())
+    {
+        mIsGeo = mIsGeo | IS_SHADOW;
+    }
 
     mpDrawstuff->AddRef();
 
@@ -373,6 +377,7 @@ void InstStatEntityDSG::LoadSetUp
 {
     mpMatrix    = ipMatrix;
     mpDrawstuff = ipGeo;
+    mIsGeo      = NOT_GEO;
 
     mpDrawstuff->AddRef();
     ipGeo->ProcessShaders(*this);
