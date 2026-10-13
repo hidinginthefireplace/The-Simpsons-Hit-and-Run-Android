@@ -175,6 +175,12 @@ void SuperCamController::LoadControllerMappings( unsigned int controllerId )
     Map( "feMouseUp", mouseLookUp, 0, controllerId );
     Map( "feMouseDown", mouseLookDown, 0, controllerId );
     #endif
+
+    // Explicitly map SDL's analog right-trigger input on Android even when
+    // this target is using the PC-style controller mapping table.
+    #if defined(RAD_ANDROID)
+    Map( "RightTrigger", zToggleOut, 0, controllerId );
+    #endif
 }
 
 //=============================================================================
