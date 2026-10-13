@@ -186,15 +186,9 @@ float WalkerLocomotionAction::SolveActualDir( float fDesiredDir, float timeins )
     //
     float rotateDelta = choreo::GetSmallestArc( mpCharacter->GetFacingDir( ), fDesiredDir );
     
-    float newRatio;
-    if ( mpCharacter->IsTurbo() )
-    {
-        newRatio = CharacterTune::sfTurboRotateRate * timeins;
-    }
-    else
-    {
-        newRatio = CharacterTune::sfLocoRotateRate * timeins;
-    }
+    // Sprint changes speed, not steering responsiveness. Always use the same
+    // turn-rate parameter as normal locomotion, including runtime tuning.
+    float newRatio = CharacterTune::sfLocoRotateRate * timeins;
     float oldRatio = 1.0f - newRatio;
     float newDir = ( mpCharacter->GetFacingDir( ) * oldRatio ) + ( ( mpCharacter->GetFacingDir( ) + rotateDelta ) * newRatio );
 
