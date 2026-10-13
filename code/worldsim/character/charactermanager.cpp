@@ -237,7 +237,8 @@ CharacterManager::CharacterManager( void )
     CharacterTune::sGetOutCloseDelay = 0.0f;
     CharacterTune::sGetOutCloseSpeed = 0.2f;
     
-    CharacterTune::sfTurboRotateRate = 2.0f; // 1.2
+    // Use normal movement's turning response while sprinting.
+    CharacterTune::sfTurboRotateRate = CharacterTune::sfLocoRotateRate;
 
     CharacterTune::sfGetInOutOfCarAnimSpeed = 30.0f;
     CharacterTune::sfKickingForce = 400.0f;

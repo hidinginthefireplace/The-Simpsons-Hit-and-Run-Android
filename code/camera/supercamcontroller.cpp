@@ -87,7 +87,7 @@ void SuperCamController::LoadControllerMappings( unsigned int controllerId )
     Map( "RightStickX",     stickX,             0, controllerId );
     Map( "RightStickY",     stickY,             0, controllerId );
     Map( "LeftTrigger",     zToggle,            0, controllerId );
-    Map( "RightTrigger",    lookToggle,         0, controllerId );
+    Map( "RightTrigger",    zToggleOut,         0, controllerId );
     Map( "A",               A,                  0, controllerId );
     Map( "RightThumb",      toggleFirstPerson,  0, controllerId );
     Map( "LeftStickY",      leftStickY,         0, controllerId );

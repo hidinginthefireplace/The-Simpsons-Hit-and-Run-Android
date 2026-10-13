@@ -27,6 +27,7 @@ public:
         DPadDown,
         DPadLeft,
         DPadRight,
+        DashToggleL3, // Alternate sprint-toggle input (L3), independent of Dash.
 #ifdef RAD_PC
         GetOutCar,
         MouseLookLeft,

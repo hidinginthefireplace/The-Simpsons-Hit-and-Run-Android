@@ -119,6 +119,7 @@ void CharacterMappable::LoadControllerMappings( unsigned int controllerId )
     Map( "Y", CharacterController::DoAction, 0, controllerId );
     Map( "A", CharacterController::Jump, 0, controllerId );
     Map( "B", CharacterController::Dash, 0, controllerId );
+    Map( "LeftThumb", CharacterController::DashToggleL3, 0, controllerId );
     Map( "X", CharacterController::Attack, 0, controllerId );
 #endif
 #ifdef RAD_PS2
@@ -169,13 +170,34 @@ void CharacterMappable::GetDirection( rmt::Vector& outDirection ) const
 
 BipedCharacterMappable::BipedCharacterMappable( void )
 :
-CharacterMappable( )
+CharacterMappable( ),
+mSprintToggled( false ),
+mSprintMovedSinceToggle( false )
 {
 }
 
 BipedCharacterMappable::~BipedCharacterMappable( )
 {
 }
+
+bool BipedCharacterMappable::IsSprintToggled() const
+{
+    return mSprintToggled;
+}
+
+void BipedCharacterMappable::ToggleSprint()
+{
+    mSprintToggled = !mSprintToggled;
+    mSprintMovedSinceToggle = false;
+}
+
+void BipedCharacterMappable::OnControllerDisconnect(int id)
+{
+    mSprintToggled = false;
+    mSprintMovedSinceToggle = false;
+    CharacterMappable::OnControllerDisconnect(id);
+}
+
 void BipedCharacterMappable::OnButtonDown( int controllerId, int buttonId, const IButton* pButton )
 {
     CharacterMappable::OnButtonDown( controllerId, buttonId, pButton );
@@ -193,8 +215,9 @@ void BipedCharacterMappable::OnButtonDown( int controllerId, int buttonId, const
             break;
         }
     case CharacterController::Dash:
+    case CharacterController::DashToggleL3:
         {
-            GetCharacterController()->SetIntention( CharacterController::Dash );
+            ToggleSprint();
             break;
         }
     case CharacterController::Attack:
@@ -240,6 +263,23 @@ void BipedCharacterMappable::GetDirection( rmt::Vector& outDirection ) const
 #ifdef RAD_PC
     }
 #endif
+
+    if (mSprintToggled)
+    {
+        if (outDirection.MagnitudeSqr() > 0.001f)
+        {
+            mSprintMovedSinceToggle = true;
+        }
+        else if (mSprintMovedSinceToggle)
+        {
+            mSprintToggled = false;
+            mSprintMovedSinceToggle = false;
+        }
+    }
+    else
+    {
+        mSprintMovedSinceToggle = false;
+    }
 }
 
 InCarCharacterMappable::InCarCharacterMappable( void )

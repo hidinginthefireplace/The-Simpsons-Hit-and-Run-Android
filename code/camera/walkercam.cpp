@@ -255,7 +255,9 @@ void WalkerCam::Update( unsigned int milliseconds )
 
     if ( !mTarget->IsCar() )
     {
-        float zoom = mController->GetValue( SuperCamController::zToggle );
+        // L2 zooms in; R2 supplies the opposite signed zoom value.
+        float zoom = mController->GetValue( SuperCamController::zToggle ) -
+                     mController->GetValue( SuperCamController::zToggleOut );
 
         float FOV = GetFOV();
         float pedPCT = IsTargetNearPed( milliseconds );

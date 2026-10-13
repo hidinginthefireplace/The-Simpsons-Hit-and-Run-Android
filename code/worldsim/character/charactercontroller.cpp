@@ -190,6 +190,12 @@ float PhysicalController::GetValue( int buttonId ) const
 {
     if(mActive)
     {
+        if (buttonId == CharacterController::Dash)
+        {
+            const BipedCharacterMappable* biped = dynamic_cast<const BipedCharacterMappable*>(GetCharacterMappable());
+            if (biped != NULL)
+                return biped->IsSprintToggled() ? 1.0f : 0.0f;
+        }
         return GetCharacterMappable( )->GetValue( buttonId );
     }
     else
@@ -213,6 +219,12 @@ bool PhysicalController::IsButtonDown( int buttonId ) const
 {
     if(mActive)
     {
+        if (buttonId == CharacterController::Dash)
+        {
+            const BipedCharacterMappable* biped = dynamic_cast<const BipedCharacterMappable*>(GetCharacterMappable());
+            if (biped != NULL)
+                return biped->IsSprintToggled();
+        }
         return GetCharacterMappable( )->IsButtonDown( buttonId ) || GetIntention( ) == (eIntention)buttonId;
     }
     else

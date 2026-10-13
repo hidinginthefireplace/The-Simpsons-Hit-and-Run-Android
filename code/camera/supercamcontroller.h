@@ -38,6 +38,7 @@ public:
         stickX,
         stickY,
         zToggle,
+        zToggleOut,
         lookToggle,
         zoom,
         in, 

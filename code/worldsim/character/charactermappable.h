@@ -82,8 +82,14 @@ public:
     // Return the controller input direction transformed from camera to world space.
     //
     virtual void GetDirection( rmt::Vector& outDirection ) const;
-    
+    virtual void OnControllerDisconnect( int id );
+
+    bool IsSprintToggled() const;
+    void ToggleSprint();
+
 private:
+    mutable bool mSprintToggled;
+    mutable bool mSprintMovedSinceToggle;
 };
 
 
