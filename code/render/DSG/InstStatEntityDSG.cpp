@@ -24,6 +24,7 @@
 #include <p3d/camera.hpp>
 #include <p3d/billboardobject.hpp>
 #ifdef RAD_ANDROID
+#include <pddi/gles/gl.hpp>
 #include <pddi/gles/glcon.hpp>
 #endif
 //************************************************************************

@@ -21,6 +21,7 @@
 #include <p3d/texture.hpp>
 
 #ifdef RAD_ANDROID
+#include <pddi/gles/gl.hpp>
 #include <pddi/gles/glcon.hpp>
 #endif
 
