@@ -1418,6 +1418,19 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 //            Log.v("SDL", "key up: " + keyCode + ", deviceId = " + deviceId + ", source = " + source);
 //        }
 
+        /*
+         * Temporary R2 diagnostic: confirm whether Android delivers either
+         * trigger as a KeyEvent, and record the device/source/action before
+         * SDL attempts to translate it into a joystick button.
+         */
+        if (keyCode == KeyEvent.KEYCODE_BUTTON_L2 || keyCode == KeyEvent.KEYCODE_BUTTON_R2) {
+            Log.i("R2-DIAG", "[R2-DIAG] ANDROID_KEY device=" + deviceId
+                    + " keyCode=" + keyCode
+                    + " action=" + event.getAction()
+                    + " source=" + source
+                    + " repeat=" + event.getRepeatCount());
+        }
+
         // Dispatch the different events depending on where they come from
         // Some SOURCE_JOYSTICK, SOURCE_DPAD or SOURCE_GAMEPAD are also SOURCE_KEYBOARD
         // So, we try to process them as JOYSTICK/DPAD/GAMEPAD events first, if that fails we try them as KEYBOARD
