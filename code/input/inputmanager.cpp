@@ -341,6 +341,16 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
     float value
 )
 {
+#if defined(RAD_ANDROID)
+    /*
+     * Temporary R2 diagnostic: log the raw Android/SDL input event before
+     * the gamepad-confirmation threshold can discard low analog values.
+     * Android logcat filter: SimpsonsHitAndRun and tag [R2-DIAG].
+     */
+    LOGI("[R2-DIAG] SDL_INPUT instance=%d inputIndex=%d value=%.3f",
+         instanceId, inputIndex, value);
+#endif
+
     if ( instanceId < 0 )
     {
         return;
