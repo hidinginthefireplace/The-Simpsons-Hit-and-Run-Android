@@ -273,8 +273,11 @@ void UserController::OnControllerInputPointChange( unsigned int buttonId, float 
 
 	float fLastValue = mButtonArray[ buttonId ].GetValue( );
     float fDeadZone = mButtonDeadZones[buttonId];
+    IRadControllerInputPoint* pInputPoint =
+        m_xIController2->GetInputPointByIndex( buttonId );
 
-    value = m_xIController2->GetInputPointByIndex( buttonId )->GetCurrentValue( );
+    value = pInputPoint->GetCurrentValue( );
+    const float fRawInputValue = value;
 
 	if ( rmt::Epsilon( value, 0.0f, fDeadZone ) )
 	{
@@ -301,6 +304,29 @@ void UserController::OnControllerInputPointChange( unsigned int buttonId, float 
 	}
 
     mButtonArray[ buttonId ].SetValue( value );
+
+#if defined(RAD_ANDROID)
+    /*
+     * Temporary R2 diagnostic: report the input point name/type and both
+     * raw and dead-zone-calibrated values as they enter the game controller.
+     * Logging nonzero values plus releases keeps ordinary neutral polling quiet.
+     */
+    const float fRawMagnitude =
+        fRawInputValue < 0.0f ? -fRawInputValue : fRawInputValue;
+    const float fPreviousMagnitude =
+        fLastValue < 0.0f ? -fLastValue : fLastValue;
+    if ( fRawMagnitude >= 0.01f || fPreviousMagnitude >= 0.01f )
+    {
+        LOGI("[R2-DIAG] RAD_INPUT controller=%d point=%u name=%s type=%s raw=%.3f calibrated=%.3f previous=%.3f",
+             m_controllerId,
+             buttonId,
+             pInputPoint->GetName(),
+             pInputPoint->GetType(),
+             fRawInputValue,
+             value,
+             fLastValue);
+    }
+#endif
 }
 
 void UserController::Initialize( IRadController* pIController2 )
