@@ -82,6 +82,35 @@ unsigned int const radMovie_NoAudioTrack = 0xFFFFFFFF;
 
 #define RAD_MOVIE_PLAYER_VIDEO_LAG 10
 
+#if defined(RAD_ANDROID) && !defined(RAD_VITAGL)
+// Experimental FMV upscaling: pre-scale videos by 1.5x with FFmpeg's bicubic
+// resampler before handing them to the existing GPU bilinear display path.
+// Keep the result below the 1024px movie-texture limit so this experimental
+// path stays within the current renderer's single-tile assumptions.
+static void GetSHARFMVBicubicOutputSize(
+    int sourceWidth,
+    int sourceHeight,
+    int* outputWidth,
+    int* outputHeight)
+{
+    if (outputWidth == NULL || outputHeight == NULL ||
+        sourceWidth <= 0 || sourceHeight <= 0)
+    {
+        return;
+    }
+
+    const int scaledWidth = (sourceWidth * 3) / 2;
+    const int scaledHeight = (sourceHeight * 3) / 2;
+    if (scaledWidth > 0 && scaledHeight > 0 &&
+        scaledWidth < 1000 && scaledHeight < 1000)
+    {
+        *outputWidth = scaledWidth;
+        *outputHeight = scaledHeight;
+    }
+}
+#endif
+
+
 // DESPUÉS (bien)
 #define AV_CHK(x) do { \
     int error = (x); \
@@ -481,15 +510,30 @@ void radMoviePlayer::Load( const char * pVideoFileName, unsigned int audioTrackI
         }
     }
 
+int movieOutputWidth = pVideoParams->width;
+    int movieOutputHeight = pVideoParams->height;
+#if defined(RAD_ANDROID) && !defined(RAD_VITAGL)
+    GetSHARFMVBicubicOutputSize(
+        pVideoParams->width,
+        pVideoParams->height,
+        &movieOutputWidth,
+        &movieOutputHeight);
+#endif
+
 #ifndef RAD_VITAGL
+#if defined(RAD_ANDROID)
+    const int movieScalerFlags = SWS_BICUBIC;
+#else
+    const int movieScalerFlags = SWS_BILINEAR;
+#endif
     m_pSwsCtx = sws_getContext(
         pVideoParams->width,
         pVideoParams->height,
         m_pVideoCtx->pix_fmt,
-        pVideoParams->width,
-        pVideoParams->height,
+        movieOutputWidth,
+        movieOutputHeight,
         AV_PIX_FMT_BGRA,
-        SWS_BILINEAR,
+        movieScalerFlags,
         NULL, NULL, NULL
     );
 #endif
@@ -540,7 +584,7 @@ void radMoviePlayer::Load( const char * pVideoFileName, unsigned int audioTrackI
     alGenSources( 1, &m_AudioSource );
     alSourcei( m_AudioSource, AL_SOURCE_RELATIVE, AL_TRUE );
 
-    m_refIRadMovieRenderStrategy->ChangeParameters( pVideoParams->width, pVideoParams->height );
+    m_refIRadMovieRenderStrategy->ChangeParameters( movieOutputWidth, movieOutputHeight );
 
     SetState( IRadMoviePlayer2::ReadyToPlay );
 
