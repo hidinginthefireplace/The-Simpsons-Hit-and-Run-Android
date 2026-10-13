@@ -2151,6 +2151,20 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
 {
     char itemName[ 32 ];
 
+    // The Tutorial row is only a placeholder for the Android Cheats submenu.
+    // Always generate it alongside the other optional Android rows so its
+    // position follows the Settings menu layout rather than platform-specific
+    // Tutorial artwork.
+    if( logicalMenuItem == MENU_ITEM_TUTORIAL )
+    {
+        return AddGeneratedAndroidToggleMenuItem
+        (
+            pPage->GetGroup( "Menu" ),
+            pPage,
+            logicalMenuItem
+        );
+    }
+
     Scrooby::Group* group = pPage->GetGroup( item );
     if( group == NULL )
     {
