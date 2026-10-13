@@ -255,6 +255,13 @@ void VehicleMappable::LoadControllerMappings( unsigned int controllerId )
     
     #endif
 
+    // The Android SDL controller exposes triggers as analog inputs named
+    // LeftTrigger and RightTrigger. Keep the right trigger mapped directly to
+    // Gas across Android build-flag variants, while preserving Accelerate/A as
+    // a separate fallback input above.
+    #if defined(RAD_ANDROID)
+    Map( "RightTrigger", Gas, 0, controllerId );
+    #endif
 }
 
 void VehicleMappable::SetController( HumanVehicleController* pHumanVehicleController )
