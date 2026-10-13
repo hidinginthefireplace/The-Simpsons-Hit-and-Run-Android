@@ -1422,5 +1422,11 @@ private:
 
 
 
+#if defined(RAD_ANDROID)
+// Runtime state for the Android-only Noclip prototype.
+bool IsSHARNoclipEnabled();
+void SetSHARNoclipEnabled( bool enabled );
+#endif
+
 #endif // CHARACTER_H_
 

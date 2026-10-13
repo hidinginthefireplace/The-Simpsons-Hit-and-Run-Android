@@ -111,6 +111,21 @@ const float KICK_ANGLE = 45;
 
 static int s_IntersectFrame;
 
+#if defined(RAD_ANDROID)
+// Keep this separate from mbSolveCollisions, which changes during physics lifecycle transitions.
+static bool sSHARNoclipEnabled = false;
+
+bool IsSHARNoclipEnabled()
+{
+    return sSHARNoclipEnabled;
+}
+
+void SetSHARNoclipEnabled( bool enabled )
+{
+    sSHARNoclipEnabled = enabled;
+}
+#endif
+
 class AmbientDialogueButton : public ActionButton::ButtonHandler
 {
 public:
@@ -2927,6 +2942,14 @@ Character::eCollisionType Character::SolveCollisionWithStatic( const rmt::Vector
     {
         return NoCollision;
     }
+#if defined(RAD_ANDROID)
+    // Bypass player static wall/head response only. Ground support uses a
+    // separate ground-plane collision object; NPCs remain unaffected.
+    if( sSHARNoclipEnabled && !IsNPC() && !IsInCar() )
+    {
+        return NoCollision;
+    }
+#endif
     eCollisionType collisionType = NoCollision;
     int intCollisionType = collisionType;
     int i = 0;

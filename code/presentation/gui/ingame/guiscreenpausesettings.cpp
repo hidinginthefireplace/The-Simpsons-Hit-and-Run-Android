@@ -29,6 +29,9 @@
 #include <mission/charactersheet/charactersheetmanager.h>
 #include <presentation/tutorialmanager.h>
 #include <worldsim/avatarmanager.h>
+#if defined(RAD_ANDROID)
+#include <worldsim/character/character.h>
+#endif
 
 #include <raddebug.hpp> // Foundation
 #include <Group.h>
@@ -1050,8 +1053,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
 {
     m_configuringAndroidSubmenu = true;
 
-    // Six cheat rows use ordinary OFF/ON values. The hardware/controller Back
-    // button is the only way to leave this submenu.
+    // Five ordinary ON/OFF cheats and one action to open More Cheats.
     const int logicalItems[6] =
     {
         MENU_ITEM_CAMERA,
@@ -1069,22 +1071,125 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
         "Vehicle Invincibility",
         "Car Horn Jump",
         "One Hit Tank Cars",
-        "Unlock All Cars"
+        "More Cheats.."
     };
 
     CheatInputSystem* cheats = GetCheatInputSystem();
-    const bool enabled[6] =
+    const bool enabled[5] =
     {
         cheats->IsMoonJumpEnabled(),
         cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION ) &&
             cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED ),
         cheats->IsCheatEnabled( CHEAT_ID_INVINCIBLE_CAR ),
         cheats->IsCheatEnabled( CHEAT_ID_CAR_JUMP_ON_HORN ),
-        cheats->IsCheatEnabled( CHEAT_ID_ONE_TAP_TRAFFIC_DEATH ),
-        cheats->IsCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES )
+        cheats->IsCheatEnabled( CHEAT_ID_ONE_TAP_TRAFFIC_DEATH )
     };
 
     for( int i = 0; i < 6; ++i )
+    {
+        const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
+        if( guiIndex < 0 )
+        {
+            continue;
+        }
+
+        GuiMenuItem* item = m_pMenu->GetMenuItem( guiIndex );
+        if( item == NULL )
+        {
+            continue;
+        }
+
+        if( i == 0 && m_pGraphicsResolutionValue != NULL &&
+            m_pOriginalResolutionValue != NULL )
+        {
+            item->SetItemValue( m_pGraphicsResolutionValue );
+            m_pOriginalResolutionValue->SetVisible( false );
+            m_pGraphicsResolutionValue->SetVisible( true );
+        }
+
+        item->m_attributes &= ~SELECTABLE;
+        item->m_showValueArrows = ( i != 5 );
+        item->m_useBackSoundOnSelection = false;
+        if( i == 5 )
+        {
+            // This is a selectable action, not a value toggle.
+            item->m_attributes |= SELECTABLE;
+        }
+        m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
+
+        Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
+        Scrooby::Text* value = dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
+        if( label != NULL )
+        {
+            label->SetString( 0, labels[i] );
+            label->SetVisible( true );
+        }
+
+        if( value != NULL )
+        {
+            if( i == 5 )
+            {
+                value->SetVisible( false );
+            }
+            else
+            {
+                if( value->GetNumOfStrings() > 0 ) value->SetString( 0, "OFF" );
+                if( value->GetNumOfStrings() > 1 ) value->SetString( 1, "ON" );
+                value->SetVisible( true );
+                m_pMenu->SetSelectionValueCount( guiIndex, 2 );
+                m_pMenu->SetSelectionValue( guiIndex, enabled[i] ? 1 : 0 );
+            }
+        }
+
+        if( item->m_itemValueArrowL != NULL )
+        {
+            item->m_itemValueArrowL->SetVisible( false );
+        }
+        if( item->m_itemValueArrowR != NULL )
+        {
+            item->m_itemValueArrowR->SetVisible( false );
+        }
+    }
+
+    m_pMenu->Reset( 0 );
+    m_configuringAndroidSubmenu = false;
+}
+
+void CGuiScreenPauseSettings::ConfigureAndroidMoreCheatsMenu()
+{
+    m_configuringAndroidSubmenu = true;
+
+    // Grid Mode is intentionally omitted; these five toggles reuse the
+    // existing Settings rows and value controls.
+    const int logicalItems[5] =
+    {
+        MENU_ITEM_CAMERA,
+        MENU_ITEM_JUMP_CAMERAS,
+        MENU_ITEM_INTERSECT_NAV_SYSTEM,
+        MENU_ITEM_RADAR,
+        MENU_ITEM_INVERT_CAM_CONTROL
+    };
+
+    const char* labels[5] =
+    {
+        "Noclip",
+        "Character Swap",
+        "Red Brick Car",
+        "Unlock All Cars",
+        "Psychedelic View"
+    };
+
+    CheatInputSystem* cheats = GetCheatInputSystem();
+    const bool enabled[5] =
+    {
+        IsSHARNoclipEnabled(),
+        cheats->IsCheatEnabled( CHEAT_ID_KICK_TOGGLES_CHARACTER_MODEL ),
+        cheats->IsCheatEnabled( CHEAT_ID_REDBRICK ),
+        cheats->IsCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES ),
+        cheats->IsCheatEnabled( CHEAT_ID_TRIPPY )
+    };
+
+    for( int i = 0; i < 5; ++i )
     {
         const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
         if( guiIndex < 0 )
@@ -1136,6 +1241,27 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
         {
             item->m_itemValueArrowR->SetVisible( false );
         }
+    }
+
+    // Hide the sixth row because Grid Mode is intentionally omitted.
+    const int unusedGuiIndex = GetGuiMenuIndexFromMenuItem( MENU_ITEM_VIBRATION );
+    if( unusedGuiIndex >= 0 )
+    {
+        GuiMenuItem* unusedItem = m_pMenu->GetMenuItem( unusedGuiIndex );
+        if( unusedItem != NULL )
+        {
+            Scrooby::Text* unusedLabel =
+                dynamic_cast<Scrooby::Text*>( unusedItem->GetItem() );
+            Scrooby::Text* unusedValue =
+                dynamic_cast<Scrooby::Text*>( unusedItem->GetItemValue() );
+            if( unusedLabel != NULL ) unusedLabel->SetVisible( false );
+            if( unusedValue != NULL ) unusedValue->SetVisible( false );
+            if( unusedItem->m_itemValueArrowL != NULL )
+                unusedItem->m_itemValueArrowL->SetVisible( false );
+            if( unusedItem->m_itemValueArrowR != NULL )
+                unusedItem->m_itemValueArrowR->SetVisible( false );
+        }
+        m_pMenu->SetMenuItemEnabled( unusedGuiIndex, false, true );
     }
 
     m_pMenu->Reset( 0 );
@@ -1390,6 +1516,15 @@ void CGuiScreenPauseSettings::HandleMessage
             case GUI_MSG_MENU_SELECTION_MADE:
             {
 #if defined(RAD_ANDROID)
+                // The action row opens More Cheats in-place. Back from either
+                // cheat page continues to return directly to OPTIONS.
+                if( m_cheatsSettingsMode && !m_moreCheatsSettingsMode &&
+                    GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) ) ==
+                        MENU_ITEM_VIBRATION )
+                {
+                    m_moreCheatsSettingsMode = true;
+                    ConfigureAndroidMoreCheatsMenu();
+                }
 #endif
                 break;
             }
@@ -1447,56 +1582,103 @@ void CGuiScreenPauseSettings::HandleMessage
                     else
                     {
                         CheatInputSystem* cheats = GetCheatInputSystem();
-                        switch( logicalMenuItem )
+
+                        if( m_moreCheatsSettingsMode )
                         {
-                            case MENU_ITEM_CAMERA:
-                                cheats->SetMoonJumpEnabled( enabled );
-                                break;
-                            case MENU_ITEM_JUMP_CAMERAS:
-                                cheats->SetCheatEnabled( CHEAT_ID_HIGH_ACCELERATION, enabled );
-                                cheats->SetCheatEnabled( CHEAT_ID_NO_TOP_SPEED, enabled );
-                                break;
-                            case MENU_ITEM_INTERSECT_NAV_SYSTEM:
-                                cheats->SetCheatEnabled( CHEAT_ID_INVINCIBLE_CAR, enabled );
-                                break;
-                            case MENU_ITEM_RADAR:
-                                cheats->SetCheatEnabled( CHEAT_ID_CAR_JUMP_ON_HORN, enabled );
-                                break;
-                            case MENU_ITEM_INVERT_CAM_CONTROL:
-                                cheats->SetCheatEnabled( CHEAT_ID_ONE_TAP_TRAFFIC_DEATH, enabled );
-                                break;
-                            case MENU_ITEM_VIBRATION:
-                                cheats->SetCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES, enabled );
-                                break;
-                            default:
-                                break;
+                            switch( logicalMenuItem )
+                            {
+                                case MENU_ITEM_CAMERA:
+                                    SetSHARNoclipEnabled( enabled );
+                                    break;
+                                case MENU_ITEM_JUMP_CAMERAS:
+                                    cheats->SetCheatEnabled( CHEAT_ID_KICK_TOGGLES_CHARACTER_MODEL, enabled );
+                                    break;
+                                case MENU_ITEM_INTERSECT_NAV_SYSTEM:
+                                    cheats->SetCheatEnabled( CHEAT_ID_REDBRICK, enabled );
+                                    break;
+                                case MENU_ITEM_RADAR:
+                                    cheats->SetCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES, enabled );
+                                    break;
+                                case MENU_ITEM_INVERT_CAM_CONTROL:
+                                    cheats->SetCheatEnabled( CHEAT_ID_TRIPPY, enabled );
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+                        else
+                        {
+                            switch( logicalMenuItem )
+                            {
+                                case MENU_ITEM_CAMERA:
+                                    cheats->SetMoonJumpEnabled( enabled );
+                                    break;
+                                case MENU_ITEM_JUMP_CAMERAS:
+                                    cheats->SetCheatEnabled( CHEAT_ID_HIGH_ACCELERATION, enabled );
+                                    cheats->SetCheatEnabled( CHEAT_ID_NO_TOP_SPEED, enabled );
+                                    break;
+                                case MENU_ITEM_INTERSECT_NAV_SYSTEM:
+                                    cheats->SetCheatEnabled( CHEAT_ID_INVINCIBLE_CAR, enabled );
+                                    break;
+                                case MENU_ITEM_RADAR:
+                                    cheats->SetCheatEnabled( CHEAT_ID_CAR_JUMP_ON_HORN, enabled );
+                                    break;
+                                case MENU_ITEM_INVERT_CAM_CONTROL:
+                                    cheats->SetCheatEnabled( CHEAT_ID_ONE_TAP_TRAFFIC_DEATH, enabled );
+                                    break;
+                                default:
+                                    break;
+                            }
                         }
 
                         bool actualEnabled = false;
-                        switch( logicalMenuItem )
+                        if( m_moreCheatsSettingsMode )
                         {
-                            case MENU_ITEM_CAMERA:
-                                actualEnabled = cheats->IsMoonJumpEnabled();
-                                break;
-                            case MENU_ITEM_JUMP_CAMERAS:
-                                actualEnabled =
-                                    cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION ) &&
-                                    cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED );
-                                break;
-                            case MENU_ITEM_INTERSECT_NAV_SYSTEM:
-                                actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_INVINCIBLE_CAR );
-                                break;
-                            case MENU_ITEM_RADAR:
-                                actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_CAR_JUMP_ON_HORN );
-                                break;
-                            case MENU_ITEM_INVERT_CAM_CONTROL:
-                                actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_ONE_TAP_TRAFFIC_DEATH );
-                                break;
-                            case MENU_ITEM_VIBRATION:
-                                actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES );
-                                break;
-                            default:
-                                break;
+                            switch( logicalMenuItem )
+                            {
+                                case MENU_ITEM_CAMERA:
+                                    actualEnabled = IsSHARNoclipEnabled();
+                                    break;
+                                case MENU_ITEM_JUMP_CAMERAS:
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_KICK_TOGGLES_CHARACTER_MODEL );
+                                    break;
+                                case MENU_ITEM_INTERSECT_NAV_SYSTEM:
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_REDBRICK );
+                                    break;
+                                case MENU_ITEM_RADAR:
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES );
+                                    break;
+                                case MENU_ITEM_INVERT_CAM_CONTROL:
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_TRIPPY );
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+                        else
+                        {
+                            switch( logicalMenuItem )
+                            {
+                                case MENU_ITEM_CAMERA:
+                                    actualEnabled = cheats->IsMoonJumpEnabled();
+                                    break;
+                                case MENU_ITEM_JUMP_CAMERAS:
+                                    actualEnabled =
+                                        cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION ) &&
+                                        cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED );
+                                    break;
+                                case MENU_ITEM_INTERSECT_NAV_SYSTEM:
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_INVINCIBLE_CAR );
+                                    break;
+                                case MENU_ITEM_RADAR:
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_CAR_JUMP_ON_HORN );
+                                    break;
+                                case MENU_ITEM_INVERT_CAM_CONTROL:
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_ONE_TAP_TRAFFIC_DEATH );
+                                    break;
+                                default:
+                                    break;
+                            }
                         }
 
                         // The game still enforces its existing story-completion rule
@@ -1610,6 +1792,7 @@ void CGuiScreenPauseSettings::InitIntro()
     // normal values as submenu toggles would change unrelated settings.
     m_graphicsSettingsMode = false;
     m_cheatsSettingsMode = false;
+    m_moreCheatsSettingsMode = false;
     gAndroidGraphicsSettingsRequested = false;
     gAndroidCheatsSettingsRequested = false;
 

@@ -87,10 +87,12 @@ private:
    #if defined(RAD_ANDROID)
     bool m_graphicsSettingsMode = false;
     bool m_cheatsSettingsMode = false;
+    bool m_moreCheatsSettingsMode = false;
     bool m_configuringAndroidSubmenu = false;
 
     void ConfigureAndroidGraphicsMenu();
     void ConfigureAndroidCheatsMenu();
+    void ConfigureAndroidMoreCheatsMenu();
     void RestoreAndroidSettingsMenu();
     void LeaveAndroidGraphicsMenu( bool backSoundAlreadyPlayed );
     void LeaveAndroidCheatsMenu( bool backSoundAlreadyPlayed );

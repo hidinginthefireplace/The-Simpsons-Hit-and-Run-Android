@@ -196,7 +196,7 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
         // Keep existing vertical spacing and use one shared horizontal center.
         int centeredX = ( soundX + settingsX ) / 2;
         const int rowSpacing = settingsY - soundY;
-        androidOptionsVerticalOffset = 70 + rowSpacing / 2;
+        androidOptionsVerticalOffset = 70 + rowSpacing / 4;
         pSoundLabel->SetPositionOfCenter( centeredX, soundY );
         pSettingsLabel->SetPositionOfCenter( centeredX, settingsY );
 
