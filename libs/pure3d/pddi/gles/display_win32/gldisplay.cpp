@@ -1290,6 +1290,13 @@ static void ApplyCelPostProcess(int width, int height)
         height = gSHARFrameHeight;
     }
 
+    // Experimental model-level toon build: bypass the full-frame cel post-process.
+    // Resolve through the existing fallback path so the off-screen renderer and
+    // live-resolution behavior remain unchanged. Character, vehicle and eligible
+    // world-model toon rendering still use the native GLES model shaders.
+    ResolveSceneToScreen(width, height);
+    return;
+
     if (!gCelWorldInFbo)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);

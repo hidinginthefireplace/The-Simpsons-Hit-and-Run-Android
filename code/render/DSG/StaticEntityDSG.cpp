@@ -20,6 +20,10 @@
 #include <p3d/utility.hpp>
 #include <p3d/texture.hpp>
 
+#ifdef RAD_ANDROID
+#include <pddi/gles/glcon.hpp>
+#endif
+
 //************************************************************************
 //
 // Global Data, Local Data, Local Classes
@@ -230,13 +234,30 @@ void StaticEntityDSG::Display()
 
     if(mIsGeo & IS_SHADOW)
     {
+        // Shadow-only geometry keeps its existing transparent/shadow pass.
         p3d::pddi->SetZWrite(false);
         mpDrawstuff->Display();
         p3d::pddi->SetZWrite(true);
     }
     else
     {
-        mpDrawstuff->Display();
+#ifdef RAD_ANDROID
+        // Apply model-level toon shading to actual static geometry only.
+        // Non-geometry drawables continue through the original single draw.
+        if ((mIsGeo & GEO) != 0 && IsCelShadingEnabled())
+        {
+            SetCelShadingObjectEnabled(true);
+            SetCelShadingOutlinePass(true);
+            mpDrawstuff->Display();
+            SetCelShadingOutlinePass(false);
+            mpDrawstuff->Display();
+            SetCelShadingObjectEnabled(false);
+        }
+        else
+#endif
+        {
+            mpDrawstuff->Display();
+        }
     }
     DSG_END_PROFILE(profileName)
 }

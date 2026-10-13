@@ -23,6 +23,9 @@
 #include <p3d/view.hpp>
 #include <p3d/camera.hpp>
 #include <p3d/billboardobject.hpp>
+#ifdef RAD_ANDROID
+#include <pddi/gles/glcon.hpp>
+#endif
 //************************************************************************
 //
 // Global Data, Local Data, Local Classes
@@ -111,7 +114,25 @@ void InstStatEntityDSG::Display()
         BillboardQuadManager::Enable();
     }
     p3d::pddi->PushMultMatrix(PDDI_MATRIX_MODELVIEW, mpMatrix);
+#ifdef RAD_ANDROID
+        // Instanced static geometry covers repeated world objects, potentially
+        // including trees and foliage. Keep non-geometry/shadow meshes untouched.
+        if ((mIsGeo & GEO) != 0 && (mIsGeo & IS_SHADOW) == 0 && IsCelShadingEnabled())
+        {
+            SetCelShadingObjectEnabled(true);
+            SetCelShadingOutlinePass(true);
+            mpDrawstuff->Display();
+            SetCelShadingOutlinePass(false);
+            mpDrawstuff->Display();
+            SetCelShadingObjectEnabled(false);
+        }
+        else
+        {
+            mpDrawstuff->Display();
+        }
+#else
         mpDrawstuff->Display();
+#endif
     p3d::pddi->PopMatrix(PDDI_MATRIX_MODELVIEW);
 
     if(CastsShadow())
