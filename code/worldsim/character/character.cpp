@@ -2149,8 +2149,14 @@ END_PROFILE("UpdateFootPlant")
     }
     else
     {
-        if(mCollisionAreaIndex != -1)
+        if(mCollisionAreaIndex != -1
+#if defined(RAD_ANDROID)
+           && !( sSHARNoclipEnabled && !IsNPC() && !IsInCar() )
+#endif
+          )
         {
+            // Noclip skips fence correction as well as static wall response,
+            // while retaining the large-movement safety reset above.
             if(GetWorldPhysicsManager()->FenceSanityCheck(mCollisionAreaIndex, mLastFramePos, tmp, &tmp))
             {
                 SetPosition( tmp );
