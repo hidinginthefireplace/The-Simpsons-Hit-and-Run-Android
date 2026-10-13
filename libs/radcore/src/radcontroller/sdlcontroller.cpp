@@ -745,16 +745,63 @@ class radControllerInputPointSDL
                     pJoystick,
                     SDL_CONTROLLER_AXIS_TRIGGERRIGHT
                 );
-                float fallbackValue =
-                    ( static_cast<float>( rawRightTrigger ) + 32768.0f ) / 65535.0f;
+                const SDL_JoystickID instanceId = SDL_JoystickInstanceID( pJoystick );
 
-                if ( fallbackValue < 0.0f )
+                /*
+                 * Some Android controller backends report all axes as zero
+                 * until the first physical input event initializes their state.
+                 * Zero is not the Shield trigger's resting value, so do not
+                 * interpret that startup placeholder as a half-pressed trigger.
+                 */
+                static bool sR2AxisInitialized = false;
+                static bool sHavePreviousRawR2ForInit = false;
+                static SDL_JoystickID sR2InitInstanceId = -1;
+                static Sint16 sPreviousRawR2ForInit = 0;
+
+                if ( instanceId != sR2InitInstanceId )
                 {
-                    fallbackValue = 0.0f;
+                    sR2InitInstanceId = instanceId;
+                    sHavePreviousRawR2ForInit = false;
+                    sR2AxisInitialized =
+                        rawRightTrigger <= -30000 ||
+                        rawRightTrigger >= 1024 ||
+                        rawRightTrigger <= -1024;
                 }
-                else if ( fallbackValue > 1.0f )
+
+                int initRawDelta = static_cast<int>( rawRightTrigger ) -
+                    static_cast<int>( sPreviousRawR2ForInit );
+                if ( initRawDelta < 0 )
                 {
-                    fallbackValue = 1.0f;
+                    initRawDelta = -initRawDelta;
+                }
+
+                if (
+                    rawRightTrigger <= -30000 ||
+                    ( sHavePreviousRawR2ForInit && initRawDelta >= 256 ) ||
+                    rawRightTrigger >= 1024 ||
+                    rawRightTrigger <= -1024
+                )
+                {
+                    sR2AxisInitialized = true;
+                }
+
+                sPreviousRawR2ForInit = rawRightTrigger;
+                sHavePreviousRawR2ForInit = true;
+
+                float fallbackValue = 0.0f;
+                if ( sR2AxisInitialized )
+                {
+                    fallbackValue =
+                        ( static_cast<float>( rawRightTrigger ) + 32768.0f ) / 65535.0f;
+
+                    if ( fallbackValue < 0.0f )
+                    {
+                        fallbackValue = 0.0f;
+                    }
+                    else if ( fallbackValue > 1.0f )
+                    {
+                        fallbackValue = 1.0f;
+                    }
                 }
 
                 newValue = fallbackValue;
@@ -762,7 +809,6 @@ class radControllerInputPointSDL
                 static bool sHaveLastR2Fallback = false;
                 static SDL_JoystickID sLastR2InstanceId = -1;
                 static Sint16 sLastRawR2 = -32768;
-                const SDL_JoystickID instanceId = SDL_JoystickInstanceID( pJoystick );
                 int rawDelta = static_cast<int>( rawRightTrigger ) -
                     static_cast<int>( sLastRawR2 );
                 if ( rawDelta < 0 )
@@ -773,9 +819,10 @@ class radControllerInputPointSDL
                 if ( !sHaveLastR2Fallback || instanceId != sLastR2InstanceId || rawDelta >= 256 )
                 {
                     SDL_R2_DIAG(
-                        "[R2-SDL] RIGHT_TRIGGER_FALLBACK instance=%d rawAxis5=%d value=%.3f logicalRT=%d",
+                        "[R2-SDL] RIGHT_TRIGGER_FALLBACK instance=%d rawAxis5=%d initialized=%d value=%.3f logicalRT=%d",
                         static_cast<int>( instanceId ),
                         static_cast<int>( rawRightTrigger ),
+                        sR2AxisInitialized,
                         fallbackValue,
                         static_cast<int>( SDL_GameControllerGetAxis(
                             m_pController,
