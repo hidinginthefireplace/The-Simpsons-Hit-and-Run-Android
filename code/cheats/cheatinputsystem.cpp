@@ -291,9 +291,10 @@ void
 CheatInputSystem::SetCheatEnabled( eCheatID cheatID, bool enable )
 {
 #ifdef FINAL
-    if( cheatID == CHEAT_ID_UNLOCK_CARDS ||
-        cheatID == CHEAT_ID_UNLOCK_SKINS ||
-        cheatID == CHEAT_ID_UNLOCK_VEHICLES )
+    if( enable &&
+        ( cheatID == CHEAT_ID_UNLOCK_CARDS ||
+          cheatID == CHEAT_ID_UNLOCK_SKINS ||
+          cheatID == CHEAT_ID_UNLOCK_VEHICLES ) )
     {
         // for these cheats, unless all missions are completed, don't do
         // anything

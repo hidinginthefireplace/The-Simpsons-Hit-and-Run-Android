@@ -73,7 +73,7 @@ static bool gAndroidCheatsSettingsRequested = false;
 // Live resolution selector. Full-screen effects continue to use GL size,
 // budget, and allocation guards; failed targets safely bypass the affected effect.
 static const int SHAR_GRAPHICS_RESOLUTION_COUNT = 5;
-static int gSHARGraphicsResolutionSelection = 3; // default: 1440p
+static int gSHARGraphicsResolutionSelection = 2; // default: 1080p
 static bool gSHARGraphicsResolutionNeedsNormalization = false;
 
 void RequestAndroidGraphicsSettings()
@@ -119,7 +119,7 @@ static int GetSHARGraphicsResolutionHeight( int selection )
 {
     if( selection < 0 || selection >= SHAR_GRAPHICS_RESOLUTION_COUNT )
     {
-        selection = 3;
+        selection = 2;
     }
     return SHAR_GRAPHICS_RESOLUTION_HEIGHTS[ selection ];
 }
@@ -128,7 +128,7 @@ static int GetSHARGraphicsResolutionSelectionForHeight( int height )
 {
     if( height <= 0 )
     {
-        return 3;
+        return 2;
     }
 
     int bestSelection = 0;
@@ -153,7 +153,7 @@ static int LoadSHARGraphicsResolutionSelection()
     const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
     if( basePath == NULL || basePath[0] == '\0' )
     {
-        return 3;
+        return 2;
     }
 
     char path[512];
@@ -161,19 +161,19 @@ static int LoadSHARGraphicsResolutionSelection()
         path, sizeof(path), "%s/Graphics/Simpsons_resolution.txt", basePath );
     if( pathLength < 0 || pathLength >= static_cast<int>( sizeof(path) ) )
     {
-        LOGE("[SHAR-RESOLUTION] Config path too long; defaulting to 1440p");
-        return 3;
+        LOGE("[SHAR-RESOLUTION] Config path too long; defaulting to 1080p");
+        return 2;
     }
 
     FILE* file = fopen( path, "r" );
     if( file == NULL )
     {
-        LOGI("[SHAR-RESOLUTION] Config not present yet; defaulting to 1440p");
-        return 3;
+        LOGI("[SHAR-RESOLUTION] Config not present yet; defaulting to 1080p");
+        return 2;
     }
 
     char line[256];
-    int selection = 3;
+    int selection = 2;
     while( fgets( line, sizeof(line), file ) != NULL )
     {
         char* cursor = line;
@@ -902,7 +902,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
     if( gSHARGraphicsResolutionSelection < 0 ||
         gSHARGraphicsResolutionSelection >= SHAR_GRAPHICS_RESOLUTION_COUNT )
     {
-        gSHARGraphicsResolutionSelection = 3;
+        gSHARGraphicsResolutionSelection = 2;
     }
 
     for( int i = 0; i < 4; ++i )
@@ -963,10 +963,10 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
                 {
                     // Defensive fallback if the dedicated five-value text object
                     // cannot be created. Keep the row safe and visibly diagnostic.
-                    value->SetString( 0, "1440p" );
+                    value->SetString( 0, "1080p" );
                     if( value->GetNumOfStrings() > 1 )
                     {
-                        value->SetString( 1, "1440p" );
+                        value->SetString( 1, "1080p" );
                     }
                     // If we could not create the dedicated selector text, avoid
                     // exposing an unsupported 2160p fallback; keep the row safe.
@@ -1067,7 +1067,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
     const char* labels[6] =
     {
         "Moon Jump",
-        "Super Fast Cars",
+        "Faster Acceleration",
         "Vehicle Invincibility",
         "Car Horn Jump",
         "One Hit Tank Cars",
@@ -1078,8 +1078,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
     const bool enabled[5] =
     {
         cheats->IsMoonJumpEnabled(),
-        cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION ) &&
-            cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED ),
+        cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION ),
         cheats->IsCheatEnabled( CHEAT_ID_INVINCIBLE_CAR ),
         cheats->IsCheatEnabled( CHEAT_ID_CAR_JUMP_ON_HORN ),
         cheats->IsCheatEnabled( CHEAT_ID_ONE_TAP_TRAFFIC_DEATH )
@@ -1129,7 +1128,10 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
         {
             if( i == 5 )
             {
-                value->SetVisible( false );
+                if( value->GetNumOfStrings() > 0 ) value->SetString( 0, "OPEN" );
+                value->SetVisible( true );
+                m_pMenu->SetSelectionValueCount( guiIndex, 1 );
+                m_pMenu->SetSelectionValue( guiIndex, 0 );
             }
             else
             {
@@ -1159,8 +1161,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidMoreCheatsMenu()
 {
     m_configuringAndroidSubmenu = true;
 
-    // Grid Mode is intentionally omitted; these five toggles reuse the
-    // existing Settings rows and value controls.
+    // Reuse the five Settings rows for the requested secondary cheat toggles.
     const int logicalItems[5] =
     {
         MENU_ITEM_CAMERA,
@@ -1174,9 +1175,9 @@ void CGuiScreenPauseSettings::ConfigureAndroidMoreCheatsMenu()
     {
         "Noclip",
         "Character Swap",
-        "Red Brick Car",
         "Unlock All Cars",
-        "Psychedelic View"
+        "Unlimited Speed",
+        "Speedometer"
     };
 
     CheatInputSystem* cheats = GetCheatInputSystem();
@@ -1184,9 +1185,9 @@ void CGuiScreenPauseSettings::ConfigureAndroidMoreCheatsMenu()
     {
         IsSHARNoclipEnabled(),
         cheats->IsCheatEnabled( CHEAT_ID_KICK_TOGGLES_CHARACTER_MODEL ),
-        cheats->IsCheatEnabled( CHEAT_ID_REDBRICK ),
         cheats->IsCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES ),
-        cheats->IsCheatEnabled( CHEAT_ID_TRIPPY )
+        cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED ),
+        cheats->IsCheatEnabled( CHEAT_ID_SHOW_SPEEDOMETER )
     };
 
     for( int i = 0; i < 5; ++i )
@@ -1594,13 +1595,13 @@ void CGuiScreenPauseSettings::HandleMessage
                                     cheats->SetCheatEnabled( CHEAT_ID_KICK_TOGGLES_CHARACTER_MODEL, enabled );
                                     break;
                                 case MENU_ITEM_INTERSECT_NAV_SYSTEM:
-                                    cheats->SetCheatEnabled( CHEAT_ID_REDBRICK, enabled );
-                                    break;
-                                case MENU_ITEM_RADAR:
                                     cheats->SetCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES, enabled );
                                     break;
+                                case MENU_ITEM_RADAR:
+                                    cheats->SetCheatEnabled( CHEAT_ID_NO_TOP_SPEED, enabled );
+                                    break;
                                 case MENU_ITEM_INVERT_CAM_CONTROL:
-                                    cheats->SetCheatEnabled( CHEAT_ID_TRIPPY, enabled );
+                                    cheats->SetCheatEnabled( CHEAT_ID_SHOW_SPEEDOMETER, enabled );
                                     break;
                                 default:
                                     break;
@@ -1643,13 +1644,13 @@ void CGuiScreenPauseSettings::HandleMessage
                                     actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_KICK_TOGGLES_CHARACTER_MODEL );
                                     break;
                                 case MENU_ITEM_INTERSECT_NAV_SYSTEM:
-                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_REDBRICK );
-                                    break;
-                                case MENU_ITEM_RADAR:
                                     actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES );
                                     break;
+                                case MENU_ITEM_RADAR:
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED );
+                                    break;
                                 case MENU_ITEM_INVERT_CAM_CONTROL:
-                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_TRIPPY );
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_SHOW_SPEEDOMETER );
                                     break;
                                 default:
                                     break;
@@ -1663,9 +1664,7 @@ void CGuiScreenPauseSettings::HandleMessage
                                     actualEnabled = cheats->IsMoonJumpEnabled();
                                     break;
                                 case MENU_ITEM_JUMP_CAMERAS:
-                                    actualEnabled =
-                                        cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION ) &&
-                                        cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED );
+                                    actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION );
                                     break;
                                 case MENU_ITEM_INTERSECT_NAV_SYSTEM:
                                     actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_INVINCIBLE_CAR );

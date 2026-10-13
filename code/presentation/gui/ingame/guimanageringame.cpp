@@ -70,6 +70,9 @@
 #include <mission/objectives/missionobjective.h>
 #include <mission/gameplaymanager.h>
 #include <mission/charactersheet/charactersheetmanager.h>
+#if defined(RAD_ANDROID)
+#include <worldsim/character/character.h>
+#endif
 #include <presentation/presentation.h>
 #include <render/RenderManager/RenderManager.h>
 #include <render/RenderManager/RenderLayer.h>
@@ -639,6 +642,9 @@ void CGuiManagerInGame::HandleMessage
                     if( !m_quitAndReload )
                     {
                         GetCheatInputSystem()->DisableAllCheats();
+#if defined(RAD_ANDROID)
+                        SetSHARNoclipEnabled( false );
+#endif
                     }
                     m_state = GUI_FE_SHUTTING_DOWN;
 
@@ -1474,6 +1480,10 @@ CGuiManagerInGame::QuitGame()
         {
             if( GetGameplayManager()->GetGameComplete() ) // game finished
             {
+                GetCheatInputSystem()->DisableAllCheats();
+#if defined(RAD_ANDROID)
+                SetSHARNoclipEnabled( false );
+#endif
                 GetGameFlow()->SetContext( CONTEXT_FRONTEND );
             }
             else
@@ -1490,7 +1500,12 @@ CGuiManagerInGame::QuitGame()
     }
     else
     {
-        // switch to frontend context
+        // Reset gameplay cheats before returning to the front end, so a new or
+        // loaded game starts with every toggle OFF.
+        GetCheatInputSystem()->DisableAllCheats();
+#if defined(RAD_ANDROID)
+        SetSHARNoclipEnabled( false );
+#endif
         GetGameFlow()->SetContext( CONTEXT_FRONTEND );
     }
 }
