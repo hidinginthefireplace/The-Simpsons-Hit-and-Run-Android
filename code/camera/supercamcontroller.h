@@ -38,7 +38,6 @@ public:
         stickX,
         stickY,
         zToggle,
-        zToggleOut,
         lookToggle,
         zoom,
         in, 
@@ -63,6 +62,7 @@ public:
         mouseLookUp,
         mouseLookDown
 #endif
+        ,zToggleOut
     };
 
     SuperCamController();
