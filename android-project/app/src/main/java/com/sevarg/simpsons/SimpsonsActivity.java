@@ -78,13 +78,12 @@ public class SimpsonsActivity extends SDLActivity {
         return getSavedGameDataPath(getContext());
     }
 
-    public static String getGameDataPath() {
-        String selected = getSavedGameDataPath();
-        if (selected != null && new java.io.File(selected).isDirectory()) {
-            return selected;
-        }
-
-        Context context = getContext();
+    /**
+     * Returns the application-owned default location used when the user chooses
+     * internal storage. Game files must be copied here by the user; the app does
+     * not include or install the game's assets.
+     */
+    public static String getInternalGameDataPath(Context context) {
         if (context != null) {
             java.io.File fallback = context.getExternalFilesDir(null);
             if (fallback != null) {
@@ -96,6 +95,18 @@ public class SimpsonsActivity extends SDLActivity {
             }
         }
         return null;
+    }
+
+    public static String getGameDataPath(Context context) {
+        String selected = getSavedGameDataPath(context);
+        if (selected != null && new java.io.File(selected).isDirectory()) {
+            return selected;
+        }
+        return getInternalGameDataPath(context);
+    }
+
+    public static String getGameDataPath() {
+        return getGameDataPath(getContext());
     }
 
     @Override
