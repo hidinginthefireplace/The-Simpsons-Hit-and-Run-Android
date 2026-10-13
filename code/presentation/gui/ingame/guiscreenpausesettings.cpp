@@ -65,6 +65,7 @@ void SetFrameSharpeningLevel(int level);
 bool RequestSHARAndroidRenderResolutionHeight(int targetHeight);
 
 static bool gAndroidGraphicsSettingsRequested = false;
+static bool gAndroidCheatsSettingsRequested = false;
 
 // Live resolution selector. Full-screen effects continue to use GL size,
 // budget, and allocation guards; failed targets safely bypass the affected effect.
@@ -75,6 +76,11 @@ static bool gSHARGraphicsResolutionNeedsNormalization = false;
 void RequestAndroidGraphicsSettings()
 {
     gAndroidGraphicsSettingsRequested = true;
+}
+
+void RequestAndroidCheatsSettings()
+{
+    gAndroidCheatsSettingsRequested = true;
 }
 #endif
 
@@ -326,10 +332,8 @@ const char* PAUSE_SETTINGS_MENU_ITEMS[] =
 #if !defined(RAD_PC)
     "Vibration",
 #endif
-#if !defined(RAD_ANDROID)
+#endif
     "Tutorial",
-#endif
-#endif
 
     ""
 };
@@ -494,6 +498,7 @@ CGuiScreenPauseSettings::CGuiScreenPauseSettings
 :   CGuiScreen( pScreen, pParent, GUI_SCREEN_ID_SETTINGS ),
 #if defined(RAD_ANDROID)
     m_graphicsSettingsMode( false ),
+    m_cheatsSettingsMode( false ),
 #endif
     m_pMenu( NULL ),
     m_currentCameraSelectionMode( CAMERA_SELECTION_NOT_AVAILABLE )
@@ -834,7 +839,7 @@ MEMTRACK_POP_GROUP( "CGuiScreenPauseSettings" );
 
 void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
 {
-    m_configuringAndroidGraphicsMenu = true;
+    m_configuringAndroidSubmenu = true;
     gSHARGraphicsResolutionSelection = LoadSHARGraphicsResolutionSelection();
     if( gSHARGraphicsResolutionNeedsNormalization )
     {
@@ -851,7 +856,19 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
     }
     // Reuse five existing Settings rows without editing any Scrooby/game assets.
     // Camera is used as the temporary Resolution row, and Invert Camera is
-    // the temporary Back row. These values are UI-only in this diagnostic build.
+    // the temporary Back row.
+    if( m_pGraphicsResolutionValue != NULL )
+    {
+        const char* resolutionValues[SHAR_GRAPHICS_RESOLUTION_COUNT] =
+        {
+            "480p", "720p", "1080p", "1440p", "2160p"
+        };
+        for( int valueIndex = 0; valueIndex < SHAR_GRAPHICS_RESOLUTION_COUNT; ++valueIndex )
+        {
+            m_pGraphicsResolutionValue->SetString( valueIndex, resolutionValues[valueIndex] );
+        }
+    }
+
     const int logicalItems[5] =
     {
         MENU_ITEM_CAMERA,
@@ -1014,7 +1031,117 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
     }
 
     m_pMenu->Reset( 0 );
-    m_configuringAndroidGraphicsMenu = false;
+    m_configuringAndroidSubmenu = false;
+}
+
+void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
+{
+    m_configuringAndroidSubmenu = true;
+
+    // Six cheat rows use ordinary OFF/ON values. The hidden Tutorial row
+    // becomes Back, so this reuses the current Settings UI and game assets.
+    const int logicalItems[7] =
+    {
+        MENU_ITEM_CAMERA,
+        MENU_ITEM_JUMP_CAMERAS,
+        MENU_ITEM_INTERSECT_NAV_SYSTEM,
+        MENU_ITEM_RADAR,
+        MENU_ITEM_INVERT_CAM_CONTROL,
+        MENU_ITEM_VIBRATION,
+        MENU_ITEM_TUTORIAL
+    };
+
+    const char* labels[7] =
+    {
+        "Moon Jump",
+        "Super Fast Cars",
+        "Vehicle Invincibility",
+        "Car Horn Jump",
+        "One Hit Tank Cars",
+        "Unlock All Cars",
+        "Back"
+    };
+
+    CheatInputSystem* cheats = GetCheatInputSystem();
+    const bool enabled[6] =
+    {
+        cheats->IsMoonJumpEnabled(),
+        cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION ) &&
+            cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED ),
+        cheats->IsCheatEnabled( CHEAT_ID_INVINCIBLE_CAR ),
+        cheats->IsCheatEnabled( CHEAT_ID_CAR_JUMP_ON_HORN ),
+        cheats->IsCheatEnabled( CHEAT_ID_ONE_TAP_TRAFFIC_DEATH ),
+        cheats->IsCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES )
+    };
+
+    for( int i = 0; i < 7; ++i )
+    {
+        const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
+        if( guiIndex < 0 )
+        {
+            continue;
+        }
+
+        GuiMenuItem* item = m_pMenu->GetMenuItem( guiIndex );
+        if( item == NULL )
+        {
+            continue;
+        }
+
+        if( i == 0 && m_pGraphicsResolutionValue != NULL &&
+            m_pOriginalResolutionValue != NULL )
+        {
+            item->SetItemValue( m_pGraphicsResolutionValue );
+            m_pOriginalResolutionValue->SetVisible( false );
+            m_pGraphicsResolutionValue->SetVisible( true );
+        }
+
+        const bool backRow = ( i == 6 );
+        if( backRow )
+        {
+            item->m_attributes |= SELECTABLE;
+        }
+        else
+        {
+            item->m_attributes &= ~SELECTABLE;
+        }
+        item->m_showValueArrows = !backRow;
+        item->m_useBackSoundOnSelection = backRow;
+        m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
+
+        Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
+        Scrooby::Text* value = dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
+        if( label != NULL )
+        {
+            label->SetString( 0, labels[i] );
+            label->SetVisible( true );
+        }
+
+        if( !backRow && value != NULL )
+        {
+            if( value->GetNumOfStrings() > 0 ) value->SetString( 0, "OFF" );
+            if( value->GetNumOfStrings() > 1 ) value->SetString( 1, "ON" );
+            value->SetVisible( true );
+            m_pMenu->SetSelectionValueCount( guiIndex, 2 );
+            m_pMenu->SetSelectionValue( guiIndex, enabled[i] ? 1 : 0 );
+        }
+        else if( value != NULL )
+        {
+            value->SetVisible( false );
+        }
+
+        if( item->m_itemValueArrowL != NULL )
+        {
+            item->m_itemValueArrowL->SetVisible( false );
+        }
+        if( item->m_itemValueArrowR != NULL )
+        {
+            item->m_itemValueArrowR->SetVisible( false );
+        }
+    }
+
+    m_pMenu->Reset( 0 );
+    m_configuringAndroidSubmenu = false;
 }
 
 void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
@@ -1125,6 +1252,39 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
         m_pMenu->SetMenuItemEnabled( guiIndex, enableItem, true );
     }
 
+    const int tutorialGuiIndex = GetGuiMenuIndexFromMenuItem( MENU_ITEM_TUTORIAL );
+    if( tutorialGuiIndex >= 0 )
+    {
+        GuiMenuItem* tutorialItem = m_pMenu->GetMenuItem( tutorialGuiIndex );
+        if( tutorialItem != NULL )
+        {
+            tutorialItem->m_attributes &= ~SELECTABLE;
+            tutorialItem->m_showValueArrows = false;
+            tutorialItem->m_useBackSoundOnSelection = false;
+
+            Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( tutorialItem->GetItem() );
+            Scrooby::Text* value = dynamic_cast<Scrooby::Text*>( tutorialItem->GetItemValue() );
+            if( label != NULL )
+            {
+                label->SetString( 0, "Tutorial" );
+                label->SetVisible( false );
+            }
+            if( value != NULL )
+            {
+                value->SetVisible( false );
+            }
+            if( tutorialItem->m_itemValueArrowL != NULL )
+            {
+                tutorialItem->m_itemValueArrowL->SetVisible( false );
+            }
+            if( tutorialItem->m_itemValueArrowR != NULL )
+            {
+                tutorialItem->m_itemValueArrowR->SetVisible( false );
+            }
+            m_pMenu->SetMenuItemEnabled( tutorialGuiIndex, false, true );
+        }
+    }
+
     m_pMenu->Reset( 0 );
 }
 
@@ -1137,6 +1297,19 @@ void CGuiScreenPauseSettings::LeaveAndroidGraphicsMenu( bool backSoundAlreadyPla
 
     // The Back row plays this sound through CGuiMenu::MakeSelection. The B
     // button bypasses that path, so play the normal back sound here instead.
+    if( !backSoundAlreadyPlayed )
+    {
+        GetEventManager()->TriggerEvent( EVENT_FE_MENU_BACK );
+    }
+}
+
+void CGuiScreenPauseSettings::LeaveAndroidCheatsMenu( bool backSoundAlreadyPlayed )
+{
+    // Keep Cheats mode active through the outro so its toggles are not
+    // mistaken for ordinary camera, navigation, radar, or controller settings.
+    gAndroidCheatsSettingsRequested = false;
+    m_pParent->HandleMessage( GUI_MSG_BACK_SCREEN );
+
     if( !backSoundAlreadyPlayed )
     {
         GetEventManager()->TriggerEvent( EVENT_FE_MENU_BACK );
@@ -1200,6 +1373,11 @@ void CGuiScreenPauseSettings::HandleMessage
                     LeaveAndroidGraphicsMenu( false );
                     return;
                 }
+                if( m_cheatsSettingsMode )
+                {
+                    LeaveAndroidCheatsMenu( false );
+                    return;
+                }
                 break;
             }
 #endif
@@ -1221,6 +1399,12 @@ void CGuiScreenPauseSettings::HandleMessage
                     LeaveAndroidGraphicsMenu( true );
                     return;
                 }
+                if( m_cheatsSettingsMode &&
+                    GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) ) == MENU_ITEM_TUTORIAL )
+                {
+                    LeaveAndroidCheatsMenu( true );
+                    return;
+                }
 #endif
                 break;
             }
@@ -1231,53 +1415,111 @@ void CGuiScreenPauseSettings::HandleMessage
                 const int logicalMenuItem =
                     GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) );
 
-                if( m_graphicsSettingsMode )
+                if( m_graphicsSettingsMode || m_cheatsSettingsMode )
                 {
-                    // SetSelectionValue is used while the submenu is being
-                    // configured. Ignore those synthetic notifications so they
-                    // cannot overwrite user settings or the resolution config.
-                    if( m_configuringAndroidGraphicsMenu )
+                    // Ignore synthetic value-change messages generated while either
+                    // custom submenu is being configured.
+                    if( m_configuringAndroidSubmenu )
                     {
                         break;
                     }
 
                     const bool enabled = ( param2 == 1 );
-                    if( logicalMenuItem == MENU_ITEM_CAMERA )
+                    if( m_graphicsSettingsMode )
                     {
-                        if( param2 < SHAR_GRAPHICS_RESOLUTION_COUNT )
+                        if( logicalMenuItem == MENU_ITEM_CAMERA )
                         {
-                            const int newSelection = static_cast<int>( param2 );
-                            if( newSelection != gSHARGraphicsResolutionSelection )
+                            if( param2 < SHAR_GRAPHICS_RESOLUTION_COUNT )
                             {
-                                gSHARGraphicsResolutionSelection = newSelection;
-                                // Persist the choice, then ask Android's UI thread
-                                // to resize the SurfaceView live. SDL receives the
-                                // resulting standard resize callback; no GL work is
-                                // performed directly by this menu handler.
-                                const int targetHeight =
-                                    GetSHARGraphicsResolutionHeight( newSelection );
-                                SaveSHARGraphicsResolutionSelection( newSelection );
-                                if( !RequestSHARAndroidRenderResolutionHeight( targetHeight ) )
+                                const int newSelection = static_cast<int>( param2 );
+                                if( newSelection != gSHARGraphicsResolutionSelection )
                                 {
-                                    LOGE("[SHAR-RESOLUTION] Live resize request for %dp could not be queued; saved value will apply on next launch",
-                                         targetHeight);
+                                    gSHARGraphicsResolutionSelection = newSelection;
+                                    const int targetHeight =
+                                        GetSHARGraphicsResolutionHeight( newSelection );
+                                    SaveSHARGraphicsResolutionSelection( newSelection );
+                                    if( !RequestSHARAndroidRenderResolutionHeight( targetHeight ) )
+                                    {
+                                        LOGE("[SHAR-RESOLUTION] Live resize request for %dp could not be queued; saved value will apply on next launch",
+                                             targetHeight);
+                                    }
                                 }
                             }
                         }
+                        else if( logicalMenuItem == MENU_ITEM_JUMP_CAMERAS )
+                        {
+                            SetCelShadingEnabled( enabled );
+                        }
+                        else if( logicalMenuItem == MENU_ITEM_INTERSECT_NAV_SYSTEM )
+                        {
+                            SetCRTFilterEnabled( enabled );
+                        }
+                        else if( logicalMenuItem == MENU_ITEM_RADAR )
+                        {
+                            SetFrameSharpeningLevel( static_cast<int>( param2 ) );
+                        }
                     }
-                    else if( logicalMenuItem == MENU_ITEM_JUMP_CAMERAS )
+                    else
                     {
-                        SetCelShadingEnabled( enabled );
-                    }
-                    else if( logicalMenuItem == MENU_ITEM_INTERSECT_NAV_SYSTEM )
-                    {
-                        SetCRTFilterEnabled( enabled );
-                    }
-                    else if( logicalMenuItem == MENU_ITEM_RADAR )
-                    {
-                        // The sharpening row has six values: OFF, 20%, 40%,
-                        // 60%, 80%, and MAX.
-                        SetFrameSharpeningLevel( static_cast<int>( param2 ) );
+                        CheatInputSystem* cheats = GetCheatInputSystem();
+                        switch( logicalMenuItem )
+                        {
+                            case MENU_ITEM_CAMERA:
+                                cheats->SetMoonJumpEnabled( enabled );
+                                break;
+                            case MENU_ITEM_JUMP_CAMERAS:
+                                cheats->SetCheatEnabled( CHEAT_ID_HIGH_ACCELERATION, enabled );
+                                cheats->SetCheatEnabled( CHEAT_ID_NO_TOP_SPEED, enabled );
+                                break;
+                            case MENU_ITEM_INTERSECT_NAV_SYSTEM:
+                                cheats->SetCheatEnabled( CHEAT_ID_INVINCIBLE_CAR, enabled );
+                                break;
+                            case MENU_ITEM_RADAR:
+                                cheats->SetCheatEnabled( CHEAT_ID_CAR_JUMP_ON_HORN, enabled );
+                                break;
+                            case MENU_ITEM_INVERT_CAM_CONTROL:
+                                cheats->SetCheatEnabled( CHEAT_ID_ONE_TAP_TRAFFIC_DEATH, enabled );
+                                break;
+                            case MENU_ITEM_VIBRATION:
+                                cheats->SetCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES, enabled );
+                                break;
+                            default:
+                                break;
+                        }
+
+                        bool actualEnabled = false;
+                        switch( logicalMenuItem )
+                        {
+                            case MENU_ITEM_CAMERA:
+                                actualEnabled = cheats->IsMoonJumpEnabled();
+                                break;
+                            case MENU_ITEM_JUMP_CAMERAS:
+                                actualEnabled =
+                                    cheats->IsCheatEnabled( CHEAT_ID_HIGH_ACCELERATION ) &&
+                                    cheats->IsCheatEnabled( CHEAT_ID_NO_TOP_SPEED );
+                                break;
+                            case MENU_ITEM_INTERSECT_NAV_SYSTEM:
+                                actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_INVINCIBLE_CAR );
+                                break;
+                            case MENU_ITEM_RADAR:
+                                actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_CAR_JUMP_ON_HORN );
+                                break;
+                            case MENU_ITEM_INVERT_CAM_CONTROL:
+                                actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_ONE_TAP_TRAFFIC_DEATH );
+                                break;
+                            case MENU_ITEM_VIBRATION:
+                                actualEnabled = cheats->IsCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES );
+                                break;
+                            default:
+                                break;
+                        }
+
+                        // The game still enforces its existing story-completion rule
+                        // for Unlock All Cars, so show the actual runtime state.
+                        m_configuringAndroidSubmenu = true;
+                        m_pMenu->SetSelectionValue(
+                            static_cast<int>( param1 ), actualEnabled ? 1 : 0 );
+                        m_configuringAndroidSubmenu = false;
                     }
                     break;
                 }
@@ -1377,11 +1619,14 @@ void CGuiScreenPauseSettings::InitIntro()
 {
 #if defined(RAD_ANDROID)
     const bool openGraphicsMenu = gAndroidGraphicsSettingsRequested;
-    // Keep graphics mode disabled while normal Settings values are synced.
+    const bool openCheatsMenu = gAndroidCheatsSettingsRequested;
+    // Keep custom mode disabled while normal Settings values are synced.
     // CGuiMenu::SetSelectionValue notifies this screen, so treating these
-    // normal values as graphics toggles would write the wrong settings.
+    // normal values as submenu toggles would change unrelated settings.
     m_graphicsSettingsMode = false;
+    m_cheatsSettingsMode = false;
     gAndroidGraphicsSettingsRequested = false;
+    gAndroidCheatsSettingsRequested = false;
 
     // Always restore and initialize the normal settings state first. The
     // Graphics entry can be opened before Settings has ever been visited in
@@ -1587,14 +1832,16 @@ void CGuiScreenPauseSettings::InitIntro()
 #endif
 
 #if defined(RAD_ANDROID)
-    // Apply the graphics labels/values only after the shared Settings screen
-    // has completed its normal state synchronization. This preserves direct
-    // Graphics entry after a fresh map load without restoring Settings rows
-    // during the Graphics outro transition.
+    // Apply custom labels/values only after ordinary Settings initialization.
     if( openGraphicsMenu )
     {
         m_graphicsSettingsMode = true;
         ConfigureAndroidGraphicsMenu();
+    }
+    else if( openCheatsMenu )
+    {
+        m_cheatsSettingsMode = true;
+        ConfigureAndroidCheatsMenu();
     }
 #endif
 }
@@ -1632,10 +1879,14 @@ void CGuiScreenPauseSettings::InitOutro()
 #if defined(RAD_ANDROID)
     if( m_graphicsSettingsMode )
     {
-        // Do not restore the Settings rows while this screen is fading out:
-        // that caused a brief flash of the normal menu behind the transition.
+        // Do not restore the Settings rows while this screen is fading out.
         // InitIntro restores them the next time normal Settings is entered.
         gAndroidGraphicsSettingsRequested = false;
+        return;
+    }
+    if( m_cheatsSettingsMode )
+    {
+        gAndroidCheatsSettingsRequested = false;
         return;
     }
 #endif
@@ -1901,6 +2152,14 @@ bool CGuiScreenPauseSettings::AddPauseSettingsMenuItemIfAvailable
     char itemName[ 32 ];
 
     Scrooby::Group* group = pPage->GetGroup( item );
+    if( group == NULL )
+    {
+        Scrooby::Group* menuGroup = pPage->GetGroup( "Menu" );
+        if( menuGroup != NULL )
+        {
+            group = menuGroup->GetGroup( item );
+        }
+    }
 
     if( group == NULL )
     {
@@ -2052,13 +2311,18 @@ bool CGuiScreenPauseSettings::AddGeneratedAndroidToggleMenuItem
     }
 
     const int rowNumber =
-        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ? 1 : 2;
+        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ? 1 :
+        logicalMenuItem == MENU_ITEM_VIBRATION ? 2 : 3;
     const int rowY = radarY + rowSpacing * rowNumber;
 
     const char* labelText =
-        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ?
-        "Invert Camera" :
-        "Controller Vibration";
+        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ? "Invert Camera" :
+        logicalMenuItem == MENU_ITEM_VIBRATION ? "Controller Vibration" :
+        "Tutorial";
+    const char* itemNamePart =
+        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ? "InvertCamera" :
+        logicalMenuItem == MENU_ITEM_VIBRATION ? "ControllerVibration" :
+        "Tutorial";
 
     char nameBuffer[ 64 ];
 
@@ -2067,9 +2331,7 @@ bool CGuiScreenPauseSettings::AddGeneratedAndroidToggleMenuItem
         nameBuffer,
         sizeof( nameBuffer ),
         "AndroidSettings_%s_Label",
-        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ?
-        "InvertCamera" :
-        "ControllerVibration"
+        itemNamePart
     );
 
     FeText* label = menuGroup->AddText( nameBuffer, 0, 0 );
@@ -2079,9 +2341,7 @@ bool CGuiScreenPauseSettings::AddGeneratedAndroidToggleMenuItem
         nameBuffer,
         sizeof( nameBuffer ),
         "AndroidSettings_%s_Value",
-        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ?
-        "InvertCamera" :
-        "ControllerVibration"
+        itemNamePart
     );
 
     FeText* value = menuGroup->AddText( nameBuffer, 0, 0 );
@@ -2169,7 +2429,8 @@ bool CGuiScreenPauseSettings::AddGeneratedAndroidToggleMenuItem
 bool CGuiScreenPauseSettings::IsAndroidOptionalMenuItem( int logicalMenuItem ) const
 {
     return logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ||
-           logicalMenuItem == MENU_ITEM_VIBRATION;
+           logicalMenuItem == MENU_ITEM_VIBRATION ||
+           logicalMenuItem == MENU_ITEM_TUTORIAL;
 }
 
 bool CGuiScreenPauseSettings::HasMenuItem( int logicalMenuItem ) const

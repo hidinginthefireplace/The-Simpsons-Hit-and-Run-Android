@@ -17,8 +17,9 @@
 //===========================================================================
 #include <presentation/gui/ingame/guiscreenpauseoptions.h>
 #ifdef RAD_ANDROID
-// The Graphics entry opens the existing Pause Settings screen in graphics mode.
+// Graphics and Cheats both reuse the existing Pause Settings screen.
 void RequestAndroidGraphicsSettings();
+void RequestAndroidCheatsSettings();
 #endif
 #include <presentation/gui/guimenu.h>
 
@@ -156,20 +157,25 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
     }
 
 #ifdef RAD_ANDROID
-    // The Android menu has no dedicated Graphics artwork. Reuse the existing
-    // Display label/value/arrows, but place them in the same centered three-row
-    // layout as Sound and Settings.
+    // Reuse the Android Display artwork for Graphics and the disabled Controller
+    // row for Cheats. Place four rows using the existing Sound/Settings spacing.
     Scrooby::Text* pSoundLabel = menu->GetText( "Sound" );
     Scrooby::Text* pSettingsLabel = menu->GetText( "Settings" );
     Scrooby::Text* pGraphicsLabel = menu->GetText( "Display" );
+    Scrooby::Text* pCheatsLabel = menu->GetText( "Controller" );
     Scrooby::Text* pGraphicsValue = pPage->GetText( "Display_Value" );
+    Scrooby::Text* pCheatsValue = pPage->GetText( "Controller_Value" );
     Scrooby::Sprite* pGraphicsLArrow = pPage->GetSprite( "Display_LArrow" );
     Scrooby::Sprite* pGraphicsRArrow = pPage->GetSprite( "Display_RArrow" );
+    Scrooby::Sprite* pCheatsLArrow = pPage->GetSprite( "Controller_LArrow" );
+    Scrooby::Sprite* pCheatsRArrow = pPage->GetSprite( "Controller_RArrow" );
 
     int soundX = 0, soundY = 0;
     int settingsX = 0, settingsY = 0;
     int graphicsX = 0, graphicsY = 0;
     int displayX = 0, displayY = 0;
+    int cheatsX = 0, cheatsY = 0;
+    int controllerX = 0, controllerY = 0;
     int valueX = 0, valueY = 0;
     int lArrowX = 0, lArrowY = 0;
     int rArrowX = 0, rArrowY = 0;
@@ -180,17 +186,49 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
         pSettingsLabel->GetBoundingBoxCenter( settingsX, settingsY );
         pGraphicsLabel->GetBoundingBoxCenter( displayX, displayY );
 
-        // Keep the existing vertical spacing and use a shared horizontal center.
+        // Keep existing vertical spacing and use one shared horizontal center.
         int centeredX = ( soundX + settingsX ) / 2;
+        const int rowSpacing = settingsY - soundY;
         pSoundLabel->SetPositionOfCenter( centeredX, soundY );
         pSettingsLabel->SetPositionOfCenter( centeredX, settingsY );
 
         graphicsX = centeredX;
-        graphicsY = settingsY + ( settingsY - soundY );
+        graphicsY = settingsY + rowSpacing;
         pGraphicsLabel->SetPositionOfCenter( graphicsX, graphicsY );
 
-        // Reposition the reused value/arrows by preserving their original
-        // offsets from the Display label.
+        if( pCheatsLabel )
+        {
+            pCheatsLabel->GetBoundingBoxCenter( controllerX, controllerY );
+            cheatsX = centeredX;
+            cheatsY = soundY - rowSpacing;
+            pCheatsLabel->SetPositionOfCenter( cheatsX, cheatsY );
+            pCheatsLabel->SetString( 0, "CHEATS" );
+
+            if( pCheatsValue )
+            {
+                pCheatsValue->GetBoundingBoxCenter( valueX, valueY );
+                pCheatsValue->SetPositionOfCenter(
+                    cheatsX + ( valueX - controllerX ),
+                    cheatsY + ( valueY - controllerY ) );
+                pCheatsValue->SetString( 0, "OPEN" );
+            }
+            if( pCheatsLArrow )
+            {
+                pCheatsLArrow->GetBoundingBoxCenter( lArrowX, lArrowY );
+                pCheatsLArrow->SetPositionOfCenter(
+                    cheatsX + ( lArrowX - controllerX ),
+                    cheatsY + ( lArrowY - controllerY ) );
+            }
+            if( pCheatsRArrow )
+            {
+                pCheatsRArrow->GetBoundingBoxCenter( rArrowX, rArrowY );
+                pCheatsRArrow->SetPositionOfCenter(
+                    cheatsX + ( rArrowX - controllerX ),
+                    cheatsY + ( rArrowY - controllerY ) );
+            }
+        }
+
+        // Preserve the reused Display value/arrows' offsets from its label.
         if( pGraphicsValue )
         {
             pGraphicsValue->GetBoundingBoxCenter( valueX, valueY );
@@ -247,7 +285,11 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
     // TC: [TEMP] disable controller screen for now to free up some memory for HUD map
     //
 #ifndef RAD_PC
+#ifdef RAD_ANDROID
+    m_pMenu->SetMenuItemEnabled( MENU_ITEM_CONTROLLER, true, true );
+#else
     m_pMenu->SetMenuItemEnabled( MENU_ITEM_CONTROLLER, false, true );
+#endif
 #endif
 
 #ifdef RAD_E3
@@ -330,7 +372,12 @@ void CGuiScreenPauseOptions::HandleMessage
             {
                 if( param1 == MENU_ITEM_CONTROLLER )
                 {
+#ifdef RAD_ANDROID
+                    RequestAndroidCheatsSettings();
+                    m_pParent->HandleMessage( GUI_MSG_GOTO_SCREEN, GUI_SCREEN_ID_SETTINGS );
+#else
                     m_pParent->HandleMessage( GUI_MSG_GOTO_SCREEN, GUI_SCREEN_ID_CONTROLLER );
+#endif
                 }
                 else if( param1 == MENU_ITEM_SOUND )
                 {

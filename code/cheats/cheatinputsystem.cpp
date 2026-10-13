@@ -36,6 +36,7 @@ CheatInputSystem* CheatInputSystem::spInstance = NULL;
 //===========================================================================
 
 CHEATBITMASK CheatInputSystem::s_cheatsEnabled = 0;
+bool CheatInputSystem::s_moonJumpEnabled = false;
 
 //===========================================================================
 // Public Member Functions
@@ -358,6 +359,8 @@ CheatInputSystem::IsCheatEnabled( eCheatID cheatID ) const
 void
 CheatInputSystem::DisableAllCheats()
 {
+    SetMoonJumpEnabled( false );
+
     for( int cheatID = 0; cheatID < MAX_NUM_CHEATS; cheatID++ )
     {
         eCheatID id = static_cast<eCheatID>( cheatID );

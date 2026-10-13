@@ -59,6 +59,7 @@
 #include <contexts/pausecontext.h>
 #include <contexts/gameplay/gameplaycontext.h>
 #include <data/memcard/memorycardmanager.h>
+#include <cheats/cheatinputsystem.h>
 #include <events/eventmanager.h>
 #include <gameflow/gameflow.h>
 #include <input/inputmanager.h>
@@ -635,6 +636,10 @@ void CGuiManagerInGame::HandleMessage
                 else
 #endif
                 {
+                    if( !m_quitAndReload )
+                    {
+                        GetCheatInputSystem()->DisableAllCheats();
+                    }
                     m_state = GUI_FE_SHUTTING_DOWN;
 
                     // if paused in sunday drive mode, unload memory card info
@@ -681,6 +686,7 @@ void CGuiManagerInGame::HandleMessage
                     }
                     else
                     {
+                        GetCheatInputSystem()->DisableAllCheats();
                         m_state = GUI_FE_SHUTTING_DOWN;
 
                         // if paused in sunday drive mode, unload memory card info

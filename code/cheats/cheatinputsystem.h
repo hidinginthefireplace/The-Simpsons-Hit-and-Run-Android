@@ -52,7 +52,10 @@ public:
     virtual ~CheatInputSystem();
 
     void Init();
-    void Reset() { s_cheatsEnabled = 0; }
+    void Reset() { s_cheatsEnabled = 0; s_moonJumpEnabled = false; }
+
+    void SetMoonJumpEnabled( bool enable ) { s_moonJumpEnabled = enable; }
+    bool IsMoonJumpEnabled() const { return s_moonJumpEnabled; }
 
     void SetEnabled( bool enable );
     bool IsEnabled() const { return m_enabled; }
@@ -93,6 +96,7 @@ private:
     unsigned int m_activatedBitMask;
 
     static CHEATBITMASK s_cheatsEnabled;
+    static bool s_moonJumpEnabled;
     CheatsDB* m_cheatsDB;
 
     CheatInputHandler* m_cheatInputHandler;

@@ -79,20 +79,21 @@ private:
         MENU_ITEM_VIBRATION,
 #endif
 #endif
-#if !defined(RAD_ANDROID)
         MENU_ITEM_TUTORIAL,
-#endif
 
         NUM_PAUSE_SETTINGS_MENU_ITEMS
     };
 
    #if defined(RAD_ANDROID)
     bool m_graphicsSettingsMode = false;
-    bool m_configuringAndroidGraphicsMenu = false;
+    bool m_cheatsSettingsMode = false;
+    bool m_configuringAndroidSubmenu = false;
 
     void ConfigureAndroidGraphicsMenu();
+    void ConfigureAndroidCheatsMenu();
     void RestoreAndroidSettingsMenu();
     void LeaveAndroidGraphicsMenu( bool backSoundAlreadyPlayed );
+    void LeaveAndroidCheatsMenu( bool backSoundAlreadyPlayed );
 
     bool mHasInvertCamControl=false;
     bool mHasGamepadVibration=false;
