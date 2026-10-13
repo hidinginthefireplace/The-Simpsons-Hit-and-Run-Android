@@ -42,13 +42,27 @@ public class StorageActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         String saved = SimpsonsActivity.getSavedGameDataPath(this);
-        if (saved != null && new File(saved).isDirectory()) {
+        if (saved != null) {
+            File savedDirectory = new File(saved);
             if (hasBroadStorageAccess()) {
-                launchGame();
+                if (hasRequiredGameData(savedDirectory)) {
+                    launchGame();
+                    return;
+                }
+
+                showStorageScreen();
+                showGameDataNotFound(savedDirectory);
                 return;
             }
-            pendingPath = saved;
-            requestBroadStorageAccess();
+
+            if (savedDirectory.isDirectory()) {
+                pendingPath = saved;
+                requestBroadStorageAccess();
+                return;
+            }
+
+            showStorageScreen();
+            showGameDataNotFound(savedDirectory);
             return;
         }
 
@@ -61,7 +75,15 @@ public class StorageActivity extends Activity {
         if (pendingPath != null && hasBroadStorageAccess()) {
             String path = pendingPath;
             pendingPath = null;
-            selectGameDataPath(path);
+
+            File gameDirectory = new File(path);
+            if (hasRequiredGameData(gameDirectory)) {
+                SimpsonsActivity.setGameDataPath(this, gameDirectory.getAbsolutePath());
+                launchGame();
+            } else {
+                showStorageScreen();
+                showGameDataNotFound(gameDirectory);
+            }
         }
     }
 
@@ -108,13 +130,63 @@ public class StorageActivity extends Activity {
             return;
         }
 
+        if (!hasRequiredGameData(gameDir)) {
+            showGameDataNotFound(gameDir);
+            return;
+        }
+
+        // Do not persist a location until it has passed game-data validation.
         SimpsonsActivity.setGameDataPath(this, gameDir.getAbsolutePath());
         launchGame();
     }
 
     private void useInternalStorage() {
+        String internalPath = SimpsonsActivity.getInternalGameDataPath(this);
+        File internalDirectory = internalPath != null ? new File(internalPath) : null;
+        if (!hasRequiredGameData(internalDirectory)) {
+            showGameDataNotFound(internalDirectory);
+            return;
+        }
+
         SimpsonsActivity.setGameDataPath(this, null);
         launchGame();
+    }
+
+    private boolean hasRequiredGameData(File gameDirectory) {
+        if (gameDirectory == null || !gameDirectory.isDirectory()) {
+            return false;
+        }
+
+        // This is the first Scrooby project requested during startup. If it is
+        // absent, the native frontend cannot initialize and the app may show black.
+        File languageProject = new File(
+                gameDirectory,
+                "art/frontend/scrooby/language.p3d"
+        );
+        return languageProject.isFile() && languageProject.canRead();
+    }
+
+    private void showGameDataNotFound(File gameDirectory) {
+        String selectedPath = gameDirectory != null
+                ? gameDirectory.getAbsolutePath()
+                : "(internal game-data directory unavailable)";
+        String requiredPath = gameDirectory != null
+                ? new File(gameDirectory, "art/frontend/scrooby/language.p3d").getAbsolutePath()
+                : "art/frontend/scrooby/language.p3d";
+
+        new AlertDialog.Builder(this)
+                .setTitle("Game data not found")
+                .setMessage(
+                        "The selected folder does not contain the required game file:\n\n"
+                                + requiredPath
+                                + "\n\nSelected folder:\n"
+                                + selectedPath
+                                + "\n\nChoose the folder that directly contains the game's "
+                                + "\"art\" directory, or copy your game data into this location "
+                                + "and try again."
+                )
+                .setPositiveButton("OK", null)
+                .show();
     }
 
     private void launchGame() {
