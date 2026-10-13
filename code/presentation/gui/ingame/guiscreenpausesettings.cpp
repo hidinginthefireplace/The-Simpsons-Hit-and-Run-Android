@@ -1128,8 +1128,8 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
         {
             if( i == 5 )
             {
-                if( value->GetNumOfStrings() > 0 ) value->SetString( 0, "OPEN" );
-                value->SetVisible( true );
+                // More Cheats is an action row, so show no value text beside it.
+                value->SetVisible( false );
                 m_pMenu->SetSelectionValueCount( guiIndex, 1 );
                 m_pMenu->SetSelectionValue( guiIndex, 0 );
             }

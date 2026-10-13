@@ -163,9 +163,7 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
 
 #ifdef RAD_ANDROID
     // Reuse the Android Display artwork for Graphics and Controller for Cheats.
-    // The four rows follow the requested top-to-bottom order. A half-row offset
-    // below recenters the expanded four-row menu around the previous center.
-    int androidOptionsVerticalOffset = 70;
+    // Use a fixed vertical translation for this menu-position test.
     Scrooby::Text* pSoundLabel = menu->GetText( "Sound" );
     Scrooby::Text* pSettingsLabel = menu->GetText( "Settings" );
     Scrooby::Text* pGraphicsLabel = menu->GetText( "Display" );
@@ -196,8 +194,7 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
         // Keep existing vertical spacing and use one shared horizontal center.
         int centeredX = ( soundX + settingsX ) / 2;
         const int rowSpacing = settingsY - soundY;
-        androidOptionsVerticalOffset = 70 + rowSpacing / 8;
-        pSoundLabel->SetPositionOfCenter( centeredX, soundY );
+                pSoundLabel->SetPositionOfCenter( centeredX, soundY );
         pSettingsLabel->SetPositionOfCenter( centeredX, settingsY );
 
         graphicsX = centeredX;
@@ -288,7 +285,7 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
     //
     menu->ResetTransformation();
 #ifdef RAD_ANDROID
-    menu->Translate( 0, androidOptionsVerticalOffset );
+    menu->Translate( 0, 100 );
 #else
     menu->Translate( 0, 70 );
 #endif
