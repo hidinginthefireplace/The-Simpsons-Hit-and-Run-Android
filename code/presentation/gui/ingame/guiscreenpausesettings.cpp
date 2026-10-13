@@ -854,9 +854,8 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
             LOGE("[SHAR-RESOLUTION] Could not normalize unsupported config; retrying next Graphics visit");
         }
     }
-    // Reuse five existing Settings rows without editing any Scrooby/game assets.
-    // Camera is used as the temporary Resolution row, and Invert Camera is
-    // the temporary Back row.
+    // Reuse four Settings rows without editing Scrooby/game assets.
+    // Camera is Resolution, and the existing Back button leaves this submenu.
     if( m_pGraphicsResolutionValue != NULL )
     {
         const char* resolutionValues[SHAR_GRAPHICS_RESOLUTION_COUNT] =
@@ -869,22 +868,20 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         }
     }
 
-    const int logicalItems[5] =
+    const int logicalItems[4] =
     {
         MENU_ITEM_CAMERA,
         MENU_ITEM_JUMP_CAMERAS,
         MENU_ITEM_INTERSECT_NAV_SYSTEM,
-        MENU_ITEM_RADAR,
-        MENU_ITEM_INVERT_CAM_CONTROL
+        MENU_ITEM_RADAR
     };
 
-    const char* labels[5] =
+    const char* labels[4] =
     {
         "Resolution",
         "Cel Shading",
         "CRT Filter",
-        "Sharpening",
-        "Back"
+        "Sharpening"
     };
 
     const bool enabled[2] =
@@ -905,7 +902,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         gSHARGraphicsResolutionSelection = 3;
     }
 
-    for( int i = 0; i < 5; ++i )
+    for( int i = 0; i < 4; ++i )
     {
         const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
         if( guiIndex < 0 )
@@ -932,17 +929,10 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
             m_pGraphicsSharpeningValue->SetVisible( true );
         }
 
-        // Back is the only action row. All other entries are left/right values.
-        if( i == 4 )
-        {
-            item->m_attributes |= SELECTABLE;
-        }
-        else
-        {
-            item->m_attributes &= ~SELECTABLE;
-        }
-        item->m_showValueArrows = ( i < 4 );
-        item->m_useBackSoundOnSelection = ( i == 4 );
+        // All four Graphics entries are left/right value selectors.
+        item->m_attributes &= ~SELECTABLE;
+        item->m_showValueArrows = true;
+        item->m_useBackSoundOnSelection = false;
 
         m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
 
@@ -1022,12 +1012,34 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         }
     }
 
-    // The unused Android-only gameplay row stays hidden while Graphics is open.
-    const int unusedItem = MENU_ITEM_VIBRATION;
-    const int unusedGuiIndex = GetGuiMenuIndexFromMenuItem( unusedItem );
-    if( unusedGuiIndex >= 0 )
+    // The unused gameplay rows stay hidden while Graphics is open.
+    const int unusedItems[2] =
     {
-        m_pMenu->SetMenuItemEnabled( unusedGuiIndex, false, true );
+        MENU_ITEM_INVERT_CAM_CONTROL,
+        MENU_ITEM_VIBRATION
+    };
+    for( int unusedIndex = 0; unusedIndex < 2; ++unusedIndex )
+    {
+        const int unusedGuiIndex =
+            GetGuiMenuIndexFromMenuItem( unusedItems[unusedIndex] );
+        if( unusedGuiIndex >= 0 )
+        {
+            GuiMenuItem* unusedItem = m_pMenu->GetMenuItem( unusedGuiIndex );
+            if( unusedItem != NULL )
+            {
+                Scrooby::Text* unusedLabel =
+                    dynamic_cast<Scrooby::Text*>( unusedItem->GetItem() );
+                Scrooby::Text* unusedValue =
+                    dynamic_cast<Scrooby::Text*>( unusedItem->GetItemValue() );
+                if( unusedLabel != NULL ) unusedLabel->SetVisible( false );
+                if( unusedValue != NULL ) unusedValue->SetVisible( false );
+                if( unusedItem->m_itemValueArrowL != NULL )
+                    unusedItem->m_itemValueArrowL->SetVisible( false );
+                if( unusedItem->m_itemValueArrowR != NULL )
+                    unusedItem->m_itemValueArrowR->SetVisible( false );
+            }
+            m_pMenu->SetMenuItemEnabled( unusedGuiIndex, false, true );
+        }
     }
 
     m_pMenu->Reset( 0 );
@@ -1038,28 +1050,26 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
 {
     m_configuringAndroidSubmenu = true;
 
-    // Six cheat rows use ordinary OFF/ON values. The hidden Tutorial row
-    // becomes Back, so this reuses the current Settings UI and game assets.
-    const int logicalItems[7] =
+    // Six cheat rows use ordinary OFF/ON values. The hardware/controller Back
+    // button is the only way to leave this submenu.
+    const int logicalItems[6] =
     {
         MENU_ITEM_CAMERA,
         MENU_ITEM_JUMP_CAMERAS,
         MENU_ITEM_INTERSECT_NAV_SYSTEM,
         MENU_ITEM_RADAR,
         MENU_ITEM_INVERT_CAM_CONTROL,
-        MENU_ITEM_VIBRATION,
-        MENU_ITEM_TUTORIAL
+        MENU_ITEM_VIBRATION
     };
 
-    const char* labels[7] =
+    const char* labels[6] =
     {
         "Moon Jump",
         "Super Fast Cars",
         "Vehicle Invincibility",
         "Car Horn Jump",
         "One Hit Tank Cars",
-        "Unlock All Cars",
-        "Back"
+        "Unlock All Cars"
     };
 
     CheatInputSystem* cheats = GetCheatInputSystem();
@@ -1074,7 +1084,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
         cheats->IsCheatEnabled( CHEAT_ID_UNLOCK_VEHICLES )
     };
 
-    for( int i = 0; i < 7; ++i )
+    for( int i = 0; i < 6; ++i )
     {
         const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
         if( guiIndex < 0 )
@@ -1096,17 +1106,9 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
             m_pGraphicsResolutionValue->SetVisible( true );
         }
 
-        const bool backRow = ( i == 6 );
-        if( backRow )
-        {
-            item->m_attributes |= SELECTABLE;
-        }
-        else
-        {
-            item->m_attributes &= ~SELECTABLE;
-        }
-        item->m_showValueArrows = !backRow;
-        item->m_useBackSoundOnSelection = backRow;
+        item->m_attributes &= ~SELECTABLE;
+        item->m_showValueArrows = true;
+        item->m_useBackSoundOnSelection = false;
         m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
 
         Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
@@ -1117,17 +1119,13 @@ void CGuiScreenPauseSettings::ConfigureAndroidCheatsMenu()
             label->SetVisible( true );
         }
 
-        if( !backRow && value != NULL )
+        if( value != NULL )
         {
             if( value->GetNumOfStrings() > 0 ) value->SetString( 0, "OFF" );
             if( value->GetNumOfStrings() > 1 ) value->SetString( 1, "ON" );
             value->SetVisible( true );
             m_pMenu->SetSelectionValueCount( guiIndex, 2 );
             m_pMenu->SetSelectionValue( guiIndex, enabled[i] ? 1 : 0 );
-        }
-        else if( value != NULL )
-        {
-            value->SetVisible( false );
         }
 
         if( item->m_itemValueArrowL != NULL )
@@ -1295,8 +1293,7 @@ void CGuiScreenPauseSettings::LeaveAndroidGraphicsMenu( bool backSoundAlreadyPla
     gAndroidGraphicsSettingsRequested = false;
     m_pParent->HandleMessage( GUI_MSG_BACK_SCREEN );
 
-    // The Back row plays this sound through CGuiMenu::MakeSelection. The B
-    // button bypasses that path, so play the normal back sound here instead.
+    // Play the normal back sound for the controller Back-button path.
     if( !backSoundAlreadyPlayed )
     {
         GetEventManager()->TriggerEvent( EVENT_FE_MENU_BACK );
@@ -1393,18 +1390,6 @@ void CGuiScreenPauseSettings::HandleMessage
             case GUI_MSG_MENU_SELECTION_MADE:
             {
 #if defined(RAD_ANDROID)
-                if( m_graphicsSettingsMode &&
-                    GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) ) == MENU_ITEM_INVERT_CAM_CONTROL )
-                {
-                    LeaveAndroidGraphicsMenu( true );
-                    return;
-                }
-                if( m_cheatsSettingsMode &&
-                    GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) ) == MENU_ITEM_TUTORIAL )
-                {
-                    LeaveAndroidCheatsMenu( true );
-                    return;
-                }
 #endif
                 break;
             }

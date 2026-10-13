@@ -44,16 +44,19 @@ enum ePauseMenuItem
 {
 #ifdef RAD_PC
     MENU_ITEM_DISPLAY,
-#endif
     MENU_ITEM_CONTROLLER,
     MENU_ITEM_SOUND,
-
-
     MENU_ITEM_SETTINGS,
-#ifdef RAD_ANDROID
+#elif defined(RAD_ANDROID)
+    MENU_ITEM_SOUND,
+    MENU_ITEM_SETTINGS,
     MENU_ITEM_GRAPHICS,
+    MENU_ITEM_CONTROLLER,
+#else
+    MENU_ITEM_CONTROLLER,
+    MENU_ITEM_SOUND,
+    MENU_ITEM_SETTINGS,
 #endif
-//    MENU_ITEM_CAMERA,
 
     NUM_PAUSE_MENU_ITEMS
 };
@@ -63,17 +66,19 @@ static const char* PAUSE_MENU_ITEMS[] =
 {
 #ifdef RAD_PC
     "Display",
-#endif
     "Controller",
     "Sound",
-
-//#ifndef RAD_ANDROID // reestablecemos configuración
     "Settings",
-#ifdef RAD_ANDROID
+#elif defined(RAD_ANDROID)
+    "Sound",
+    "Settings",
     "Graphics",
+    "Controller",
+#else
+    "Controller",
+    "Sound",
+    "Settings",
 #endif
-//#endif
-//    "Camera",
 
     ""
 };
@@ -157,8 +162,10 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
     }
 
 #ifdef RAD_ANDROID
-    // Reuse the Android Display artwork for Graphics and the disabled Controller
-    // row for Cheats. Place four rows using the existing Sound/Settings spacing.
+    // Reuse the Android Display artwork for Graphics and Controller for Cheats.
+    // The four rows follow the requested top-to-bottom order. A half-row offset
+    // below recenters the expanded four-row menu around the previous center.
+    int androidOptionsVerticalOffset = 70;
     Scrooby::Text* pSoundLabel = menu->GetText( "Sound" );
     Scrooby::Text* pSettingsLabel = menu->GetText( "Settings" );
     Scrooby::Text* pGraphicsLabel = menu->GetText( "Display" );
@@ -189,6 +196,7 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
         // Keep existing vertical spacing and use one shared horizontal center.
         int centeredX = ( soundX + settingsX ) / 2;
         const int rowSpacing = settingsY - soundY;
+        androidOptionsVerticalOffset = 70 + rowSpacing / 2;
         pSoundLabel->SetPositionOfCenter( centeredX, soundY );
         pSettingsLabel->SetPositionOfCenter( centeredX, settingsY );
 
@@ -200,7 +208,7 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
         {
             pCheatsLabel->GetBoundingBoxCenter( controllerX, controllerY );
             cheatsX = centeredX;
-            cheatsY = soundY - rowSpacing;
+            cheatsY = graphicsY + rowSpacing;
             pCheatsLabel->SetPositionOfCenter( cheatsX, cheatsY );
             pCheatsLabel->SetString( 0, "CHEATS" );
 
@@ -279,7 +287,11 @@ MEMTRACK_PUSH_GROUP( "CGUIScreenPauseOptions" );
     // re-center menu items
     //
     menu->ResetTransformation();
+#ifdef RAD_ANDROID
+    menu->Translate( 0, androidOptionsVerticalOffset );
+#else
     menu->Translate( 0, 70 );
+#endif
 #endif
 
     // TC: [TEMP] disable controller screen for now to free up some memory for HUD map
