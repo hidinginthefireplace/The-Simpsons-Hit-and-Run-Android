@@ -39,8 +39,7 @@
 #if defined(RAD_ANDROID)
 #include <SDL_system.h>
 #include <jni.h>
-#include <android/log.h>
-#define SDL_R2_DIAG(...) __android_log_print(ANDROID_LOG_INFO, "SimpsonsHitAndRun", __VA_ARGS__)
+
 #endif
 
 
@@ -464,21 +463,6 @@ static void EnsureAndroidGameControllerMapping( int joystickIndex )
 
     const char* deviceName = SDL_JoystickNameForIndex( joystickIndex );
     const SDL_bool alreadyMapped = SDL_IsGameController( joystickIndex );
-    char* existingMapping = SDL_GameControllerMappingForGUID( guid );
-
-    SDL_R2_DIAG(
-        "[R2-SDL] DEVICE index=%d name=%s guid=%s isGameController=%d mappingBefore=%s",
-        joystickIndex,
-        deviceName != NULL ? deviceName : "(null)",
-        guidString,
-        alreadyMapped,
-        existingMapping != NULL ? existingMapping : "(null)"
-    );
-
-    if ( existingMapping != NULL )
-    {
-        SDL_free( existingMapping );
-    }
 
     if ( alreadyMapped )
     {
@@ -491,12 +475,6 @@ static void EnsureAndroidGameControllerMapping( int joystickIndex )
      */
     if ( deviceName != NULL && SDL_strstr( deviceName, "Accelerometer" ) != NULL )
     {
-        SDL_R2_DIAG(
-            "[R2-SDL] SKIP_SENSOR index=%d name=%s guid=%s",
-            joystickIndex,
-            deviceName,
-            guidString
-        );
         return;
     }
 
@@ -512,23 +490,7 @@ static void EnsureAndroidGameControllerMapping( int joystickIndex )
         guidString
     );
 
-    const int addResult = SDL_GameControllerAddMapping( mapping );
-    char* addedMapping = SDL_GameControllerMappingForGUID( guid );
-
-    SDL_R2_DIAG(
-        "[R2-SDL] FALLBACK index=%d guid=%s addResult=%d isGameControllerAfter=%d mappingAfter=%s error=%s",
-        joystickIndex,
-        guidString,
-        addResult,
-        SDL_IsGameController( joystickIndex ),
-        addedMapping != NULL ? addedMapping : "(null)",
-        SDL_GetError()
-    );
-
-    if ( addedMapping != NULL )
-    {
-        SDL_free( addedMapping );
-    }
+    SDL_GameControllerAddMapping( mapping );
 }
 #endif
 //============================================================================
@@ -806,101 +768,10 @@ class radControllerInputPointSDL
 
                 newValue = fallbackValue;
 
-                static bool sHaveLastR2Fallback = false;
-                static SDL_JoystickID sLastR2InstanceId = -1;
-                static Sint16 sLastRawR2 = -32768;
-                int rawDelta = static_cast<int>( rawRightTrigger ) -
-                    static_cast<int>( sLastRawR2 );
-                if ( rawDelta < 0 )
-                {
-                    rawDelta = -rawDelta;
-                }
-
-                if ( !sHaveLastR2Fallback || instanceId != sLastR2InstanceId || rawDelta >= 256 )
-                {
-                    SDL_R2_DIAG(
-                        "[R2-SDL] RIGHT_TRIGGER_FALLBACK instance=%d rawAxis5=%d initialized=%d value=%.3f logicalRT=%d",
-                        static_cast<int>( instanceId ),
-                        static_cast<int>( rawRightTrigger ),
-                        sR2AxisInitialized,
-                        fallbackValue,
-                        static_cast<int>( SDL_GameControllerGetAxis(
-                            m_pController,
-                            SDL_CONTROLLER_AXIS_TRIGGERRIGHT
-                        ) )
-                    );
-                    sHaveLastR2Fallback = true;
-                    sLastR2InstanceId = instanceId;
-                    sLastRawR2 = rawRightTrigger;
-                }
             }
         }
 #endif
 
-#if defined(RAD_ANDROID) && SDL_MAJOR_VERSION < 3
-        /*
-         * R2 diagnostic: observe the physical SDL axes reported by the Shield
-         * Android joystick backend alongside SDL's logical trigger values.
-         * Print only when an axis changes noticeably to keep logcat manageable.
-         */
-        if ( m_pType == g_Sdlipt[ 1 ] && m_pController != NULL )
-        {
-            SDL_Joystick* pJoystick = SDL_GameControllerGetJoystick( m_pController );
-            if ( pJoystick != NULL )
-            {
-                const SDL_JoystickID instanceId = SDL_JoystickInstanceID( pJoystick );
-                const int numAxes = SDL_JoystickNumAxes( pJoystick );
-                Sint16 rawAxes[ 4 ] = { 0, 0, 0, 0 };
-                for ( int axisOffset = 0; axisOffset < 4; ++axisOffset )
-                {
-                    const int axisIndex = axisOffset + 4;
-                    if ( axisIndex < numAxes )
-                    {
-                        rawAxes[ axisOffset ] = SDL_JoystickGetAxis( pJoystick, axisIndex );
-                    }
-                }
-
-                static bool sHaveLastRawAxes = false;
-                static SDL_JoystickID sLastInstanceId = -1;
-                static Sint16 sLastRawAxes[ 4 ] = { 0, 0, 0, 0 };
-                bool rawAxesChanged = !sHaveLastRawAxes || instanceId != sLastInstanceId;
-
-                for ( int axisOffset = 0; axisOffset < 4; ++axisOffset )
-                {
-                    int delta = (int)rawAxes[ axisOffset ] - (int)sLastRawAxes[ axisOffset ];
-                    if ( delta < 0 )
-                    {
-                        delta = -delta;
-                    }
-                    if ( delta >= 256 )
-                    {
-                        rawAxesChanged = true;
-                    }
-                }
-
-                if ( rawAxesChanged )
-                {
-                    SDL_R2_DIAG(
-                        "[R2-SDL] RAW_AXES instance=%d numAxes=%d a4=%d a5=%d a6=%d a7=%d logicalLT=%d logicalRT=%d",
-                        (int)instanceId,
-                        numAxes,
-                        (int)rawAxes[ 0 ],
-                        (int)rawAxes[ 1 ],
-                        (int)rawAxes[ 2 ],
-                        (int)rawAxes[ 3 ],
-                        (int)SDL_GameControllerGetAxis( m_pController, SDL_CONTROLLER_AXIS_TRIGGERLEFT ),
-                        (int)SDL_GameControllerGetAxis( m_pController, SDL_CONTROLLER_AXIS_TRIGGERRIGHT )
-                    );
-                    sLastInstanceId = instanceId;
-                    for ( int axisOffset = 0; axisOffset < 4; ++axisOffset )
-                    {
-                        sLastRawAxes[ axisOffset ] = rawAxes[ axisOffset ];
-                    }
-                    sHaveLastRawAxes = true;
-                }
-            }
-        }
-#endif
 
 		return newValue;
 	}
@@ -918,22 +789,6 @@ class radControllerInputPointSDL
             float oldValue = m_Value;
         #endif
 
-#if defined(RAD_ANDROID) && SDL_MAJOR_VERSION < 3
-        if
-        (
-            m_pType == g_Sdlipt[ 1 ] &&
-            fabsf( newValue - m_Value ) >= 0.01f
-        )
-        {
-            SDL_R2_DIAG(
-                "[R2-SDL] POINT_READ name=%s axisId=%d value=%.3f previous=%.3f",
-                m_pName != NULL ? m_pName : "(null)",
-                m_Identifier,
-                newValue,
-                m_Value
-            );
-        }
-#endif
         //
         // Check tolerance
         //
@@ -3290,45 +3145,6 @@ class radControllerSystemSDL
 
 #if SDL_MAJOR_VERSION < 3
                 SDL_GameController* pGameController = SDL_GameControllerOpen( i );
-#if defined(RAD_ANDROID)
-                if ( pGameController != NULL )
-                {
-                    SDL_Joystick* pJoystick = SDL_GameControllerGetJoystick( pGameController );
-                    char guidString[ 33 ] = "(null)";
-                    if ( pJoystick != NULL )
-                    {
-                        SDL_JoystickGetGUIDString(
-                            SDL_JoystickGetGUID( pJoystick ),
-                            guidString,
-                            sizeof( guidString )
-                        );
-                    }
-                    char* activeMapping = SDL_GameControllerMapping( pGameController );
-
-                    SDL_R2_DIAG(
-                        "[R2-SDL] ACTIVE_MAP index=%d name=%s guid=%s instance=%d numAxes=%d mapping=%s",
-                        i,
-                        SDL_GameControllerName( pGameController ) != NULL ? SDL_GameControllerName( pGameController ) : "(null)",
-                        guidString,
-                        pJoystick != NULL ? (int)SDL_JoystickInstanceID( pJoystick ) : -1,
-                        pJoystick != NULL ? SDL_JoystickNumAxes( pJoystick ) : -1,
-                        activeMapping != NULL ? activeMapping : "(null)"
-                    );
-
-                    if ( activeMapping != NULL )
-                    {
-                        SDL_free( activeMapping );
-                    }
-                }
-                else
-                {
-                    SDL_R2_DIAG(
-                        "[R2-SDL] OPEN_FAILED index=%d error=%s",
-                        i,
-                        SDL_GetError()
-                    );
-                }
-#endif
 #else
                 SDL_Gamepad* pGameController = SDL_OpenGamepad( joysticks[i] );
 #endif

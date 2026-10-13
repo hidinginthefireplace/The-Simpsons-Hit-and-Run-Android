@@ -264,25 +264,6 @@ class SDLJoystickHandler_API16 extends SDLJoystickHandler {
                         }
                     }
 
-                    /*
-                     * Temporary R2 diagnostic: record the physical Android axis
-                     * enumeration. This tells us whether the Shield exposes R2
-                     * as a trigger axis, another axis, or no motion range at all.
-                     */
-                    Log.i(TAG, "[R2-DIAG] ANDROID_JOYSTICK device=" + joystick.device_id
-                            + " name=" + joystick.name + " axisCount=" + joystick.axes.size()
-                            + " buttonMask=" + getButtonMask(joystickDevice));
-                    for (int axisIndex = 0; axisIndex < joystick.axes.size(); axisIndex++) {
-                        InputDevice.MotionRange range = joystick.axes.get(axisIndex);
-                        Log.i(TAG, "[R2-DIAG] ANDROID_AXIS_ENUM device=" + joystick.device_id
-                                + " index=" + axisIndex
-                                + " axis=" + MotionEvent.axisToString(range.getAxis())
-                                + "(" + range.getAxis() + ")"
-                                + " min=" + range.getMin()
-                                + " max=" + range.getMax()
-                                + " flat=" + range.getFlat());
-                    }
-
                     mJoysticks.add(joystick);
                     SDLControllerManager.nativeAddJoystick(joystick.device_id, joystick.name, joystick.desc,
                             getVendorId(joystickDevice), getProductId(joystickDevice), false,
@@ -342,16 +323,6 @@ class SDLJoystickHandler_API16 extends SDLJoystickHandler {
                     /* Normalize the value to -1...1 */
                     float value = (rawValue - range.getMin()) / range.getRange() * 2.0f - 1.0f;
 
-                    /*
-                     * Temporary diagnostic at the Java/Android boundary, before
-                     * axis indexes and values are passed into SDL's native layer.
-                     */
-                    Log.i(TAG, "[R2-DIAG] ANDROID_AXIS device=" + joystick.device_id
-                            + " index=" + i
-                            + " axis=" + MotionEvent.axisToString(range.getAxis())
-                            + "(" + range.getAxis() + ")"
-                            + " raw=" + rawValue
-                            + " normalized=" + value);
                     SDLControllerManager.onNativeJoy(joystick.device_id, i, value);
                 }
                 for (int i = 0; i < joystick.hats.size() / 2; i++) {
