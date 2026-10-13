@@ -21,8 +21,10 @@
 #include <p3d/texture.hpp>
 
 #ifdef RAD_ANDROID
-#include <pddi/gles/gl.hpp>
-#include <pddi/gles/glcon.hpp>
+// Minimal declarations avoid pulling GLES implementation headers into game code.
+bool IsCelShadingEnabled();
+void SetCelShadingObjectEnabled(bool enabled);
+void SetCelShadingOutlinePass(bool enabled);
 #endif
 
 //************************************************************************
