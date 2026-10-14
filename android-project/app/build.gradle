@@ -11,8 +11,8 @@ android {
         applicationId "com.sevarg.simpsons"
         minSdkVersion 24
         targetSdkVersion 30
-        versionCode 93
-        versionName "0.93"
+        versionCode 101
+        versionName "1.01"
 
         externalNativeBuild {
             cmake {
