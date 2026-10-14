@@ -94,6 +94,17 @@ public class StorageActivity extends Activity {
             pendingPath = null;
 
             File gameDirectory = new File(path);
+            if (!gameDirectory.exists() && !gameDirectory.mkdirs()) {
+                new AlertDialog.Builder(this)
+                        .setTitle("Storage folder unavailable")
+                        .setMessage("Could not create:\n" + gameDirectory.getAbsolutePath()
+                                + "\n\nCheck that the selected storage is available and writable.")
+                        .setPositiveButton("OK", null)
+                        .show();
+                showStorageScreen();
+                return;
+            }
+
             if (hasRequiredGameData(gameDirectory)) {
                 SimpsonsActivity.setGameDataPath(this, gameDirectory.getAbsolutePath());
                 launchGame();
@@ -165,7 +176,45 @@ public class StorageActivity extends Activity {
             return;
         }
 
+        // A null saved path tells the game to use its app-owned files directory.
         SimpsonsActivity.setGameDataPath(this, null);
+        launchGame();
+    }
+
+    private File getSharedInternalGameDataDirectory() {
+        return getGameDataDirectory(
+                Environment.getExternalStorageDirectory().getAbsolutePath());
+    }
+
+    private void useSharedInternalStorage() {
+        File gameDirectory = getSharedInternalGameDataDirectory();
+
+        // Shared storage is outside the app sandbox on Android 11+ and may
+        // require the existing all-files-access flow before it can be checked.
+        if (!hasBroadStorageAccess()) {
+            pendingPath = gameDirectory.getAbsolutePath();
+            requestBroadStorageAccess();
+            return;
+        }
+
+        if (!gameDirectory.exists() && !gameDirectory.mkdirs()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Internal storage unavailable")
+                    .setMessage("Could not create:\n" + gameDirectory.getAbsolutePath()
+                            + "\n\nCheck that internal shared storage is writable.")
+                    .setPositiveButton("OK", null)
+                    .show();
+            return;
+        }
+
+        if (!hasRequiredGameData(gameDirectory)) {
+            showGameDataNotFound(gameDirectory);
+            return;
+        }
+
+        // Store the shared-storage path explicitly; this is separate from the
+        // app-owned /Android/data/.../files option above.
+        SimpsonsActivity.setGameDataPath(this, gameDirectory.getAbsolutePath());
         launchGame();
     }
 
@@ -272,6 +321,14 @@ public class StorageActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
 
+        // Slightly mute the background artwork without changing the image asset.
+        View backgroundDim = new View(this);
+        backgroundDim.setBackgroundColor(Color.argb(26, 0, 0, 0)); // ~10% black
+        backgroundDim.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        root.addView(backgroundDim, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
@@ -341,6 +398,13 @@ public class StorageActivity extends Activity {
         internal.setOnClickListener(v -> useInternalStorage());
         content.addView(internal, buttonParams());
 
+        Button sharedInternal = new Button(this);
+        styleButton(sharedInternal);
+        sharedInternal.setText("Use Shared Internal Storage\nInternal storage/Simpsons");
+        sharedInternal.setFocusable(true);
+        sharedInternal.setOnClickListener(v -> useSharedInternalStorage());
+        content.addView(sharedInternal, buttonParams());
+
         for (File volume : getRemovableVolumes()) {
             Button removable = new Button(this);
             styleButton(removable);
@@ -388,8 +452,18 @@ public class StorageActivity extends Activity {
 
         button.setBackground(states);
 
-        button.setOnFocusChangeListener((v, hasFocus) ->
-                button.setTextColor(hasFocus ? Color.WHITE : DARK_BLUE));
+        button.setOnFocusChangeListener((v, hasFocus) -> {
+            button.setTextColor(hasFocus ? Color.WHITE : DARK_BLUE);
+            // A small, quick scale-up makes controller, remote, and keyboard
+            // focus easier to spot while keeping the pink outline unchanged.
+            button.animate().cancel();
+            float scale = hasFocus ? 1.04f : 1.0f;
+            button.animate()
+                    .scaleX(scale)
+                    .scaleY(scale)
+                    .setDuration(140)
+                    .start();
+        });
     }
 
     private LinearLayout.LayoutParams buttonParams() {
