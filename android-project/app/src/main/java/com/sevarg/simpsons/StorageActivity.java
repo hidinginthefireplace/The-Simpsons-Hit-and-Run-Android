@@ -1,5 +1,6 @@
 package com.sevarg.simpsons;
 
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.UiModeManager;
@@ -22,6 +23,7 @@ import android.os.storage.StorageVolume;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
+import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -58,6 +60,7 @@ public class StorageActivity extends Activity {
 
     private String pendingPath;
     private boolean televisionLayout;
+    private boolean portraitLayout;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -327,8 +330,12 @@ public class StorageActivity extends Activity {
     }
 
     private void showStorageScreen() {
+        portraitLayout = getResources().getConfiguration().orientation
+                == Configuration.ORIENTATION_PORTRAIT;
+
         FrameLayout root = new FrameLayout(this);
         root.setClipChildren(false);
+        root.setClipToPadding(false);
 
         ImageView background = new ImageView(this);
         background.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -360,15 +367,16 @@ public class StorageActivity extends Activity {
 
         LinearLayout content = new LinearLayout(this);
         content.setClipChildren(false);
+        content.setClipToPadding(false);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setGravity(Gravity.CENTER_HORIZONTAL);
-        int sidePad = dp(televisionLayout ? 24 : 16);
-        int topPad = dp(televisionLayout ? 28 : 14);
-        content.setPadding(sidePad, topPad, sidePad, dp(televisionLayout ? 28 : 18));
+        int sidePad = dp(portraitLayout ? 16 : 24);
+        int topPad = dp(portraitLayout ? 14 : 28);
+        content.setPadding(sidePad, topPad, sidePad, dp(portraitLayout ? 18 : 28));
 
         TextView title = new TextView(this);
         title.setText("The Simpsons: Hit & Run\nGame Data Location");
-        title.setTextSize(televisionLayout ? 29 : 25);
+        title.setTextSize(portraitLayout ? 25 : 29);
         title.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         title.setTextColor(YELLOW);
         title.setGravity(Gravity.CENTER);
@@ -379,7 +387,7 @@ public class StorageActivity extends Activity {
 
         TextView setup = new TextView(this);
         setup.setText("First-Time Setup");
-        setup.setTextSize(televisionLayout ? 24 : 20);
+        setup.setTextSize(portraitLayout ? 20 : 24);
         setup.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         setup.setTextColor(Color.WHITE);
         setup.setGravity(Gravity.CENTER);
@@ -387,43 +395,28 @@ public class StorageActivity extends Activity {
         LinearLayout.LayoutParams setupParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        setupParams.setMargins(0, dp(televisionLayout ? 8 : 5), 0, 0);
+        setupParams.setMargins(0, dp(portraitLayout ? 10 : 8), 0, 0);
         content.addView(setup, setupParams);
 
         TextView help = new TextView(this);
         help.setText("Choose where your game data is stored.\n\n"
                 + "Copy the complete game-data folder from the official PC release "
                 + "to the location you choose:");
-        help.setTextSize(televisionLayout ? 20 : 17);
+        help.setTextSize(portraitLayout ? 17 : 20);
         help.setTextColor(Color.WHITE);
         help.setGravity(Gravity.CENTER);
         help.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
         LinearLayout.LayoutParams helpParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        helpParams.setMargins(0, dp(televisionLayout ? 12 : 8), 0, 0);
+        helpParams.setMargins(0, dp(portraitLayout ? 24 : 12), 0, 0);
         content.addView(help, helpParams);
-
-        TextView moreOptions = new TextView(this);
-        moreOptions.setText(televisionLayout
-                ? "Use Down on your remote or controller to browse the storage choices. "
-                        + "Scroll if the list continues below."
-                : "More storage options below — scroll down to see the other choices.");
-        moreOptions.setTextSize(televisionLayout ? 16 : 15);
-        moreOptions.setTextColor(Color.WHITE);
-        moreOptions.setGravity(Gravity.CENTER);
-        moreOptions.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
-        LinearLayout.LayoutParams moreOptionsParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        moreOptionsParams.setMargins(0, dp(televisionLayout ? 10 : 6), 0, 0);
-        content.addView(moreOptions, moreOptionsParams);
 
         String saved = SimpsonsActivity.getSavedGameDataPath(this);
         if (saved != null && new File(saved).isDirectory()) {
             TextView current = new TextView(this);
             current.setText("\nCurrent: " + saved);
-            current.setTextSize(televisionLayout ? 17 : 14);
+            current.setTextSize(portraitLayout ? 14 : 17);
             current.setTextColor(YELLOW);
             current.setGravity(Gravity.CENTER);
             current.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
@@ -432,19 +425,17 @@ public class StorageActivity extends Activity {
                     LinearLayout.LayoutParams.WRAP_CONTENT));
         }
 
-        Button internal = new Button(this);
-        styleButton(internal);
-        internal.setText("Use Internal Storage\n/Android/data/com.sevarg.simpsons/files");
-        internal.setFocusable(true);
-        internal.setOnClickListener(v -> useInternalStorage());
-        content.addView(internal, buttonParams());
-
         Button sharedInternal = new Button(this);
         styleButton(sharedInternal);
         sharedInternal.setText("Use Shared Internal Storage\nInternal storage/Simpsons");
-        sharedInternal.setFocusable(true);
         sharedInternal.setOnClickListener(v -> useSharedInternalStorage());
         content.addView(sharedInternal, buttonParams());
+
+        Button internal = new Button(this);
+        styleButton(internal);
+        internal.setText("Use Internal Storage\n/Android/data/com.sevarg.simpsons/files");
+        internal.setOnClickListener(v -> useInternalStorage());
+        content.addView(internal, buttonParams());
 
         for (File volume : getRemovableVolumes()) {
             Button removable = new Button(this);
@@ -465,7 +456,10 @@ public class StorageActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT));
 
         setContentView(root);
-        internal.requestFocus();
+        scroll.post(() -> {
+            scroll.scrollTo(0, 0);
+            sharedInternal.requestFocus();
+        });
     }
 
     private void styleButton(Button button) {
@@ -474,12 +468,14 @@ public class StorageActivity extends Activity {
         button.setTextSize(televisionLayout ? 19 : 16);
         button.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         button.setGravity(Gravity.CENTER);
-        button.setMinHeight(dp(televisionLayout ? 82 : 72));
+        button.setFocusable(true);
+        button.setFocusableInTouchMode(true);
+        button.setMinHeight(dp(portraitLayout ? 72 : 82));
         button.setPadding(
-                dp(televisionLayout ? 20 : 14),
-                dp(televisionLayout ? 14 : 10),
-                dp(televisionLayout ? 20 : 14),
-                dp(televisionLayout ? 14 : 10));
+                dp(portraitLayout ? 14 : 20),
+                dp(portraitLayout ? 10 : 14),
+                dp(portraitLayout ? 14 : 20),
+                dp(portraitLayout ? 10 : 14));
 
         GradientDrawable normal = new GradientDrawable();
         normal.setColor(YELLOW);
@@ -497,31 +493,39 @@ public class StorageActivity extends Activity {
 
         button.setBackground(states);
 
+        final ValueAnimator[] pulseAnimator = new ValueAnimator[1];
         button.setOnFocusChangeListener((v, hasFocus) -> {
             button.setTextColor(hasFocus ? Color.WHITE : DARK_BLUE);
-            button.animate().cancel();
+
+            if (pulseAnimator[0] != null) {
+                pulseAnimator[0].cancel();
+                pulseAnimator[0] = null;
+            }
+            button.setScaleX(1.0f);
+            button.setScaleY(1.0f);
 
             if (!hasFocus) {
-                button.animate()
-                        .scaleX(1.0f)
-                        .scaleY(1.0f)
-                        .setDuration(140)
-                        .start();
                 return;
             }
 
-            // Measure after focus/layout so horizontal expansion never extends
-            // past the usable screen width. Vertical emphasis remains at 4%.
             button.post(() -> {
                 if (!button.hasFocus()) {
                     return;
                 }
-                float safeScaleX = getSafeFocusedScaleX(button);
-                button.animate()
-                        .scaleX(safeScaleX)
-                        .scaleY(1.04f)
-                        .setDuration(140)
-                        .start();
+
+                final float safeScaleX = getSafeFocusedScaleX(button);
+                ValueAnimator animator = ValueAnimator.ofFloat(0.0f, 1.0f);
+                animator.setDuration(700);
+                animator.setRepeatMode(ValueAnimator.REVERSE);
+                animator.setRepeatCount(ValueAnimator.INFINITE);
+                animator.setInterpolator(new AccelerateDecelerateInterpolator());
+                animator.addUpdateListener(animation -> {
+                    float fraction = (Float) animation.getAnimatedValue();
+                    button.setScaleX(1.0f + (safeScaleX - 1.0f) * fraction);
+                    button.setScaleY(1.0f + 0.04f * fraction);
+                });
+                pulseAnimator[0] = animator;
+                animator.start();
             });
         });
     }
@@ -547,14 +551,17 @@ public class StorageActivity extends Activity {
         }
 
         float maxSafeScale = (2.0f * availableHalfWidth) / buttonWidth;
-        return Math.max(1.0f, Math.min(1.04f, maxSafeScale));
+        // Keep horizontal growth very modest; vertical growth remains the
+        // more visible pulse, and fixed side margins provide further clearance.
+        return Math.max(1.0f, Math.min(1.025f, maxSafeScale));
     }
 
     private LinearLayout.LayoutParams buttonParams() {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        p.setMargins(0, dp(televisionLayout ? 18 : 10), 0, 0);
+        // The side margins reserve real layout space for the pulsing transform.
+        p.setMargins(dp(24), dp(portraitLayout ? 10 : 18), dp(24), 0);
         return p;
     }
 
