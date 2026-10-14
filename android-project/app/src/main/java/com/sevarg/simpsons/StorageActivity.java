@@ -398,19 +398,49 @@ public class StorageActivity extends Activity {
         setupParams.setMargins(0, dp(portraitLayout ? 10 : 8), 0, 0);
         content.addView(setup, setupParams);
 
-        TextView help = new TextView(this);
-        help.setText("Choose where your game data is stored.\n\n"
-                + "Copy the complete game-data folder from the official PC release "
-                + "to the location you choose:");
-        help.setTextSize(portraitLayout ? 17 : 20);
-        help.setTextColor(Color.WHITE);
-        help.setGravity(Gravity.CENTER);
-        help.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
-        LinearLayout.LayoutParams helpParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        helpParams.setMargins(0, dp(portraitLayout ? 24 : 12), 0, 0);
-        content.addView(help, helpParams);
+        if (portraitLayout) {
+            TextView locationPrompt = new TextView(this);
+            locationPrompt.setText("Choose where your game data is stored.");
+            locationPrompt.setTextSize(17);
+            locationPrompt.setTextColor(Color.WHITE);
+            locationPrompt.setGravity(Gravity.CENTER);
+            locationPrompt.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
+            LinearLayout.LayoutParams promptParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            promptParams.setMargins(0, dp(24), 0, 0);
+            content.addView(locationPrompt, promptParams);
+
+            TextView copyInstruction = new TextView(this);
+            copyInstruction.setText("Copy the complete game-data folder from the official PC release "
+                    + "to the location you choose:");
+            copyInstruction.setTextSize(17);
+            copyInstruction.setTextColor(Color.WHITE);
+            copyInstruction.setGravity(Gravity.CENTER);
+            copyInstruction.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
+            LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            // The old blank line was about one text line high; use an explicit
+            // gap roughly three times that size for easier visual separation.
+            copyParams.setMargins(0, dp(54), 0, 0);
+            content.addView(copyInstruction, copyParams);
+        } else {
+            // Preserve the existing landscape/TV instruction layout unchanged.
+            TextView help = new TextView(this);
+            help.setText("Choose where your game data is stored.\n\n"
+                    + "Copy the complete game-data folder from the official PC release "
+                    + "to the location you choose:");
+            help.setTextSize(20);
+            help.setTextColor(Color.WHITE);
+            help.setGravity(Gravity.CENTER);
+            help.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
+            LinearLayout.LayoutParams helpParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            helpParams.setMargins(0, dp(12), 0, 0);
+            content.addView(help, helpParams);
+        }
 
         String saved = SimpsonsActivity.getSavedGameDataPath(this);
         if (saved != null && new File(saved).isDirectory()) {
@@ -423,6 +453,22 @@ public class StorageActivity extends Activity {
             content.addView(current, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
+
+        if (portraitLayout) {
+            TextView downArrow = new TextView(this);
+            downArrow.setText("↓");
+            downArrow.setTextSize(38);
+            downArrow.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+            downArrow.setTextColor(PINK);
+            downArrow.setGravity(Gravity.CENTER);
+            downArrow.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
+            downArrow.setContentDescription("Storage choices below");
+            LinearLayout.LayoutParams arrowParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            arrowParams.setMargins(0, dp(8), 0, dp(12));
+            content.addView(downArrow, arrowParams);
         }
 
         Button sharedInternal = new Button(this);
