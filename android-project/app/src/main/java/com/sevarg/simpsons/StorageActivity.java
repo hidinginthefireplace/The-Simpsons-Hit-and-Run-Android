@@ -2,8 +2,12 @@ package com.sevarg.simpsons;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.UiModeManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -53,10 +57,16 @@ public class StorageActivity extends Activity {
     };
 
     private String pendingPath;
+    private boolean televisionLayout;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        televisionLayout = isTelevisionDevice();
+        setRequestedOrientation(televisionLayout
+                ? ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
 
         String saved = SimpsonsActivity.getSavedGameDataPath(this);
         if (saved != null) {
@@ -113,6 +123,16 @@ public class StorageActivity extends Activity {
                 showGameDataNotFound(gameDirectory);
             }
         }
+    }
+
+    private boolean isTelevisionDevice() {
+        UiModeManager uiModeManager =
+                (UiModeManager) getSystemService(Context.UI_MODE_SERVICE);
+        if (uiModeManager != null
+                && uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION) {
+            return true;
+        }
+        return getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK);
     }
 
     private boolean hasBroadStorageAccess() {
@@ -308,6 +328,7 @@ public class StorageActivity extends Activity {
 
     private void showStorageScreen() {
         FrameLayout root = new FrameLayout(this);
+        root.setClipChildren(false);
 
         ImageView background = new ImageView(this);
         background.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -332,17 +353,22 @@ public class StorageActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
+        scroll.setClipChildren(false);
+        scroll.setVerticalScrollBarEnabled(true);
+        scroll.setScrollbarFadingEnabled(false);
+        scroll.setSmoothScrollingEnabled(true);
 
         LinearLayout content = new LinearLayout(this);
+        content.setClipChildren(false);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setGravity(Gravity.CENTER_HORIZONTAL);
-        int sidePad = dp(24);
-        int topPad = dp(28);
-        content.setPadding(sidePad, topPad, sidePad, dp(28));
+        int sidePad = dp(televisionLayout ? 24 : 16);
+        int topPad = dp(televisionLayout ? 28 : 14);
+        content.setPadding(sidePad, topPad, sidePad, dp(televisionLayout ? 28 : 18));
 
         TextView title = new TextView(this);
         title.setText("The Simpsons: Hit & Run\nGame Data Location");
-        title.setTextSize(29);
+        title.setTextSize(televisionLayout ? 29 : 25);
         title.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         title.setTextColor(YELLOW);
         title.setGravity(Gravity.CENTER);
@@ -353,7 +379,7 @@ public class StorageActivity extends Activity {
 
         TextView setup = new TextView(this);
         setup.setText("First-Time Setup");
-        setup.setTextSize(24);
+        setup.setTextSize(televisionLayout ? 24 : 20);
         setup.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         setup.setTextColor(Color.WHITE);
         setup.setGravity(Gravity.CENTER);
@@ -361,28 +387,43 @@ public class StorageActivity extends Activity {
         LinearLayout.LayoutParams setupParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        setupParams.setMargins(0, dp(8), 0, 0);
+        setupParams.setMargins(0, dp(televisionLayout ? 8 : 5), 0, 0);
         content.addView(setup, setupParams);
 
         TextView help = new TextView(this);
         help.setText("Choose where your game data is stored.\n\n"
                 + "Copy the complete game-data folder from the official PC release "
                 + "to the location you choose:");
-        help.setTextSize(20);
+        help.setTextSize(televisionLayout ? 20 : 17);
         help.setTextColor(Color.WHITE);
         help.setGravity(Gravity.CENTER);
         help.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
         LinearLayout.LayoutParams helpParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        helpParams.setMargins(0, dp(12), 0, 0);
+        helpParams.setMargins(0, dp(televisionLayout ? 12 : 8), 0, 0);
         content.addView(help, helpParams);
+
+        TextView moreOptions = new TextView(this);
+        moreOptions.setText(televisionLayout
+                ? "Use Down on your remote or controller to browse the storage choices. "
+                        + "Scroll if the list continues below."
+                : "More storage options below — scroll down to see the other choices.");
+        moreOptions.setTextSize(televisionLayout ? 16 : 15);
+        moreOptions.setTextColor(Color.WHITE);
+        moreOptions.setGravity(Gravity.CENTER);
+        moreOptions.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
+        LinearLayout.LayoutParams moreOptionsParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        moreOptionsParams.setMargins(0, dp(televisionLayout ? 10 : 6), 0, 0);
+        content.addView(moreOptions, moreOptionsParams);
 
         String saved = SimpsonsActivity.getSavedGameDataPath(this);
         if (saved != null && new File(saved).isDirectory()) {
             TextView current = new TextView(this);
             current.setText("\nCurrent: " + saved);
-            current.setTextSize(17);
+            current.setTextSize(televisionLayout ? 17 : 14);
             current.setTextColor(YELLOW);
             current.setGravity(Gravity.CENTER);
             current.setShadowLayer(dp(3), 0, dp(2), Color.BLACK);
@@ -430,11 +471,15 @@ public class StorageActivity extends Activity {
     private void styleButton(Button button) {
         button.setTextColor(DARK_BLUE);
         button.setAllCaps(false);
-        button.setTextSize(19);
+        button.setTextSize(televisionLayout ? 19 : 16);
         button.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         button.setGravity(Gravity.CENTER);
-        button.setMinHeight(dp(82));
-        button.setPadding(dp(20), dp(14), dp(20), dp(14));
+        button.setMinHeight(dp(televisionLayout ? 82 : 72));
+        button.setPadding(
+                dp(televisionLayout ? 20 : 14),
+                dp(televisionLayout ? 14 : 10),
+                dp(televisionLayout ? 20 : 14),
+                dp(televisionLayout ? 14 : 10));
 
         GradientDrawable normal = new GradientDrawable();
         normal.setColor(YELLOW);
@@ -454,23 +499,62 @@ public class StorageActivity extends Activity {
 
         button.setOnFocusChangeListener((v, hasFocus) -> {
             button.setTextColor(hasFocus ? Color.WHITE : DARK_BLUE);
-            // A small, quick scale-up makes controller, remote, and keyboard
-            // focus easier to spot while keeping the pink outline unchanged.
             button.animate().cancel();
-            float scale = hasFocus ? 1.04f : 1.0f;
-            button.animate()
-                    .scaleX(scale)
-                    .scaleY(scale)
-                    .setDuration(140)
-                    .start();
+
+            if (!hasFocus) {
+                button.animate()
+                        .scaleX(1.0f)
+                        .scaleY(1.0f)
+                        .setDuration(140)
+                        .start();
+                return;
+            }
+
+            // Measure after focus/layout so horizontal expansion never extends
+            // past the usable screen width. Vertical emphasis remains at 4%.
+            button.post(() -> {
+                if (!button.hasFocus()) {
+                    return;
+                }
+                float safeScaleX = getSafeFocusedScaleX(button);
+                button.animate()
+                        .scaleX(safeScaleX)
+                        .scaleY(1.04f)
+                        .setDuration(140)
+                        .start();
+            });
         });
+    }
+
+    private float getSafeFocusedScaleX(Button button) {
+        View rootView = button.getRootView();
+        int buttonWidth = button.getWidth();
+        if (rootView == null || buttonWidth <= 0 || rootView.getWidth() <= 0) {
+            return 1.0f;
+        }
+
+        int[] buttonLocation = new int[2];
+        int[] rootLocation = new int[2];
+        button.getLocationOnScreen(buttonLocation);
+        rootView.getLocationOnScreen(rootLocation);
+
+        float centerX = buttonLocation[0] - rootLocation[0] + buttonWidth / 2.0f;
+        float viewWidth = rootView.getWidth();
+        float safeMargin = dp(8);
+        float availableHalfWidth = Math.min(centerX, viewWidth - centerX) - safeMargin;
+        if (availableHalfWidth <= 0) {
+            return 1.0f;
+        }
+
+        float maxSafeScale = (2.0f * availableHalfWidth) / buttonWidth;
+        return Math.max(1.0f, Math.min(1.04f, maxSafeScale));
     }
 
     private LinearLayout.LayoutParams buttonParams() {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        p.setMargins(0, dp(18), 0, 0);
+        p.setMargins(0, dp(televisionLayout ? 18 : 10), 0, 0);
         return p;
     }
 
