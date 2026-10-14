@@ -34,7 +34,24 @@ import java.util.List;
 public class StorageActivity extends Activity {
     private static final int SKY_BLUE = Color.rgb(135, 206, 235);
     private static final int DARK_BLUE = Color.rgb(23, 59, 108);
+    private static final int PINK = Color.rgb(255, 105, 180);
     private static final int YELLOW = Color.rgb(212, 176, 0);
+
+    // Files explicitly requested during the PAL startup sequence.
+    // This catches common incomplete/incorrect installs before native startup.
+    private static final String[] REQUIRED_STARTUP_FILES = {
+            "art/frontend/scrooby/language.p3d",
+            "art/frontend/scrooby/bootup.p3d",
+            "art/frontend/scrooby/backend.p3d",
+            "art/frontend/scrooby/frontend.p3d",
+            "art/cars/common.p3d",
+            "art/cars/huskA.p3d",
+            "art/phonecamera.p3d",
+            "art/cards.p3d",
+            "art/wrench.p3d",
+            "art/missions/generic/missgen.p3d"
+    };
+
     private String pendingPath;
 
     @Override
@@ -152,39 +169,56 @@ public class StorageActivity extends Activity {
         launchGame();
     }
 
-    private boolean hasRequiredGameData(File gameDirectory) {
+    private List<String> getMissingRequiredGameFiles(File gameDirectory) {
+        List<String> missingFiles = new ArrayList<>();
+
         if (gameDirectory == null || !gameDirectory.isDirectory()) {
-            return false;
+            missingFiles.add("(selected location is unavailable or is not a folder)");
+            return missingFiles;
         }
 
-        // This is the first Scrooby project requested during startup. If it is
-        // absent, the native frontend cannot initialize and the app may show black.
-        File languageProject = new File(
-                gameDirectory,
-                "art/frontend/scrooby/language.p3d"
-        );
-        return languageProject.isFile() && languageProject.canRead();
+        for (String relativePath : REQUIRED_STARTUP_FILES) {
+            File requiredFile = new File(gameDirectory, relativePath);
+            if (!requiredFile.isFile() || !requiredFile.canRead()) {
+                missingFiles.add(relativePath);
+            }
+        }
+
+        return missingFiles;
+    }
+
+    private boolean hasRequiredGameData(File gameDirectory) {
+        return getMissingRequiredGameFiles(gameDirectory).isEmpty();
     }
 
     private void showGameDataNotFound(File gameDirectory) {
         String selectedPath = gameDirectory != null
                 ? gameDirectory.getAbsolutePath()
                 : "(internal game-data directory unavailable)";
-        String requiredPath = gameDirectory != null
-                ? new File(gameDirectory, "art/frontend/scrooby/language.p3d").getAbsolutePath()
-                : "art/frontend/scrooby/language.p3d";
+        List<String> missingFiles = getMissingRequiredGameFiles(gameDirectory);
+        StringBuilder message = new StringBuilder();
+
+        if (gameDirectory == null || !gameDirectory.isDirectory()) {
+            message.append("The selected game-data location is unavailable or is not a folder.");
+        } else {
+            message.append("The selected folder is missing required startup files, or some files cannot be read.");
+            message.append("\n\nMissing or unreadable files:");
+            for (String missingFile : missingFiles) {
+                message.append("\n• ").append(missingFile);
+            }
+        }
+
+        message.append("\n\nSelected folder:\n").append(selectedPath);
+        message.append("\n\nCopy the complete game-data folder from the official PC release to this location. ");
+        message.append("Choose the folder that directly contains the \"art\" directory, not a parent folder ");
+        message.append("or an extra nested folder. Do not use assets from the leaked source-code build; ");
+        message.append("they are not compatible with the release port.");
+        message.append("\n\nThese checks cover known startup dependencies. If the installation is damaged, ");
+        message.append("incompatible, or missing other assets, the game may still report additional missing files.");
 
         new AlertDialog.Builder(this)
                 .setTitle("Game data not found")
-                .setMessage(
-                        "The selected folder does not contain the required game file:\n\n"
-                                + requiredPath
-                                + "\n\nSelected folder:\n"
-                                + selectedPath
-                                + "\n\nChoose the folder that directly contains the game's "
-                                + "\"art\" directory, or copy your game data into this location "
-                                + "and try again."
-                )
+                .setMessage(message.toString())
                 .setPositiveButton("OK", null)
                 .show();
     }
@@ -274,7 +308,9 @@ public class StorageActivity extends Activity {
         content.addView(setup, setupParams);
 
         TextView help = new TextView(this);
-        help.setText("Choose where the game data is stored");
+        help.setText("Choose where your game data is stored.\n\n"
+                + "Copy the complete game-data folder from the official PC release "
+                + "to the location you choose:");
         help.setTextSize(20);
         help.setTextColor(Color.WHITE);
         help.setGravity(Gravity.CENTER);
@@ -300,7 +336,7 @@ public class StorageActivity extends Activity {
 
         Button internal = new Button(this);
         styleButton(internal);
-        internal.setText("Use Internal Storage");
+        internal.setText("Use Internal Storage\n/Android/data/com.sevarg.simpsons/files");
         internal.setFocusable(true);
         internal.setOnClickListener(v -> useInternalStorage());
         content.addView(internal, buttonParams());
@@ -343,7 +379,7 @@ public class StorageActivity extends Activity {
         GradientDrawable focused = new GradientDrawable();
         focused.setColor(YELLOW);
         focused.setCornerRadius(dp(14));
-        focused.setStroke(dp(5), DARK_BLUE);
+        focused.setStroke(dp(5), PINK);
 
         StateListDrawable states = new StateListDrawable();
         states.addState(new int[] { android.R.attr.state_focused }, focused);
