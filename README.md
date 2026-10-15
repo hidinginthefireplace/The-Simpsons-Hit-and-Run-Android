@@ -27,3 +27,7 @@ For the android11-usb-storage development build, the GitHub Actions release arti
 ---
 
 Para más información sobre los controles táctiles, consulta **[TOUCH_CONTROLS.md](TOUCH_CONTROLS.md)**.
+
+Para más información sobre los controles con mando externo, consulta **[CONTROLLER_CONTROLS.md](CONTROLLER_CONTROLS.md)**.
+
+For external controller controls, see **[CONTROLLER_CONTROLS.md](CONTROLLER_CONTROLS.md)**.
