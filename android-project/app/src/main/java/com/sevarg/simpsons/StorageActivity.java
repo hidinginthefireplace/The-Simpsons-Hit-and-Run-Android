@@ -43,6 +43,12 @@ public class StorageActivity extends Activity {
     private static final int PINK = Color.rgb(255, 105, 180);
     private static final int YELLOW = Color.rgb(212, 176, 0);
 
+    // Prevent repeatedly opening Android's all-files-access settings after a user
+    // has declined the automatic first-launch scan. Manual storage selection can
+    // still request access using the existing flow.
+    private static final String AUTO_SCAN_PREFERENCES = "game_data_auto_scan";
+    private static final String AUTO_SCAN_PERMISSION_REQUESTED_KEY = "all_files_permission_requested";
+
     // Files explicitly requested during the PAL startup sequence.
     // This catches common incomplete/incorrect installs before native startup.
     private static final String[] REQUIRED_STARTUP_FILES = {
@@ -61,6 +67,7 @@ public class StorageActivity extends Activity {
     private String pendingPath;
     private boolean televisionLayout;
     private boolean portraitLayout;
+    private boolean pendingAutomaticScanAfterPermission;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,6 +87,12 @@ public class StorageActivity extends Activity {
                     return;
                 }
 
+                // The previously used directory may have been moved or deleted.
+                // Search the other known locations before asking the user again.
+                if (tryAutomaticGameDataDetection()) {
+                    return;
+                }
+
                 showStorageScreen();
                 showGameDataNotFound(savedDirectory);
                 return;
@@ -91,8 +104,27 @@ public class StorageActivity extends Activity {
                 return;
             }
 
+            // A saved removable-storage path may no longer be mounted. Check
+            // app-owned internal storage first, then request shared-storage
+            // access once if it is needed to scan the other locations.
+            if (tryAutomaticGameDataDetection()) {
+                return;
+            }
+            if (requestAutomaticScanPermissionIfNeeded()) {
+                return;
+            }
+
             showStorageScreen();
             showGameDataNotFound(savedDirectory);
+            return;
+        }
+
+        // Fresh install/reinstall: discover an existing game-data folder before
+        // showing the first-time location selector.
+        if (tryAutomaticGameDataDetection()) {
+            return;
+        }
+        if (requestAutomaticScanPermissionIfNeeded()) {
             return;
         }
 
@@ -102,6 +134,19 @@ public class StorageActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+
+        if (pendingAutomaticScanAfterPermission) {
+            pendingAutomaticScanAfterPermission = false;
+            if (hasBroadStorageAccess() && tryAutomaticGameDataDetection()) {
+                return;
+            }
+
+            // Permission was declined or no valid installation was found.
+            // Keep the existing manual selector as the safe fallback.
+            showStorageScreen();
+            return;
+        }
+
         if (pendingPath != null && hasBroadStorageAccess()) {
             String path = pendingPath;
             pendingPath = null;
@@ -121,7 +166,7 @@ public class StorageActivity extends Activity {
             if (hasRequiredGameData(gameDirectory)) {
                 SimpsonsActivity.setGameDataPath(this, gameDirectory.getAbsolutePath());
                 launchGame();
-            } else {
+            } else if (!tryAutomaticGameDataDetection()) {
                 showStorageScreen();
                 showGameDataNotFound(gameDirectory);
             }
@@ -149,6 +194,87 @@ public class StorageActivity extends Activity {
             startActivity(intent);
         } catch (Exception e) {
             startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+        }
+    }
+
+    /**
+     * Requests the existing all-files access permission once when automatic
+     * discovery needs to inspect shared internal/removable storage. On return,
+     * onResume() retries the scan. If the user declines, manual selection stays
+     * available and this launch does not trap them in a permission loop.
+     */
+    private boolean requestAutomaticScanPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < 30 || hasBroadStorageAccess()) {
+            return false;
+        }
+
+        if (getSharedPreferences(AUTO_SCAN_PREFERENCES, MODE_PRIVATE)
+                .getBoolean(AUTO_SCAN_PERMISSION_REQUESTED_KEY, false)) {
+            return false;
+        }
+
+        getSharedPreferences(AUTO_SCAN_PREFERENCES, MODE_PRIVATE)
+                .edit()
+                .putBoolean(AUTO_SCAN_PERMISSION_REQUESTED_KEY, true)
+                .apply();
+
+        pendingAutomaticScanAfterPermission = true;
+        requestBroadStorageAccess();
+        return true;
+    }
+
+    /**
+     * Searches the known game-data roots in priority order: app-owned internal,
+     * shared internal (/Simpsons), then mounted removable volumes (/Simpsons).
+     * A candidate is accepted only if it passes the same startup-file checks as
+     * manual selection. A null saved path represents the app-owned data folder.
+     */
+    private boolean tryAutomaticGameDataDetection() {
+        String internalPath = SimpsonsActivity.getInternalGameDataPath(this);
+        File internalDirectory = internalPath != null ? new File(internalPath) : null;
+        if (internalDirectory != null && hasRequiredGameData(internalDirectory)) {
+            SimpsonsActivity.setGameDataPath(this, null);
+            launchGame();
+            return true;
+        }
+
+        // Shared and removable storage cannot be reliably searched on Android
+        // 11+ until broad storage access has been granted.
+        if (!hasBroadStorageAccess()) {
+            return false;
+        }
+
+        File sharedInternalDirectory = getSharedInternalGameDataDirectory();
+        if (hasRequiredGameData(sharedInternalDirectory)) {
+            SimpsonsActivity.setGameDataPath(this, sharedInternalDirectory.getAbsolutePath());
+            launchGame();
+            return true;
+        }
+
+        for (File volume : getRemovableVolumes()) {
+            File candidate = getGameDataDirectory(volume.getAbsolutePath());
+            if (isSameDirectory(candidate, internalDirectory)
+                    || isSameDirectory(candidate, sharedInternalDirectory)) {
+                continue;
+            }
+            if (hasRequiredGameData(candidate)) {
+                SimpsonsActivity.setGameDataPath(this, candidate.getAbsolutePath());
+                launchGame();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isSameDirectory(File first, File second) {
+        if (first == null || second == null) {
+            return false;
+        }
+        try {
+            return first.getCanonicalFile().equals(second.getCanonicalFile());
+        } catch (IOException e) {
+            return first.getAbsolutePath().equals(second.getAbsolutePath());
         }
     }
 
