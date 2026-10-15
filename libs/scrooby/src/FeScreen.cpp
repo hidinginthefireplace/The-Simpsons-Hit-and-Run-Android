@@ -299,6 +299,8 @@ void FeScreen::DisplayForeground()
 
     p3d::stack->Translate( -0.5f, -0.5f / aspect, 0.5f );
     bool draw = false;
+    FeDrawable* tvFrameFallback = NULL;
+    PascalCString tvFramePageName = "TVFrame.pag";
     for( int i = 0; i < GetChildrenCount(); i++ )
     {
         FeEntity* feEntity = this->GetChildIndex( i );
@@ -317,7 +319,20 @@ void FeScreen::DisplayForeground()
             {
                 draw = true;
             }
+            else if( tvFramePageName.EqualsInsensitive( drawable->GetName() ) )
+            {
+                // Some FMV screens have a TVFrame page but no FeDivide
+                // separator. In that case the normal foreground pass draws
+                // nothing. Keep the normal divider behavior, but use the TV
+                // frame as a narrow fallback when the separator is absent.
+                tvFrameFallback = drawable;
+            }
         }
+    }
+
+    if( !draw && tvFrameFallback != NULL )
+    {
+        tvFrameFallback->Display();
     }
     p3d::stack->Pop();
     p3d::pddi->PopState( PDDI_STATE_RENDER );

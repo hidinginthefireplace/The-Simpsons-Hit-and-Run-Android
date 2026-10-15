@@ -226,6 +226,20 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
     this->SetButtonVisible( BUTTON_ICON_ACCEPT, false );
 */
 
+    // Record which pages are actually attached to the runtime credits screen.
+    // Assets can exist on disk without being included in the active screen.
+    //
+    Scrooby::Page* creditsBgdPage = m_pScroobyScreen->GetPage( "CreditsBgd" );
+    Scrooby::Page* creditsKKPage = m_pScroobyScreen->GetPage( "CreditsKK" );
+    Scrooby::Page* feDividePage = m_pScroobyScreen->GetPage( "FeDivide" );
+    CREDITS_DIAG("CreditsDiag: page inventory count=%d ViewCredits=%p CreditsBgd=%p CreditsFgd=%p CreditsKK=%p FeDivide=%p",
+                 m_pScroobyScreen->GetNumberOfPages(),
+                 (void*)m_pScroobyScreen->GetPage( "ViewCredits" ),
+                 (void*)creditsBgdPage,
+                 (void*)m_pScroobyScreen->GetPage( "CreditsFgd" ),
+                 (void*)creditsKKPage,
+                 (void*)feDividePage);
+
     // apply correction scale to credits foreground overlay image (from CreditsFgd.pag)
     //
     pPage = m_pScroobyScreen->GetPage( "CreditsFgd" );
