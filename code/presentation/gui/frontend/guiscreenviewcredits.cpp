@@ -439,6 +439,14 @@ CGuiScreenViewCredits::FormatTextWithLineBreaks( Scrooby::Text* pText )
     P3D_UNICODE* textBuffer = static_cast<P3D_UNICODE*>( pText->GetStringBuffer() );
     rAssert( textBuffer != NULL );
 
+    // Each non-empty partition contributes its first line as well as each
+    // explicit line break. Without the first line, a one-line opening section
+    // gives the next partition the same Y offset and the two sections overlap.
+    if (textBuffer[0] != '\0')
+    {
+        totalTranslateY = s_numPixelsPerLine;
+    }
+
     for( int i = 0; textBuffer[ i ] != '\0'; i++ )
     {
         if( textBuffer[ i ] == '\\' ) // replace backslashes with line breaks

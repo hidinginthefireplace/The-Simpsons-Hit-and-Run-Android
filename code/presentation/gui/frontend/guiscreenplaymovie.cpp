@@ -52,16 +52,27 @@
 namespace
 {
     bool gSHARTVFrameOverlayActive = false;
+    Scrooby::Layer* gSHARTVFrameOverlayLayer = NULL;
 }
 
-bool IsSHARTVFrameOverlayActive()
+void SetSHARTVFrameOverlayLayer(Scrooby::Layer* layer)
 {
-    return gSHARTVFrameOverlayActive;
+    gSHARTVFrameOverlayLayer = layer;
 }
 
 void SetSHARTVFrameOverlayActive(bool active)
 {
     gSHARTVFrameOverlayActive = active;
+}
+
+void DrawSHARTVFrameOverlay()
+{
+    if (gSHARTVFrameOverlayActive &&
+        gSHARTVFrameOverlayLayer != NULL &&
+        gSHARTVFrameOverlayLayer->IsVisible())
+    {
+        gSHARTVFrameOverlayLayer->Display();
+    }
 }
 #endif
 
@@ -110,6 +121,9 @@ CGuiScreenPlayMovie::CGuiScreenPlayMovie
     {
         m_tvFrame = pTVFramePage->GetLayer( "TVFrame" );
     }
+#if defined(RAD_ANDROID)
+    SetSHARTVFrameOverlayLayer(m_tvFrame);
+#endif
 
     if( windowID == GUI_SCREEN_ID_PLAY_MOVIE )
     {

@@ -29,7 +29,7 @@
 //===========================================================================
 #if defined(RAD_ANDROID)
 // Used by FrontEndRenderLayer to show the TV-frame overlay during gallery FMVs.
-bool IsSHARTVFrameOverlayActive();
+void SetSHARTVFrameOverlayLayer(Scrooby::Layer* layer);
 void SetSHARTVFrameOverlayActive(bool active);
 #endif
 
