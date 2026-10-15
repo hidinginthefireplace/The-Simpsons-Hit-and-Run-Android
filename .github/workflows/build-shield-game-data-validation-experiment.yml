@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - experimental-game-data-validation
+      - experimental-credits-overlap-fix
   workflow_dispatch:
 
 permissions:
