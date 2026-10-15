@@ -63,6 +63,7 @@ protected:
 
 private:
     Scrooby::Text* m_demoText;
+    Scrooby::Layer* m_tvFrame;
     unsigned int m_elapsedTime;
 	bool m_IsSkippable : 1;
 };

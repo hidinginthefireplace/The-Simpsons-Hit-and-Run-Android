@@ -113,7 +113,12 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
         {
             int bboxWidth = 0;
             int bboxHeight = 0;
+            int authoredX = 0;
+            int authoredY = 0;
+            int authoredXMin = 0, authoredYMin = 0, authoredXMax = 0, authoredYMax = 0;
             m_credits[ i ]->GetBoundingBoxSize( bboxWidth, bboxHeight );
+            m_credits[ i ]->GetOriginPosition( authoredX, authoredY );
+            m_credits[ i ]->GetBoundingBox( authoredXMin, authoredYMin, authoredXMax, authoredYMax );
             int authoredBreakCount = 0;
             P3D_UNICODE* rawText = static_cast<P3D_UNICODE*>( m_credits[ i ]->GetStringBuffer() );
             if( rawText != NULL )
@@ -126,8 +131,10 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
                     }
                 }
             }
-            CREDITS_DIAG("CreditsDiag: partition=%d present text=%p bbox=%dx%d authoredBackslashes=%d",
-                         i, (void*)m_credits[ i ], bboxWidth, bboxHeight, authoredBreakCount);
+            CREDITS_DIAG("CreditsDiag: partition=%d present text=%p size=%dx%d origin=(%d,%d) bbox=(%d,%d)-(%d,%d) authoredBackslashes=%d",
+                         i, (void*)m_credits[ i ], bboxWidth, bboxHeight,
+                         authoredX, authoredY, authoredXMin, authoredYMin, authoredXMax, authoredYMax,
+                         authoredBreakCount);
 #ifndef PAL
             // hide localization partition from credits for NTSC builds
             //
@@ -171,6 +178,12 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
             //
             m_credits[ i ]->ResetTransformation();
             m_credits[ i ]->Translate( 0, (int)s_creditsOffsets[ i ] );
+
+            int translatedXMin = 0, translatedYMin = 0, translatedXMax = 0, translatedYMax = 0;
+            m_credits[ i ]->GetBoundingBox( translatedXMin, translatedYMin, translatedXMax, translatedYMax );
+            CREDITS_DIAG("CreditsDiag: partition=%d postOffsetBBox=(%d,%d)-(%d,%d) offsetY=%.1f visible=%d",
+                         i, translatedXMin, translatedYMin, translatedXMax, translatedYMax,
+                         s_creditsOffsets[ i ], m_credits[ i ]->IsVisible() ? 1 : 0);
 
             // disable any text outlining or drop shadow effects
             //
@@ -441,6 +454,16 @@ CGuiScreenViewCredits::ResetScrolling()
 
     CREDITS_DIAG("CreditsDiag: ResetScrolling screenId=%d group=%p totalScrollRange=%.1f lineStep=%.2f",
                  (int)m_ID, (void*)m_creditsGroup, s_totalTranslateY, s_numPixelsPerLine);
+    for( int i = 0; i < MAX_NUM_CREDITS_PARTITIONS; i++ )
+    {
+        if( m_credits[ i ] != NULL && ( i < 2 || i >= 28 ) )
+        {
+            int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
+            m_credits[ i ]->GetBoundingBox( xMin, yMin, xMax, yMax );
+            CREDITS_DIAG("CreditsDiag: reset-position partition=%d bbox=(%d,%d)-(%d,%d) visible=%d",
+                         i, xMin, yMin, xMax, yMax, m_credits[ i ]->IsVisible() ? 1 : 0);
+        }
+    }
 
     m_currentTranslateY = 0.0f;
 

@@ -31,6 +31,7 @@
 #include <Screen.h>
 #include <Page.h>
 #include <Text.h>
+#include <Layer.h>
 
 #include <p3d/view.hpp>
 
@@ -77,38 +78,68 @@ CGuiScreenPlayMovie::CGuiScreenPlayMovie
 )
 :   CGuiScreen( pScreen, pParent, windowID ),
     m_demoText( NULL ),
+    m_tvFrame( NULL ),
     m_elapsedTime( 0 ),
 	m_IsSkippable(true)
-//    m_tvFrame( NULL )
 {
-    // Retrieve the Scrooby drawing elements.
+    // The normal movie screen and the demo screen do not have the same
+    // page set. Retrieve Demo text only when that page actually exists.
     //
-    Scrooby::Page* pPage = m_pScroobyScreen->GetPage( "Demo" );
+    Scrooby::Page* pDemoPage = m_pScroobyScreen->GetPage( "Demo" );
     TVFRAME_DIAG("TVFrameDiag: ctor windowId=%d screen=%p DemoPage=%p",
-                 (int)windowID, (void*)m_pScroobyScreen, (void*)pPage);
-    if( pPage != NULL )
+                 (int)windowID, (void*)m_pScroobyScreen, (void*)pDemoPage);
+    if( pDemoPage != NULL )
     {
-        m_demoText = pPage->GetText( "Demo" );
-        rAssert( m_demoText != NULL );
+        m_demoText = pDemoPage->GetText( "Demo" );
+        TVFRAME_DIAG("TVFrameDiag: Demo text=%p", (void*)m_demoText);
+    }
 
-        // Probe the same named TV frame layer referenced by the original
-        // code. Its pointer and all visibility toggles were commented out
-        // in the Android source, so this diagnostic deliberately does not
-        // change its visibility.
-        auto tvFrame = pPage->GetLayer( "TVFrame" );
-        TVFRAME_DIAG("TVFrameDiag: Demo layer TVFrame=%p DemoText=%p; visibility unchanged by diagnostic",
-                     (void*)tvFrame, (void*)m_demoText);
+    // The Android frontend assets contain a dedicated TVFrame page. Prefer
+    // its layer; fall back to legacy layer nesting for older asset layouts.
+    //
+    Scrooby::Page* pTVFramePage = m_pScroobyScreen->GetPage( "TVFrame" );
+    TVFRAME_DIAG("TVFrameDiag: TVFrame page=%p", (void*)pTVFramePage);
+    if( pTVFramePage != NULL )
+    {
+        m_tvFrame = pTVFramePage->GetLayer( "TVFrame" );
+        if( m_tvFrame == NULL && pTVFramePage->GetNumberOfLayers() == 1 )
+        {
+            m_tvFrame = pTVFramePage->GetLayerByIndex( 0 );
+        }
+        TVFRAME_DIAG("TVFrameDiag: dedicated TVFrame page layers=%d selectedLayer=%p",
+                     pTVFramePage->GetNumberOfLayers(), (void*)m_tvFrame);
+    }
+
+    if( m_tvFrame == NULL )
+    {
+        Scrooby::Page* pPlayMoviePage = m_pScroobyScreen->GetPage( "PlayMovie" );
+        if( pPlayMoviePage != NULL )
+        {
+            m_tvFrame = pPlayMoviePage->GetLayer( "TVFrame" );
+            TVFRAME_DIAG("TVFrameDiag: PlayMovie page=%p TVFrame layer=%p",
+                         (void*)pPlayMoviePage, (void*)m_tvFrame);
+        }
+    }
+
+    if( m_tvFrame == NULL && pDemoPage != NULL )
+    {
+        m_tvFrame = pDemoPage->GetLayer( "TVFrame" );
+        TVFRAME_DIAG("TVFrameDiag: Demo fallback TVFrame layer=%p", (void*)m_tvFrame);
+    }
+
+    if( m_tvFrame != NULL )
+    {
+        int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
+        m_tvFrame->GetBoundingBox( xMin, yMin, xMax, yMax );
+        m_tvFrame->SetVisible( true );
+        TVFRAME_DIAG("TVFrameDiag: selected frame=%p bbox=(%d,%d)-(%d,%d) visible=%d",
+                     (void*)m_tvFrame, xMin, yMin, xMax, yMax,
+                     m_tvFrame->IsVisible() ? 1 : 0);
     }
     else
     {
-        TVFRAME_DIAG("TVFrameDiag: Demo page missing for windowId=%d", (int)windowID);
+        TVFRAME_DIAG("TVFrameDiag: no TVFrame layer found for windowId=%d", (int)windowID);
     }
-
-/*
-    // background TV frame layer
-    //
-    m_tvFrame = pPage->GetLayer( "TVFrame" );
-*/
 
     if( windowID == GUI_SCREEN_ID_PLAY_MOVIE )
     {
@@ -176,20 +207,8 @@ void CGuiScreenPlayMovie::HandleMessage
                         m_elapsedTime %= BLINK_PERIOD;
                     }
                 }
-/*
-                if( m_state == GUI_WINDOW_STATE_OUTRO )
-                {
-                    if( m_numTransitionsPending <= 0 )
-                    {
-                        // restore the background TV frame
-                        //
-                        if( m_tvFrame != NULL )
-                        {
-                            m_tvFrame->SetVisible( true );
-                        }
-                    }
-                }
-*/
+                // The dedicated TV frame remains visible throughout movie playback.
+
                 break;
             }
 
@@ -387,14 +406,13 @@ void CGuiScreenPlayMovie::InitIntro()
     GetInputManager()->GetFEMouse()->SetInGameMode( true );
 #endif
 
-/*
-    // hide background TV frame so we can fade in/out the foreground one
+    // Keep the TV border visible throughout movie playback. The original
+    // code hid this layer at intro, relying on a separate transition frame.
     //
     if( m_tvFrame != NULL )
     {
-        m_tvFrame->SetVisible( false );
+        m_tvFrame->SetVisible( true );
     }
-*/
 }
 
 
@@ -417,9 +435,11 @@ void CGuiScreenPlayMovie::InitRunning()
     TVFRAME_DIAG("TVFrameDiag: InitRunning windowId=%d DemoPage=%p TVFrame=%p",
                  (int)m_ID, (void*)diagPage, (void*)diagTVFrame);
 
-    if( m_ID == GUI_SCREEN_ID_PLAY_MOVIE_DEMO )
+    if( m_ID == GUI_SCREEN_ID_PLAY_MOVIE_DEMO ||
+        m_ID == GUI_SCREEN_ID_PLAY_MOVIE )
     {
-        // disable screen clearing for GUI render layer
+        // Keep the GUI layer active so the TV frame can render over the FMV.
+        // Only depth and stencil are cleared, matching the demo-movie path.
         //
         GetRenderManager()->mpLayer( RenderEnums::GUI )->pView( 0 )->SetClearMask( PDDI_BUFFER_DEPTH | PDDI_BUFFER_STENCIL );
     }
@@ -462,11 +482,12 @@ void CGuiScreenPlayMovie::InitOutro()
     TVFRAME_DIAG("TVFrameDiag: InitOutro windowId=%d DemoPage=%p TVFrame=%p",
                  (int)m_ID, (void*)diagPage, (void*)diagTVFrame);
 
-    if( m_ID == GUI_SCREEN_ID_PLAY_MOVIE_DEMO )
+    if( m_ID == GUI_SCREEN_ID_PLAY_MOVIE_DEMO ||
+        m_ID == GUI_SCREEN_ID_PLAY_MOVIE )
     {
-        // enable screen clearing
+        // Restore normal GUI clear behavior now that FMV playback is ending.
         //
-        GetRenderManager()->mpLayer(RenderEnums::GUI)->pView( 0 )->SetClearMask( PDDI_BUFFER_ALL );
+        GetRenderManager()->mpLayer( RenderEnums::GUI )->pView( 0 )->SetClearMask( PDDI_BUFFER_ALL );
     }
     else
     {
