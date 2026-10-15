@@ -68,6 +68,7 @@ public class StorageActivity extends Activity {
     private boolean televisionLayout;
     private boolean portraitLayout;
     private boolean pendingAutomaticScanAfterPermission;
+    private boolean automaticScanPermissionSettingsWasOpened;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -132,11 +133,24 @@ public class StorageActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        // startActivity() can occur from onCreate(), before this Activity's
+        // first resume callback. Only process the automatic scan on the resume
+        // that follows the actual trip to Android Settings.
+        if (pendingAutomaticScanAfterPermission) {
+            automaticScanPermissionSettingsWasOpened = true;
+        }
+        super.onPause();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
 
-        if (pendingAutomaticScanAfterPermission) {
+        if (pendingAutomaticScanAfterPermission
+                && automaticScanPermissionSettingsWasOpened) {
             pendingAutomaticScanAfterPermission = false;
+            automaticScanPermissionSettingsWasOpened = false;
             if (hasBroadStorageAccess() && tryAutomaticGameDataDetection()) {
                 return;
             }
