@@ -91,5 +91,7 @@ private:
 bool BeginCelPostProcessFrame(int width, int height);
 void ApplyCelPostProcessBeforeGui(int width, int height);
 void BeginSHARAndroidFMVOutputRender();
+void PrepareSHARAndroidFMVOverlayRender();
+void RestoreSHARAndroidFMVOutputRenderState();
 #endif
 #endif

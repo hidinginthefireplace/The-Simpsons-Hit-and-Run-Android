@@ -52,6 +52,7 @@ public:
 
     void InitMenu();
     virtual CGuiMenu* HasMenu() { return m_pMenu; }
+    Scrooby::Layer* GetTVFrameLayer() const { return m_tvFrame; }
 
 protected:
     void InitIntro();

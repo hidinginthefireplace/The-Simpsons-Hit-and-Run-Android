@@ -724,9 +724,12 @@ void FMVPlayer::IterateLoop( IRadMoviePlayer2* pIRadMoviePlayer )
     pIRadMoviePlayer->Render();
 
 #if defined(RAD_ANDROID)
-    // Draw only the TV-frame layer over the decoded video. Do not re-enter the
-    // full Scrooby frame loop from inside the movie player's render callback.
+    // The movie player bypasses PDDI and changes raw GL state; normalize the
+    // overlay state, draw the shared main-menu TV art, then restore the original
+    // state before control returns to the normal renderer.
+    PrepareSHARAndroidFMVOverlayRender();
     DrawSHARTVFrameOverlay();
+    RestoreSHARAndroidFMVOutputRenderState();
 #endif
 
     // NEW LINES 

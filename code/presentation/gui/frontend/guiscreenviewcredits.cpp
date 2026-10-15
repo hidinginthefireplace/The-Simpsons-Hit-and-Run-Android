@@ -413,22 +413,23 @@ CGuiScreenViewCredits::FormatTextWithLineBreaks( Scrooby::Text* pText )
     pText->GetBoundingBoxSize( width, height );
 
 #if defined(RAD_ANDROID)
-    // Use the text box's authored size as the baseline because it accounts for
-    // Scrooby's per-object scale in the same coordinate space as Translate().
-    // Font metrics provide a minimum in cases where a text box is unusually short.
+    // The bounding box is expressed in the same Scrooby coordinate space as
+    // Translate(). Font metrics are not scaled per drawable, so using their raw
+    // value here can give different offsets to the opening credits partitions.
     s_numPixelsPerLine = height > 0 ? height * 1.20f : 0.0f;
-    tFont* font = pText->GetFont();
-    if (font != NULL)
-    {
-        const float fontLineHeight = font->GetFontHeight() + font->GetLineSpacing();
-        if (fontLineHeight > s_numPixelsPerLine)
-        {
-            s_numPixelsPerLine = fontLineHeight;
-        }
-    }
     if (s_numPixelsPerLine <= 0.0f)
     {
-        s_numPixelsPerLine = 1.0f;
+        tFont* font = pText->GetFont();
+        if (font != NULL)
+        {
+            s_numPixelsPerLine = font->GetFontHeight() + font->GetLineSpacing();
+        }
+    }
+    // Keep a meaningful fallback for empty/degenerate boxes rather than advancing
+    // successive non-empty partitions by one pixel.
+    if (s_numPixelsPerLine <= 0.0f)
+    {
+        s_numPixelsPerLine = 24.0f;
     }
 #elif defined(RAD_WIN32)
     s_numPixelsPerLine = height * 1.20f;
@@ -455,6 +456,11 @@ CGuiScreenViewCredits::FormatTextWithLineBreaks( Scrooby::Text* pText )
 
             // increment total translation by number of pixels per line
             //
+            totalTranslateY += s_numPixelsPerLine;
+        }
+        else if( textBuffer[ i ] == '\n' )
+        {
+            // Also account for line breaks already present in a localized string.
             totalTranslateY += s_numPixelsPerLine;
         }
     }

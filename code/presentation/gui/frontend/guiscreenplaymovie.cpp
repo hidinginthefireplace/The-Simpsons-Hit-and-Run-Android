@@ -16,6 +16,7 @@
 // Includes
 //===========================================================================
 #include <presentation/gui/frontend/guiscreenplaymovie.h>
+#include <presentation/gui/frontend/guiscreenmainmenu.h>
 #include <presentation/gui/guimanager.h>
 #include <presentation/gui/guitextbible.h>
 #include <presentation/gui/utility/specialfx.h>
@@ -114,12 +115,27 @@ CGuiScreenPlayMovie::CGuiScreenPlayMovie
         rAssert( m_demoText != NULL );
     }
 
-    // The TV frame is on its own Scrooby page, not inside the "Demo" page.
-    // This is the same page used by CGuiScreenIntroTransition.
-    Scrooby::Page* pTVFramePage = m_pScroobyScreen->GetPage( "TVFrame" );
-    if( pTVFramePage != NULL )
+#if defined(RAD_ANDROID)
+    // The gallery's PlayMovie screen does not own the TV artwork. It lives on
+    // the persistent MainMenu screen, so borrow that screen's actual layer.
+    if (windowID == GUI_SCREEN_ID_PLAY_MOVIE && m_guiManager != NULL)
     {
-        m_tvFrame = pTVFramePage->GetLayer( "TVFrame" );
+        CGuiScreenMainMenu* pMainMenu = static_cast<CGuiScreenMainMenu*>(
+            m_guiManager->FindWindowByID(GUI_SCREEN_ID_MAIN_MENU));
+        if (pMainMenu != NULL)
+        {
+            m_tvFrame = pMainMenu->GetTVFrameLayer();
+        }
+    }
+#endif
+    // Keep the original page lookup as a fallback for non-gallery screens.
+    if (m_tvFrame == NULL)
+    {
+        Scrooby::Page* pTVFramePage = m_pScroobyScreen->GetPage( "TVFrame" );
+        if( pTVFramePage != NULL )
+        {
+            m_tvFrame = pTVFramePage->GetLayer( "TVFrame" );
+        }
     }
 #if defined(RAD_ANDROID)
     SetSHARTVFrameOverlayLayer(m_tvFrame);

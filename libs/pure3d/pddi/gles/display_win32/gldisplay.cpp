@@ -51,6 +51,23 @@ static bool gSHARPostProcessAppliedBeforeTouchHud = false;
 // the next frame start in CommitPendingResize().
 static int* gSHARActiveDisplayWidthForGui = NULL;
 static int* gSHARActiveDisplayHeightForGui = NULL;
+// FMV rendering temporarily bypasses PDDI and changes raw GL state. Preserve
+// that state so a movie cannot leave blending/scissor/clear settings corrupted
+// for the transparent frontend artwork rendered over it or for the next menu frame.
+static bool gSHARFMVGLStateCaptured = false;
+static GLboolean gSHARFMVBlendEnabled = GL_FALSE;
+static GLboolean gSHARFMVScissorEnabled = GL_FALSE;
+static GLboolean gSHARFMVDepthEnabled = GL_FALSE;
+static GLboolean gSHARFMVStencilEnabled = GL_FALSE;
+static GLboolean gSHARFMVCullEnabled = GL_FALSE;
+static GLboolean gSHARFMVColorMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
+static GLfloat gSHARFMVClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+static GLint gSHARFMVBlendSrcRGB = GL_ONE;
+static GLint gSHARFMVBlendDstRGB = GL_ZERO;
+static GLint gSHARFMVBlendSrcAlpha = GL_ONE;
+static GLint gSHARFMVBlendDstAlpha = GL_ZERO;
+static GLint gSHARFMVBlendEquationRGB = GL_FUNC_ADD;
+static GLint gSHARFMVBlendEquationAlpha = GL_FUNC_ADD;
 GLuint gCelRenderFbo = 0;
 GLuint gCelRenderDepth = 0;
 GLuint gCelRenderDepthTexture = 0;
@@ -1522,6 +1539,24 @@ void ApplyCelPostProcessBeforeGui(int width, int height)
 // system at every selected internal render resolution.
 void BeginSHARAndroidFMVOutputRender()
 {
+    if (!gSHARFMVGLStateCaptured)
+    {
+        gSHARFMVBlendEnabled = glIsEnabled(GL_BLEND);
+        gSHARFMVScissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
+        gSHARFMVDepthEnabled = glIsEnabled(GL_DEPTH_TEST);
+        gSHARFMVStencilEnabled = glIsEnabled(GL_STENCIL_TEST);
+        gSHARFMVCullEnabled = glIsEnabled(GL_CULL_FACE);
+        glGetBooleanv(GL_COLOR_WRITEMASK, gSHARFMVColorMask);
+        glGetFloatv(GL_COLOR_CLEAR_VALUE, gSHARFMVClearColor);
+        glGetIntegerv(GL_BLEND_SRC_RGB, &gSHARFMVBlendSrcRGB);
+        glGetIntegerv(GL_BLEND_DST_RGB, &gSHARFMVBlendDstRGB);
+        glGetIntegerv(GL_BLEND_SRC_ALPHA, &gSHARFMVBlendSrcAlpha);
+        glGetIntegerv(GL_BLEND_DST_ALPHA, &gSHARFMVBlendDstAlpha);
+        glGetIntegerv(GL_BLEND_EQUATION_RGB, &gSHARFMVBlendEquationRGB);
+        glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &gSHARFMVBlendEquationAlpha);
+        gSHARFMVGLStateCaptured = true;
+    }
+
     int outputWidth = 0;
     int outputHeight = 0;
     if (!QueryDefaultFramebufferSize(&outputWidth, &outputHeight) ||
@@ -1551,7 +1586,45 @@ void BeginSHARAndroidFMVOutputRender()
     // The movie is now the frame being presented. The next BeginFrame will
     // restore the internal world target and bind its FBO as usual.
     gCelWorldInFbo = false;
+}
 
+void PrepareSHARAndroidFMVOverlayRender()
+{
+    // PDDI caches some of these states, so set the real GL state explicitly
+    // before directly displaying a Scrooby layer over the movie.
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glEnable(GL_BLEND);
+    glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
+    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+                        GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+void RestoreSHARAndroidFMVOutputRenderState()
+{
+    if (!gSHARFMVGLStateCaptured)
+        return;
+
+    if (gSHARFMVBlendEnabled) glEnable(GL_BLEND); else glDisable(GL_BLEND);
+    if (gSHARFMVScissorEnabled) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
+    if (gSHARFMVDepthEnabled) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+    if (gSHARFMVStencilEnabled) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
+    if (gSHARFMVCullEnabled) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+
+    glBlendEquationSeparate((GLenum)gSHARFMVBlendEquationRGB,
+                            (GLenum)gSHARFMVBlendEquationAlpha);
+    glBlendFuncSeparate((GLenum)gSHARFMVBlendSrcRGB,
+                        (GLenum)gSHARFMVBlendDstRGB,
+                        (GLenum)gSHARFMVBlendSrcAlpha,
+                        (GLenum)gSHARFMVBlendDstAlpha);
+    glColorMask(gSHARFMVColorMask[0], gSHARFMVColorMask[1],
+                gSHARFMVColorMask[2], gSHARFMVColorMask[3]);
+    glClearColor(gSHARFMVClearColor[0], gSHARFMVClearColor[1],
+                 gSHARFMVClearColor[2], gSHARFMVClearColor[3]);
+
+    gSHARFMVGLStateCaptured = false;
 }
 #endif
 
