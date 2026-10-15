@@ -144,9 +144,12 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
         }
         else
         {
-            // assuming there's no more partitions to follow
+            // Some platform-specific credits partitions may be absent while
+            // later partitions still exist. Do not stop here: unprocessed
+            // later partitions remain at their authored position and can
+            // appear at the top of the scrolling credits.
             //
-            break;
+            continue;
         }
     }
 
