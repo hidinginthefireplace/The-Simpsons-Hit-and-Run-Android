@@ -1,10 +1,11 @@
-name: Build Game Data Validation Experiment APK
+name: Build Credits and TV Frame Diagnostic APK
 
 on:
   push:
     branches:
       - experimental-game-data-validation
       - experimental-credits-overlap-fix
+      - experimental-credits-tvframe-diagnostics
   workflow_dispatch:
 
 permissions:
@@ -76,6 +77,6 @@ jobs:
       - name: Upload experimental APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simpsons-Game-Data-Validation-Experiment
+          name: Simpsons-Credits-TV-Diagnostic
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
