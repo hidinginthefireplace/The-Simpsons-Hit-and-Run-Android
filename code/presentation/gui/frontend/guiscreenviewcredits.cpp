@@ -36,6 +36,13 @@
 // ATG
 #include <raddebug.hpp>
 
+#if defined(RAD_ANDROID)
+#include <android/log.h>
+#define CREDITS_DIAG(...) __android_log_print(ANDROID_LOG_INFO, "SHR-CreditsDiag", __VA_ARGS__)
+#else
+#define CREDITS_DIAG(...) rDebugPrintf(__VA_ARGS__)
+#endif
+
 //===========================================================================
 // Global Data, Local Data, Local Classes
 //===========================================================================
@@ -90,6 +97,10 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
     bool isFirstTime = ( s_totalTranslateY == 0.0f );
     float currentTranslateY = 0.0f;
 
+    CREDITS_DIAG("CreditsDiag: ctor screenId=%d screen=%p page=%p group=%p firstTime=%d cachedTotal=%.1f",
+                 (int)m_ID, (void*)m_pScroobyScreen, (void*)pPage, (void*)m_creditsGroup,
+                 isFirstTime ? 1 : 0, s_totalTranslateY);
+
     // get all credits (partitioned) text
     //
     for( int i = 0; i < MAX_NUM_CREDITS_PARTITIONS; i++ )
@@ -100,12 +111,30 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
 
         if( m_credits[ i ] != NULL )
         {
+            int bboxWidth = 0;
+            int bboxHeight = 0;
+            m_credits[ i ]->GetBoundingBoxSize( bboxWidth, bboxHeight );
+            int authoredBreakCount = 0;
+            P3D_UNICODE* rawText = static_cast<P3D_UNICODE*>( m_credits[ i ]->GetStringBuffer() );
+            if( rawText != NULL )
+            {
+                for( int textIndex = 0; rawText[ textIndex ] != '\0'; textIndex++ )
+                {
+                    if( rawText[ textIndex ] == '\\' )
+                    {
+                        authoredBreakCount++;
+                    }
+                }
+            }
+            CREDITS_DIAG("CreditsDiag: partition=%d present text=%p bbox=%dx%d authoredBackslashes=%d",
+                         i, (void*)m_credits[ i ], bboxWidth, bboxHeight, authoredBreakCount);
 #ifndef PAL
             // hide localization partition from credits for NTSC builds
             //
             if( i == CREDITS_PARTITION_FOR_LOCALIZATION )
             {
                 m_credits[ i ]->SetVisible( false );
+                CREDITS_DIAG("CreditsDiag: partition=%d hidden=localization", i);
 
                 continue;
             }
@@ -118,6 +147,7 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
             if( i == CREDITS_PARTITION_FOR_LOGITECH )
             {
                 m_credits[ i ]->SetVisible( false );
+                CREDITS_DIAG("CreditsDiag: partition=%d hidden=platform-specific Logitech", i);
 
                 continue;
             }
@@ -132,6 +162,11 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
                 s_totalTranslateY += currentTranslateY;
             }
 
+            CREDITS_DIAG("CreditsDiag: partition=%d layout firstTime=%d offset=%.1f contribution=%.1f lineStep=%.2f cumulative=%.1f",
+                         i, isFirstTime ? 1 : 0, s_creditsOffsets[ i ],
+                         isFirstTime ? currentTranslateY : -1.0f,
+                         isFirstTime ? s_numPixelsPerLine : -1.0f, s_totalTranslateY);
+
             // offset current credits partition by total translation so far
             //
             m_credits[ i ]->ResetTransformation();
@@ -144,6 +179,8 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
         }
         else
         {
+            CREDITS_DIAG("CreditsDiag: partition=%d MISSING firstTime=%d cachedOffset=%.1f cumulative=%.1f; continuing to search later slots",
+                         i, isFirstTime ? 1 : 0, s_creditsOffsets[ i ], s_totalTranslateY);
             // Some platform-specific credits partitions may be absent while
             // later partitions still exist. Do not stop here: unprocessed
             // later partitions remain at their authored position and can
@@ -157,7 +194,15 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
     //
     if( isFirstTime )
     {
-        s_totalTranslateY += Scrooby::App::GetInstance()->GetScreenHeight();
+        float screenHeight = Scrooby::App::GetInstance()->GetScreenHeight();
+        s_totalTranslateY += screenHeight;
+        CREDITS_DIAG("CreditsDiag: initial layout finished screenHeight=%.1f totalScrollRange=%.1f",
+                     screenHeight, s_totalTranslateY);
+    }
+    else
+    {
+        CREDITS_DIAG("CreditsDiag: using cached totalScrollRange=%.1f lineStep=%.2f",
+                     s_totalTranslateY, s_numPixelsPerLine);
     }
 
 /*
@@ -170,9 +215,11 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
     // apply correction scale to credits foreground overlay image (from CreditsFgd.pag)
     //
     pPage = m_pScroobyScreen->GetPage( "CreditsFgd" );
+    CREDITS_DIAG("CreditsDiag: foreground overlay page=%p", (void*)pPage);
     if( pPage != NULL )
     {
         Scrooby::Sprite* creditsFgd = pPage->GetSprite( "CreditsFgd" );
+        CREDITS_DIAG("CreditsDiag: foreground overlay sprite=%p", (void*)creditsFgd);
         if( creditsFgd != NULL )
         {
             creditsFgd->ResetTransformation();
@@ -391,6 +438,9 @@ CGuiScreenViewCredits::ResetScrolling()
 {
     rAssert( m_creditsGroup != NULL );
     m_creditsGroup->ResetTransformation();
+
+    CREDITS_DIAG("CreditsDiag: ResetScrolling screenId=%d group=%p totalScrollRange=%.1f lineStep=%.2f",
+                 (int)m_ID, (void*)m_creditsGroup, s_totalTranslateY, s_numPixelsPerLine);
 
     m_currentTranslateY = 0.0f;
 
