@@ -413,20 +413,22 @@ CGuiScreenViewCredits::FormatTextWithLineBreaks( Scrooby::Text* pText )
     pText->GetBoundingBoxSize( width, height );
 
 #if defined(RAD_ANDROID)
-    // The credits are divided into separate Scrooby text objects. Estimate the
-    // height contributed by each line from the actual font metrics so the
-    // partitions stay aligned even when their text boxes have different heights.
-    // The old bounding-box multiplier can make the opening title partitions
-    // overlap on Android.
+    // Use the text box's authored size as the baseline because it accounts for
+    // Scrooby's per-object scale in the same coordinate space as Translate().
+    // Font metrics provide a minimum in cases where a text box is unusually short.
+    s_numPixelsPerLine = height > 0 ? height * 1.20f : 0.0f;
     tFont* font = pText->GetFont();
     if (font != NULL)
     {
         const float fontLineHeight = font->GetFontHeight() + font->GetLineSpacing();
-        s_numPixelsPerLine = fontLineHeight > 0.0f ? fontLineHeight : height * 1.15f;
+        if (fontLineHeight > s_numPixelsPerLine)
+        {
+            s_numPixelsPerLine = fontLineHeight;
+        }
     }
-    else
+    if (s_numPixelsPerLine <= 0.0f)
     {
-        s_numPixelsPerLine = height * 1.15f;
+        s_numPixelsPerLine = 1.0f;
     }
 #elif defined(RAD_WIN32)
     s_numPixelsPerLine = height * 1.20f;

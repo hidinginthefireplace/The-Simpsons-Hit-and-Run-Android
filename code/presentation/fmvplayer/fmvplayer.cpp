@@ -48,6 +48,12 @@
 #include <pddi/pddi.hpp>
 #if defined(RAD_ANDROID)
 #include <pddi/gles/gldisplay.hpp>
+#include <App.h>
+
+// Set by CGuiScreenPlayMovie only while displaying a movie from the Homer-house
+// gallery. Redraw the current Scrooby screen after the video frame.
+bool IsSHARTVFrameOverlayActive();
+void SetSHARTVFrameOverlayActive(bool active);
 #endif
 
 #include <string.h>
@@ -434,6 +440,9 @@ void FMVPlayer::Stop()
     // Evitar doble stop
     if( !this->IsPlaying() || m_refIRadMoviePlayer == NULL )
     {
+#if defined(RAD_ANDROID)
+        SetSHARTVFrameOverlayActive(false);
+#endif
         //LOGI("FMV: Stop() IGNORED state=%d playing=%d player=%p",
              //(int)GetState(), (int)this->IsPlaying(), (void*)m_refIRadMoviePlayer);
         mFadeOut = -1.0f;
@@ -465,6 +474,12 @@ void FMVPlayer::Stop()
     AnimationPlayer::Stop();
 
     ClearData();
+
+#if defined(RAD_ANDROID)
+    // Disable the gallery overlay only after playback state has been reset, so
+    // the frontend render layer does not skip drawing during the exit transition.
+    SetSHARTVFrameOverlayActive(false);
+#endif
 
     mFadeOut = -1.0f;
 }
@@ -707,8 +722,22 @@ void FMVPlayer::IterateLoop( IRadMoviePlayer2* pIRadMoviePlayer )
     BeginSHARAndroidFMVOutputRender();
 #endif
 
-    // Render del frame de vídeo (UNA sola vez)
+    // Render the decoded movie frame before drawing the gallery TV frame.
     pIRadMoviePlayer->Render();
+
+#if defined(RAD_ANDROID)
+    if (IsSHARTVFrameOverlayActive())
+    {
+        // FMV writes directly to framebuffer 0 after regular frontend drawing.
+        // Re-draw Scrooby now so its alpha TV-frame border is composed on top of
+        // the video. Zero delta avoids advancing frontend animations twice.
+        Scrooby::App* scroobyApp = Scrooby::App::GetInstance();
+        if (scroobyApp != NULL)
+        {
+            scroobyApp->DrawFrame(0.0f);
+        }
+    }
+#endif
 
     // NEW LINES 
 #if defined(RAD_ANDROID)
