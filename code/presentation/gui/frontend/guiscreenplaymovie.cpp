@@ -35,6 +35,13 @@
 #include <p3d/view.hpp>
 
 #include <raddebug.hpp> // Foundation
+
+#if defined(RAD_ANDROID)
+#include <android/log.h>
+#define TVFRAME_DIAG(...) __android_log_print(ANDROID_LOG_INFO, "SHR-TVFrameDiag", __VA_ARGS__)
+#else
+#define TVFRAME_DIAG(...) rDebugPrintf(__VA_ARGS__)
+#endif
 #include <radmovie2.hpp>
 
 #include <sound/soundmanager.h>
@@ -77,10 +84,24 @@ CGuiScreenPlayMovie::CGuiScreenPlayMovie
     // Retrieve the Scrooby drawing elements.
     //
     Scrooby::Page* pPage = m_pScroobyScreen->GetPage( "Demo" );
+    TVFRAME_DIAG("TVFrameDiag: ctor windowId=%d screen=%p DemoPage=%p",
+                 (int)windowID, (void*)m_pScroobyScreen, (void*)pPage);
     if( pPage != NULL )
     {
         m_demoText = pPage->GetText( "Demo" );
         rAssert( m_demoText != NULL );
+
+        // Probe the same named TV frame layer referenced by the original
+        // code. Its pointer and all visibility toggles were commented out
+        // in the Android source, so this diagnostic deliberately does not
+        // change its visibility.
+        auto tvFrame = pPage->GetLayer( "TVFrame" );
+        TVFRAME_DIAG("TVFrameDiag: Demo layer TVFrame=%p DemoText=%p; visibility unchanged by diagnostic",
+                     (void*)tvFrame, (void*)m_demoText);
+    }
+    else
+    {
+        TVFRAME_DIAG("TVFrameDiag: Demo page missing for windowId=%d", (int)windowID);
     }
 
 /*
@@ -348,6 +369,11 @@ void CGuiScreenPlayMovie::OnPresentationEventEnd( PresentationEvent* pEvent )
 //===========================================================================
 void CGuiScreenPlayMovie::InitIntro()
 {
+    Scrooby::Page* diagPage = m_pScroobyScreen->GetPage( "Demo" );
+    auto diagTVFrame = ( diagPage != NULL ) ? diagPage->GetLayer( "TVFrame" ) : NULL;
+    TVFRAME_DIAG("TVFrameDiag: InitIntro windowId=%d DemoPage=%p TVFrame=%p",
+                 (int)m_ID, (void*)diagPage, (void*)diagTVFrame);
+
     rAssertMsg( !GetPresentationManager()->IsQueueEmpty(),
                 "ERROR: *** No movies were queued for playing!" );
 
@@ -386,6 +412,11 @@ void CGuiScreenPlayMovie::InitIntro()
 //===========================================================================
 void CGuiScreenPlayMovie::InitRunning()
 {
+    Scrooby::Page* diagPage = m_pScroobyScreen->GetPage( "Demo" );
+    auto diagTVFrame = ( diagPage != NULL ) ? diagPage->GetLayer( "TVFrame" ) : NULL;
+    TVFRAME_DIAG("TVFrameDiag: InitRunning windowId=%d DemoPage=%p TVFrame=%p",
+                 (int)m_ID, (void*)diagPage, (void*)diagTVFrame);
+
     if( m_ID == GUI_SCREEN_ID_PLAY_MOVIE_DEMO )
     {
         // disable screen clearing for GUI render layer
@@ -426,6 +457,11 @@ void CGuiScreenPlayMovie::InitRunning()
 //===========================================================================
 void CGuiScreenPlayMovie::InitOutro()
 {
+    Scrooby::Page* diagPage = m_pScroobyScreen->GetPage( "Demo" );
+    auto diagTVFrame = ( diagPage != NULL ) ? diagPage->GetLayer( "TVFrame" ) : NULL;
+    TVFRAME_DIAG("TVFrameDiag: InitOutro windowId=%d DemoPage=%p TVFrame=%p",
+                 (int)m_ID, (void*)diagPage, (void*)diagTVFrame);
+
     if( m_ID == GUI_SCREEN_ID_PLAY_MOVIE_DEMO )
     {
         // enable screen clearing
