@@ -418,7 +418,7 @@ CGuiScreenViewCredits::FormatTextWithLineBreaks( Scrooby::Text* pText )
     // partitions stay aligned even when their text boxes have different heights.
     // The old bounding-box multiplier can make the opening title partitions
     // overlap on Android.
-    tFont* font = pText->GetTextStyle();
+    tFont* font = pText->GetFont();
     if (font != NULL)
     {
         const float fontLineHeight = font->GetFontHeight() + font->GetLineSpacing();
