@@ -177,14 +177,17 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
             // offset current credits partition by total translation so far
             //
             m_credits[ i ]->ResetTransformation();
-            m_credits[ i ]->Translate( 0, (int)s_creditsOffsets[ i ] );
+            m_credits[ i ]->SetPosition( authoredX, authoredY + (int)s_creditsOffsets[ i ] );
 
+            int layoutX = 0;
+            int layoutY = 0;
+            m_credits[ i ]->GetOriginPosition( layoutX, layoutY );
             rmt::Matrix* partitionMatrix = m_credits[ i ]->GetTransform();
-            CREDITS_DIAG("CreditsDiag: partition=%d matrixTranslation=(%.6f,%.6f) offsetY=%.1f visible=%d",
-                         i,
+            CREDITS_DIAG("CreditsDiag: partition=%d positionedAt=(%d,%d) offsetY=%.1f matrixTranslation=(%.6f,%.6f) visible=%d",
+                         i, layoutX, layoutY, s_creditsOffsets[ i ],
                          partitionMatrix != NULL ? partitionMatrix->Row( 3 ).x : 0.0f,
                          partitionMatrix != NULL ? partitionMatrix->Row( 3 ).y : 0.0f,
-                         s_creditsOffsets[ i ], m_credits[ i ]->IsVisible() ? 1 : 0);
+                         m_credits[ i ]->IsVisible() ? 1 : 0);
 
             // disable any text outlining or drop shadow effects
             //

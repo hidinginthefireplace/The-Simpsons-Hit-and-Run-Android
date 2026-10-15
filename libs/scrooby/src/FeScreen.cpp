@@ -25,6 +25,13 @@
 #include "xml/XMLTree.h"
 #include <raddebug.hpp>
 
+#if defined(RAD_ANDROID)
+#include <android/log.h>
+#define TVFRAME_DIAG(...) __android_log_print(ANDROID_LOG_INFO, "SHR-TVFrameDiag", __VA_ARGS__)
+#else
+#define TVFRAME_DIAG(...) rDebugPrintf(__VA_ARGS__)
+#endif
+
 //===========================================================================
 // Global Data, Local Data, Local Classes
 //===========================================================================
@@ -299,8 +306,10 @@ void FeScreen::DisplayForeground()
 
     p3d::stack->Translate( -0.5f, -0.5f / aspect, 0.5f );
     bool draw = false;
-    FeDrawable* tvFrameFallback = NULL;
-    PascalCString tvFramePageName = "TVFrame.pag";
+    // Resolve the fallback from the screen's page resource table. Looking it
+    // up by GetName() is fragile because page resource names and display names
+    // are not guaranteed to use the same extension spelling.
+    FeDrawable* tvFrameFallback = dynamic_cast<FeDrawable*>( GetPage( "TVFrame" ) );
     for( int i = 0; i < GetChildrenCount(); i++ )
     {
         FeEntity* feEntity = this->GetChildIndex( i );
@@ -319,20 +328,19 @@ void FeScreen::DisplayForeground()
             {
                 draw = true;
             }
-            else if( tvFramePageName.EqualsInsensitive( drawable->GetName() ) )
-            {
-                // Some FMV screens have a TVFrame page but no FeDivide
-                // separator. In that case the normal foreground pass draws
-                // nothing. Keep the normal divider behavior, but use the TV
-                // frame as a narrow fallback when the separator is absent.
-                tvFrameFallback = drawable;
-            }
         }
     }
 
     if( !draw && tvFrameFallback != NULL )
     {
+        TVFRAME_DIAG( "Foreground fallback drawing TVFrame page=%p name=%s",
+                      (void*)tvFrameFallback, tvFrameFallback->GetName() );
         tvFrameFallback->Display();
+    }
+    else
+    {
+        TVFRAME_DIAG( "Foreground pass draw=%d TVFrame fallback=%p",
+                      draw ? 1 : 0, (void*)tvFrameFallback );
     }
     p3d::stack->Pop();
     p3d::pddi->PopState( PDDI_STATE_RENDER );
