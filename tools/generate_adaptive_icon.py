@@ -74,7 +74,6 @@ def main() -> None:
     foreground = fit_foreground(SOURCE / "foreground.png", "foreground.png")
     monochrome = fit_foreground(SOURCE / "monochrome.png", "monochrome.png")
 
-    save_webp(background, DRAWABLE / "ic_launcher_background.webp")
     save_webp(foreground, DRAWABLE / "ic_launcher_logo.webp")
     save_webp(monochrome, DRAWABLE / "ic_launcher_monochrome.webp")
 
