@@ -101,8 +101,14 @@ CGuiScreenPlayMovie::CGuiScreenPlayMovie
     {
         m_demoText = pPage->GetText( "Demo" );
         rAssert( m_demoText != NULL );
-        // Retain the transparent TV-frame artwork for selected gallery movies.
-        m_tvFrame = pPage->GetLayer( "TVFrame" );
+    }
+
+    // The TV frame is on its own Scrooby page, not inside the "Demo" page.
+    // This is the same page used by CGuiScreenIntroTransition.
+    Scrooby::Page* pTVFramePage = m_pScroobyScreen->GetPage( "TVFrame" );
+    if( pTVFramePage != NULL )
+    {
+        m_tvFrame = pTVFramePage->GetLayer( "TVFrame" );
     }
 
     if( windowID == GUI_SCREEN_ID_PLAY_MOVIE )

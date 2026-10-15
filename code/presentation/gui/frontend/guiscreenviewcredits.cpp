@@ -33,6 +33,8 @@
 #include <Text.h>
 #include <Sprite.h>
 
+#include <p3d/font.hpp>
+
 // ATG
 #include <raddebug.hpp>
 
@@ -410,13 +412,27 @@ CGuiScreenViewCredits::FormatTextWithLineBreaks( Scrooby::Text* pText )
     int height = 0;
     pText->GetBoundingBoxSize( width, height );
 
-#ifdef RAD_WIN32
-    const float SPACING_FUDGE_FACTOR = 1.20f;
+#if defined(RAD_ANDROID)
+    // The credits are divided into separate Scrooby text objects. Estimate the
+    // height contributed by each line from the actual font metrics so the
+    // partitions stay aligned even when their text boxes have different heights.
+    // The old bounding-box multiplier can make the opening title partitions
+    // overlap on Android.
+    tFont* font = pText->GetTextStyle();
+    if (font != NULL)
+    {
+        const float fontLineHeight = font->GetFontHeight() + font->GetLineSpacing();
+        s_numPixelsPerLine = fontLineHeight > 0.0f ? fontLineHeight : height * 1.15f;
+    }
+    else
+    {
+        s_numPixelsPerLine = height * 1.15f;
+    }
+#elif defined(RAD_WIN32)
+    s_numPixelsPerLine = height * 1.20f;
 #else
-    const float SPACING_FUDGE_FACTOR = 1.15f;
+    s_numPixelsPerLine = height * 1.15f;
 #endif
-
-    s_numPixelsPerLine = height * SPACING_FUDGE_FACTOR;
 
     P3D_UNICODE* textBuffer = static_cast<P3D_UNICODE*>( pText->GetStringBuffer() );
     rAssert( textBuffer != NULL );
