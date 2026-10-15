@@ -1,4 +1,4 @@
-name: Build Credits and TV Frame Fix Test APK
+name: Build TV Frame Foreground and Credits Transform Test APK
 
 on:
   push:
@@ -77,6 +77,6 @@ jobs:
       - name: Upload experimental APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simpsons-Credits-TVFrame-Fix-Test
+          name: Simpsons-TVFrame-Foreground-Credits-Transform-Test
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error

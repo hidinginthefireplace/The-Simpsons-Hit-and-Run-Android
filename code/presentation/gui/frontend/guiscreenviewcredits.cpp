@@ -179,10 +179,11 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
             m_credits[ i ]->ResetTransformation();
             m_credits[ i ]->Translate( 0, (int)s_creditsOffsets[ i ] );
 
-            int translatedXMin = 0, translatedYMin = 0, translatedXMax = 0, translatedYMax = 0;
-            m_credits[ i ]->GetBoundingBox( translatedXMin, translatedYMin, translatedXMax, translatedYMax );
-            CREDITS_DIAG("CreditsDiag: partition=%d postOffsetBBox=(%d,%d)-(%d,%d) offsetY=%.1f visible=%d",
-                         i, translatedXMin, translatedYMin, translatedXMax, translatedYMax,
+            rmt::Matrix* partitionMatrix = m_credits[ i ]->GetTransform();
+            CREDITS_DIAG("CreditsDiag: partition=%d matrixTranslation=(%.6f,%.6f) offsetY=%.1f visible=%d",
+                         i,
+                         partitionMatrix != NULL ? partitionMatrix->Row( 3 ).x : 0.0f,
+                         partitionMatrix != NULL ? partitionMatrix->Row( 3 ).y : 0.0f,
                          s_creditsOffsets[ i ], m_credits[ i ]->IsVisible() ? 1 : 0);
 
             // disable any text outlining or drop shadow effects
@@ -458,10 +459,12 @@ CGuiScreenViewCredits::ResetScrolling()
     {
         if( m_credits[ i ] != NULL && ( i < 2 || i >= 28 ) )
         {
-            int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
-            m_credits[ i ]->GetBoundingBox( xMin, yMin, xMax, yMax );
-            CREDITS_DIAG("CreditsDiag: reset-position partition=%d bbox=(%d,%d)-(%d,%d) visible=%d",
-                         i, xMin, yMin, xMax, yMax, m_credits[ i ]->IsVisible() ? 1 : 0);
+            rmt::Matrix* partitionMatrix = m_credits[ i ]->GetTransform();
+            CREDITS_DIAG("CreditsDiag: reset-transform partition=%d matrixTranslation=(%.6f,%.6f) visible=%d",
+                         i,
+                         partitionMatrix != NULL ? partitionMatrix->Row( 3 ).x : 0.0f,
+                         partitionMatrix != NULL ? partitionMatrix->Row( 3 ).y : 0.0f,
+                         m_credits[ i ]->IsVisible() ? 1 : 0);
         }
     }
 

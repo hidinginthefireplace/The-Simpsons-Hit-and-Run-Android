@@ -389,9 +389,10 @@ void CGuiScreenPlayMovie::OnPresentationEventEnd( PresentationEvent* pEvent )
 void CGuiScreenPlayMovie::InitIntro()
 {
     Scrooby::Page* diagPage = m_pScroobyScreen->GetPage( "Demo" );
-    auto diagTVFrame = ( diagPage != NULL ) ? diagPage->GetLayer( "TVFrame" ) : NULL;
-    TVFRAME_DIAG("TVFrameDiag: InitIntro windowId=%d DemoPage=%p TVFrame=%p",
-                 (int)m_ID, (void*)diagPage, (void*)diagTVFrame);
+    Scrooby::Page* diagTVFramePage = m_pScroobyScreen->GetPage( "TVFrame" );
+    TVFRAME_DIAG("TVFrameDiag: InitIntro windowId=%d DemoPage=%p TVFramePage=%p selectedFrame=%p visible=%d",
+                 (int)m_ID, (void*)diagPage, (void*)diagTVFramePage,
+                 (void*)m_tvFrame, m_tvFrame != NULL && m_tvFrame->IsVisible() ? 1 : 0);
 
     rAssertMsg( !GetPresentationManager()->IsQueueEmpty(),
                 "ERROR: *** No movies were queued for playing!" );
@@ -431,9 +432,10 @@ void CGuiScreenPlayMovie::InitIntro()
 void CGuiScreenPlayMovie::InitRunning()
 {
     Scrooby::Page* diagPage = m_pScroobyScreen->GetPage( "Demo" );
-    auto diagTVFrame = ( diagPage != NULL ) ? diagPage->GetLayer( "TVFrame" ) : NULL;
-    TVFRAME_DIAG("TVFrameDiag: InitRunning windowId=%d DemoPage=%p TVFrame=%p",
-                 (int)m_ID, (void*)diagPage, (void*)diagTVFrame);
+    Scrooby::Page* diagTVFramePage = m_pScroobyScreen->GetPage( "TVFrame" );
+    TVFRAME_DIAG("TVFrameDiag: InitRunning windowId=%d DemoPage=%p TVFramePage=%p selectedFrame=%p visible=%d",
+                 (int)m_ID, (void*)diagPage, (void*)diagTVFramePage,
+                 (void*)m_tvFrame, m_tvFrame != NULL && m_tvFrame->IsVisible() ? 1 : 0);
 
     if( m_ID == GUI_SCREEN_ID_PLAY_MOVIE_DEMO ||
         m_ID == GUI_SCREEN_ID_PLAY_MOVIE )
@@ -478,9 +480,10 @@ void CGuiScreenPlayMovie::InitRunning()
 void CGuiScreenPlayMovie::InitOutro()
 {
     Scrooby::Page* diagPage = m_pScroobyScreen->GetPage( "Demo" );
-    auto diagTVFrame = ( diagPage != NULL ) ? diagPage->GetLayer( "TVFrame" ) : NULL;
-    TVFRAME_DIAG("TVFrameDiag: InitOutro windowId=%d DemoPage=%p TVFrame=%p",
-                 (int)m_ID, (void*)diagPage, (void*)diagTVFrame);
+    Scrooby::Page* diagTVFramePage = m_pScroobyScreen->GetPage( "TVFrame" );
+    TVFRAME_DIAG("TVFrameDiag: InitOutro windowId=%d DemoPage=%p TVFramePage=%p selectedFrame=%p visible=%d",
+                 (int)m_ID, (void*)diagPage, (void*)diagTVFramePage,
+                 (void*)m_tvFrame, m_tvFrame != NULL && m_tvFrame->IsVisible() ? 1 : 0);
 
     if( m_ID == GUI_SCREEN_ID_PLAY_MOVIE_DEMO ||
         m_ID == GUI_SCREEN_ID_PLAY_MOVIE )

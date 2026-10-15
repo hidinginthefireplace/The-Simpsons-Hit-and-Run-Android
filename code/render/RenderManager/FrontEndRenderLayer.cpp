@@ -26,6 +26,10 @@
 #include <gameflow/gameflow.h>
 #include <contexts/contextenum.h>
 #include <contexts/gameplay/gameplaycontext.h>
+#include <App.h>
+#include <Project.h>
+#include <Screen.h>
+#include <Page.h>
 #include <worldsim/coins/coinmanager.h>
 #include <worldsim/coins/sparkle.h>
 #ifdef RAD_WIN32
@@ -278,14 +282,52 @@ void FrontEndRenderLayer::Render()
         fmvPlaying = pm->GetFMVPlayer()->IsPlaying();
     }
 
+    static bool s_loggedFmvForeground = false;
     if( fmvPlaying )
     {
+#ifdef RAD_ANDROID
+        // Do not call DrawFrame() during an FMV: that would render the full
+        // movie screen UI and can cover the video. Render only the foreground
+        // pages, which is where the standalone TVFrame page belongs.
+        for( unsigned int view = 0; view < mNumViews; view++ )
+        {
+            if( mpView[ view ] == NULL )
+            {
+                continue;
+            }
+
+            mpView[ view ]->BeginRender();
+
+            if( mpScroobyApp != NULL )
+            {
+                if( !s_loggedFmvForeground )
+                {
+                    Scrooby::Project* project = mpScroobyApp->GetProject();
+                    Scrooby::Screen* screen = project != NULL ? project->GetCurrentScreen() : NULL;
+                    Scrooby::Page* divider = screen != NULL ? screen->GetPage( "FeDivide" ) : NULL;
+                    Scrooby::Page* tvFramePage = screen != NULL ? screen->GetPage( "TVFrame" ) : NULL;
+                    LOGI( "FMVForeground: screen=%p pages=%d divider=%p tvFramePage=%p; drawing foreground pages only",
+                          (void*)screen,
+                          screen != NULL ? screen->GetNumberOfPages() : -1,
+                          (void*)divider, (void*)tvFramePage );
+                    s_loggedFmvForeground = true;
+                }
+
+                mpScroobyApp->DrawForeground( static_cast<float>( g_scroobySimulationTime ) );
+            }
+
+            mpView[ view ]->EndRender();
+        }
+#else
+        // Preserve the original non-Android behavior during FMV playback.
+#endif
 #ifdef DEBUGWATCH
         mDebugRenderTime = radTimeGetMicroseconds() - mDebugRenderTime;
 #endif
         END_PROFILE( "FE Render" );
         return;
     }
+    s_loggedFmvForeground = false;
 
     for( unsigned int view = 0; view < mNumViews; view++ )
     {
