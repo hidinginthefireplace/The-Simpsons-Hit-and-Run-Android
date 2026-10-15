@@ -464,11 +464,15 @@ void CGuiScreenPlayMovie::InitRunning()
 void CGuiScreenPlayMovie::InitOutro()
 {
 #ifdef RAD_ANDROID
-    // Stop the overlay before restoring the normal frontend render state.
+    // Stop the special FMV overlay mode before returning to the frontend.
     SetSHARTVFrameOverlayActive(false);
     if (m_ID == GUI_SCREEN_ID_PLAY_MOVIE && m_tvFrame != NULL)
     {
-        m_tvFrame->SetVisible(false);
+        // TVFrame is shared with the Homer-house frontend. Keep it visible after
+        // the movie ends; leaving this hidden made the menu render as a black
+        // screen even though the frontend remained active and responsive.
+        m_tvFrame->SetAlpha(1.0f);
+        m_tvFrame->SetVisible(true);
         GetRenderManager()->mpLayer( RenderEnums::GUI )->pView( 0 )->SetClearMask(PDDI_BUFFER_ALL);
     }
 #endif
