@@ -1,5 +1,9 @@
 # Controles del juego  &#x1F3AE;
 
+## Button layout reference
+
+This guide uses PlayStation button names in the control tables. On Xbox-style and NVIDIA Shield controllers, the equivalent labels are: **Cross (✕) = A**, **Circle (○) = B**, **Square (□) = X**, **Triangle (△) = Y**, **L1 = LB**, **R1 = RB**, **L2 = LT**, and **R2 = RT**. **Start/Menu** and **Select/View** labels vary by controller. The **Confirm/OK** action is the Cross/A face button; the separate **Select/View** button is used to reset the vehicle.
+
 [Discord](https://discord.gg/6Gw6jTJv8w)
 ## &#x1F1EA;&#x1F1F8; Espa&#x00F1;ol — Controles para mando externo  &#x1F3AE;
 
