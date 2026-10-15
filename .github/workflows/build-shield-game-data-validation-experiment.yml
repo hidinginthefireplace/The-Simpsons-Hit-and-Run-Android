@@ -31,6 +31,12 @@ jobs:
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "cmake;4.1.2" "ndk;28.2.13676358"
 
+      - name: Generate launcher icon layers
+        run: |
+          python3 -m venv "$RUNNER_TEMP/icon-venv"
+          "$RUNNER_TEMP/icon-venv/bin/python" -m pip install --upgrade pip Pillow
+          "$RUNNER_TEMP/icon-venv/bin/python" tools/generate_adaptive_icon.py
+
       - name: Install FFmpeg Prefab dependency
         run: |
           mkdir -p "$HOME/.m2/repository"

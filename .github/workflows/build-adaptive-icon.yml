@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - experimental-game-data-validation
+    paths:
+      - 'icon-source/**'
+      - 'tools/generate_adaptive_icon.py'
+      - 'android-project/app/src/main/res/**'
+      - 'android-project/app/src/main/ic_launcher-playstore.webp'
   workflow_dispatch:
 
 permissions:
