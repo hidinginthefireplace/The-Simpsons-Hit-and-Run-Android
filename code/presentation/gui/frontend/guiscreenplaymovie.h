@@ -22,10 +22,17 @@
 #include <presentation/gui/guiscreen.h>
 #include <presentation/presevents/presentationevent.h>
 #include <constants/movienames.h>
+#include <Layer.h>
 
 //===========================================================================
 // Forward References
 //===========================================================================
+#if defined(RAD_ANDROID)
+// Used by FrontEndRenderLayer to show the TV-frame overlay during gallery FMVs.
+bool IsSHARTVFrameOverlayActive();
+void SetSHARTVFrameOverlayActive(bool active);
+#endif
+
 class CGuiMenu;
 
 //===========================================================================
@@ -65,6 +72,7 @@ private:
     Scrooby::Text* m_demoText;
     unsigned int m_elapsedTime;
 	bool m_IsSkippable : 1;
+    Scrooby::Layer* m_tvFrame;
 };
 
 #endif // GUISCREENPLAYMOVIE_H

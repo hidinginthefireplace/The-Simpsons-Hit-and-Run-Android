@@ -33,6 +33,7 @@
 #endif
 #ifdef RAD_ANDROID
 #include <presentation/fmvplayer/fmvplayer.h>
+#include <presentation/gui/frontend/guiscreenplaymovie.h>
 #include <input/touch/touchhudrenderer.h>
 void ApplySHARPostProcessingBeforeTouchHud();
 #endif
@@ -278,7 +279,12 @@ void FrontEndRenderLayer::Render()
         fmvPlaying = pm->GetFMVPlayer()->IsPlaying();
     }
 
-    if( fmvPlaying )
+#ifdef RAD_ANDROID
+    const bool drawTVFrameOverMovie = fmvPlaying && IsSHARTVFrameOverlayActive();
+#else
+    const bool drawTVFrameOverMovie = false;
+#endif
+    if( fmvPlaying && !drawTVFrameOverMovie )
     {
 #ifdef DEBUGWATCH
         mDebugRenderTime = radTimeGetMicroseconds() - mDebugRenderTime;

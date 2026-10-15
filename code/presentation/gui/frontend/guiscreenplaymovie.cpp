@@ -46,6 +46,26 @@
 // Global Data, Local Data, Local Classes
 //===========================================================================
 
+#if defined(RAD_ANDROID)
+// FrontEndRenderLayer normally skips Scrooby drawing during FMV playback.
+// Enable it only while overlaying the TV frame for a gallery movie.
+namespace
+{
+    bool gSHARTVFrameOverlayActive = false;
+}
+
+bool IsSHARTVFrameOverlayActive()
+{
+    return gSHARTVFrameOverlayActive;
+}
+
+void SetSHARTVFrameOverlayActive(bool active)
+{
+    gSHARTVFrameOverlayActive = active;
+}
+#endif
+
+
 //===========================================================================
 // Public Member Functions
 //===========================================================================
@@ -71,8 +91,8 @@ CGuiScreenPlayMovie::CGuiScreenPlayMovie
 :   CGuiScreen( pScreen, pParent, windowID ),
     m_demoText( NULL ),
     m_elapsedTime( 0 ),
-	m_IsSkippable(true)
-//    m_tvFrame( NULL )
+	m_IsSkippable(true),
+    m_tvFrame( NULL )
 {
     // Retrieve the Scrooby drawing elements.
     //
@@ -81,13 +101,9 @@ CGuiScreenPlayMovie::CGuiScreenPlayMovie
     {
         m_demoText = pPage->GetText( "Demo" );
         rAssert( m_demoText != NULL );
+        // Retain the transparent TV-frame artwork for selected gallery movies.
+        m_tvFrame = pPage->GetLayer( "TVFrame" );
     }
-
-/*
-    // background TV frame layer
-    //
-    m_tvFrame = pPage->GetLayer( "TVFrame" );
-*/
 
     if( windowID == GUI_SCREEN_ID_PLAY_MOVIE )
     {
@@ -361,14 +377,14 @@ void CGuiScreenPlayMovie::InitIntro()
     GetInputManager()->GetFEMouse()->SetInGameMode( true );
 #endif
 
-/*
-    // hide background TV frame so we can fade in/out the foreground one
-    //
-    if( m_tvFrame != NULL )
+#ifdef RAD_ANDROID
+    // Keep the overlay disabled during screen transitions.
+    SetSHARTVFrameOverlayActive(false);
+    if (m_ID == GUI_SCREEN_ID_PLAY_MOVIE && m_tvFrame != NULL)
     {
-        m_tvFrame->SetVisible( false );
+        m_tvFrame->SetVisible(false);
     }
-*/
+#endif
 }
 
 
@@ -392,8 +408,23 @@ void CGuiScreenPlayMovie::InitRunning()
         //
         GetRenderManager()->mpLayer( RenderEnums::GUI )->pView( 0 )->SetClearMask( PDDI_BUFFER_DEPTH | PDDI_BUFFER_STENCIL );
     }
+#if defined(RAD_ANDROID)
+    else if (m_ID == GUI_SCREEN_ID_PLAY_MOVIE && m_tvFrame != NULL)
+    {
+        // The movie is drawn directly to the output Surface. Preserve its colour
+        // buffer so the TV frame's transparent centre can reveal the video.
+        GetRenderManager()->mpLayer( RenderEnums::GUI )->pView( 0 )->SetClearMask(
+            PDDI_BUFFER_DEPTH | PDDI_BUFFER_STENCIL
+        );
+        GetRenderManager()->mpLayer( RenderEnums::GUI )->Warm();
+        m_tvFrame->SetAlpha(1.0f);
+        m_tvFrame->SetVisible(true);
+        SetSHARTVFrameOverlayActive(true);
+    }
+#endif
     else
     {
+        SetSHARTVFrameOverlayActive(false);
         GetRenderManager()->mpLayer( RenderEnums::GUI )->Chill();
     }
 
@@ -426,6 +457,16 @@ void CGuiScreenPlayMovie::InitRunning()
 //===========================================================================
 void CGuiScreenPlayMovie::InitOutro()
 {
+#ifdef RAD_ANDROID
+    // Stop the overlay before restoring the normal frontend render state.
+    SetSHARTVFrameOverlayActive(false);
+    if (m_ID == GUI_SCREEN_ID_PLAY_MOVIE && m_tvFrame != NULL)
+    {
+        m_tvFrame->SetVisible(false);
+        GetRenderManager()->mpLayer( RenderEnums::GUI )->pView( 0 )->SetClearMask(PDDI_BUFFER_ALL);
+    }
+#endif
+
     if( m_ID == GUI_SCREEN_ID_PLAY_MOVIE_DEMO )
     {
         // enable screen clearing
