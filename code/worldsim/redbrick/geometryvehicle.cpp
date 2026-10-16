@@ -655,7 +655,7 @@ BEGIN_PROFILE("GeometryVehicle::Display SetUp")
         motionBlurPlayerAvatar->GetVehicle() == mVehicleOwner)
     {
         // Protect the driving vehicle only; traffic and scenery stay in the blur pass.
-        RegisterSHARMotionBlurSubjectBounds(1, pos.x, pos.y + 0.65f, pos.z, 2.00f, 0.90f);
+        RegisterSHARMotionBlurSubjectBounds(1, pos.x, pos.y + 0.75f, pos.z, 2.60f, 1.15f);
     }
 #endif
     rmt::Vector movement = pos - mLastPosition;

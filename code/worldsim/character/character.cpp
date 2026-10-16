@@ -4978,7 +4978,7 @@ void Character::Display(void)
     if (motionBlurPlayerAvatar != NULL && motionBlurPlayerAvatar->GetCharacter() == this)
     {
         // Keep the player biped sharp while the surrounding scene receives camera blur.
-        RegisterSHARMotionBlurSubjectBounds(0, rootPos.x, rootPos.y + 0.90f, rootPos.z, 0.45f, 1.00f);
+        RegisterSHARMotionBlurSubjectBounds(0, rootPos.x, rootPos.y + 0.95f, rootPos.z, 0.65f, 1.15f);
     }
 #endif
 
