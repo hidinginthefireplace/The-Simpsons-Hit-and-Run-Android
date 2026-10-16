@@ -337,9 +337,8 @@ void FeScreen::DisplayForeground()
         static bool s_loggedTVFrameFallback = false;
         if( !s_loggedTVFrameFallback )
         {
-            TVFRAME_DIAG( "Foreground fallback drawing TVFrame page=%p name=%s children=%d",
-                          (void*)tvFrameFallback, tvFrameFallback->GetName(),
-                          tvFrameFallback->GetChildrenCount() );
+            TVFRAME_DIAG( "Foreground fallback drawing TVFrame page=%p name=%s",
+                          (void*)tvFrameFallback, tvFrameFallback->GetName() );
             s_loggedTVFrameFallback = true;
         }
         tvFrameFallback->Display();
