@@ -56,7 +56,7 @@ private:
 
     void OnNewLineDisplayed( int lineNumber );
 
-    static const int MAX_NUM_CREDITS_PARTITIONS = 32;
+    static const int MAX_NUM_CREDITS_PARTITIONS = 64;
 
     static float s_totalTranslateY;
     static float s_numPixelsPerLine;
