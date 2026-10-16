@@ -135,6 +135,32 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
                          i, (void*)m_credits[ i ], bboxWidth, bboxHeight,
                          authoredX, authoredY, authoredXMin, authoredYMin, authoredXMax, authoredYMax,
                          authoredBreakCount);
+            // Expose the last four runtime strings to identify which partition
+            // actually contains the Logitech and final-thanks text. Backslashes
+            // become vertical bars so the authored line breaks are readable.
+            if( i >= 28 && rawText != NULL )
+            {
+                char preview[ 161 ];
+                int previewOut = 0;
+                for( int textIndex = 0; rawText[ textIndex ] != '\0' && previewOut < 150; textIndex++ )
+                {
+                    unsigned int character = static_cast<unsigned int>( rawText[ textIndex ] );
+                    if( character == '\\' )
+                    {
+                        preview[ previewOut++ ] = '|';
+                    }
+                    else if( character >= 32 && character <= 126 )
+                    {
+                        preview[ previewOut++ ] = static_cast<char>( character );
+                    }
+                    else
+                    {
+                        preview[ previewOut++ ] = '?';
+                    }
+                }
+                preview[ previewOut ] = '\0';
+                CREDITS_DIAG("CreditsDiag: partition=%d textPreview=[%s]", i, preview);
+            }
 #ifndef PAL
             // hide localization partition from credits for NTSC builds
             //
