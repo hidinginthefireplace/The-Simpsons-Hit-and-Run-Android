@@ -52,7 +52,6 @@ const float CREDITS_MANUAL_SCROLL_FACTOR = 5.0f;
 const float CREDITS_FGD_CORRECTION_SCALE = 2.0f;
 
 const int CREDITS_PARTITION_FOR_LOCALIZATION = 13;
-const int CREDITS_PARTITION_FOR_LOGITECH = 30;
 
 float CGuiScreenViewCredits::s_totalTranslateY = 0.0f;
 float CGuiScreenViewCredits::s_numPixelsPerLine = 0.0f;
@@ -175,14 +174,67 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
 
 #ifndef RAD_GAMECUBE
     #ifndef RAD_PS2
-            // hide logitech line from credits for non-GC and non-PS2 platforms
+            // Hide only the platform-specific Logitech line, rather than a
+            // fixed partition number. The frontend asset can place the line
+            // in a later credits text object alongside the final thanks, so
+            // hiding a whole partition can discard unrelated credits.
             //
-            if( i == CREDITS_PARTITION_FOR_LOGITECH )
+            if( rawText != NULL )
             {
-                m_credits[ i ]->SetVisible( false );
-                CREDITS_DIAG("CreditsDiag: partition=%d hidden=platform-specific Logitech", i);
+                P3D_UNICODE* logitechText = NULL;
+                const char* logitechToken = "Logitech";
+                for( int textIndex = 0; rawText[ textIndex ] != '\0' && logitechText == NULL; textIndex++ )
+                {
+                    bool matches = true;
+                    for( int tokenIndex = 0; logitechToken[ tokenIndex ] != '\0'; tokenIndex++ )
+                    {
+                        if( rawText[ textIndex + tokenIndex ] == '\0' ||
+                            rawText[ textIndex + tokenIndex ] != static_cast<P3D_UNICODE>( logitechToken[ tokenIndex ] ) )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if( matches )
+                    {
+                        logitechText = &rawText[ textIndex ];
+                    }
+                }
 
-                continue;
+                if( logitechText != NULL )
+                {
+                    // Move to the beginning of the line and remove it plus
+                    // its authored trailing line breaks. Keep any following
+                    // paragraph (notably the final family-and-friends thanks).
+                    P3D_UNICODE* lineStart = logitechText;
+                    while( lineStart > rawText && lineStart[ -1 ] != '\\' )
+                    {
+                        lineStart--;
+                    }
+
+                    P3D_UNICODE* lineEnd = logitechText;
+                    while( *lineEnd != '\0' && *lineEnd != '\\' )
+                    {
+                        lineEnd++;
+                    }
+
+                    P3D_UNICODE* copyFrom = lineEnd;
+                    if( *copyFrom == '\\' )
+                    {
+                        copyFrom++;
+                        if( *copyFrom == '\\' )
+                        {
+                            copyFrom++;
+                        }
+                    }
+
+                    P3D_UNICODE* destination = lineStart;
+                    while( ( *destination++ = *copyFrom++ ) != '\0' )
+                    {
+                    }
+
+                    CREDITS_DIAG("CreditsDiag: partition=%d removed only Logitech line; remaining text preserved", i);
+                }
             }
     #endif // !RAD_PS2
 #endif // !RAD_GAMECUBE
