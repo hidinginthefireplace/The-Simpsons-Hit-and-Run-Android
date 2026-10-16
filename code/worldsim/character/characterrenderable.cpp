@@ -584,6 +584,7 @@ void CharacterRenderable::DisplayModel( tPose* pose )
             // Diagnostic isolation build: retain toon lighting but skip the
             // expanded-mesh black silhouette prepass. This determines whether
             // the phone-only black patches originate in outline geometry/depth.
+            // This experimental branch is intentionally separate from baseline.
             SetCelShadingObjectEnabled(true);
             SetCelShadingOutlinePass(false);
             draw->Display( pose );
