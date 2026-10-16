@@ -9,6 +9,10 @@
 #include <pddi/gles/gltex.hpp>
 #include <pddi/gles/glmat.hpp>
 #include <pddi/gles/glprog.hpp>
+#ifdef RAD_ANDROID
+#include <p3d/context.hpp>
+#include <p3d/utility.hpp>
+#endif
 
 #ifdef RAD_ANDROID
 #include <SDL_system.h>
@@ -521,7 +525,7 @@ void SetMotionBlurEnabled(bool enabled)
 
 bool GetSHARMotionBlurCameraData(float* output)
 {
-    if (output == NULL || gCelShadingContext == NULL)
+    if (output == NULL || gCelShadingContext == NULL || p3d::context == NULL)
         return false;
 
     float nearPlane = 0.0f;
@@ -533,9 +537,9 @@ bool GetSHARMotionBlurCameraData(float* output)
         fov <= 0.01f || aspect <= 0.01f)
         return false;
 
-    // At this point the world draw has restored the model-view stack to its
-    // camera view transform. Invert it to recover the camera's world transform.
-    rmt::Matrix* worldToCamera = gCelShadingContext->GetMatrix(PDDI_MATRIX_MODELVIEW);
+    // Use tContext's saved world-to-camera matrix. The PDDI model-view stack is
+    // mutable per drawable and can otherwise make moving actors look like camera motion.
+    rmt::Matrix* worldToCamera = p3d::context->GetViewMatrix();
     if (worldToCamera == NULL)
         return false;
 

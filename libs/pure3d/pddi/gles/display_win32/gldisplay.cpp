@@ -51,6 +51,17 @@ static SHARMotionBlurCameraState gSHARPreviousMotionBlurCamera = {};
 static int gSHARMotionBlurHistoryWidth = 0;
 static int gSHARMotionBlurHistoryHeight = 0;
 
+struct SHARMotionBlurSubjectBounds
+{
+    float position[3];
+    float halfWidth;
+    float halfHeight;
+    bool valid;
+};
+
+static SHARMotionBlurSubjectBounds gSHARMotionBlurCharacterSubject = {};
+static SHARMotionBlurSubjectBounds gSHARMotionBlurVehicleSubject = {};
+
 static bool CaptureSHARMotionBlurCamera(SHARMotionBlurCameraState* state)
 {
     if (state == NULL)
@@ -172,6 +183,12 @@ GLint gCelPostPreviousTanHalfFovYLocation = -1;
 GLint gCelPostCurrentNearPlaneLocation = -1;
 GLint gCelPostCurrentFarPlaneLocation = -1;
 GLint gCelPostPreviousNearPlaneLocation = -1;
+GLint gCelPostCharacterMaskEnabledLocation = -1;
+GLint gCelPostCharacterMaskPositionLocation = -1;
+GLint gCelPostCharacterMaskSizeLocation = -1;
+GLint gCelPostVehicleMaskEnabledLocation = -1;
+GLint gCelPostVehicleMaskPositionLocation = -1;
+GLint gCelPostVehicleMaskSizeLocation = -1;
 
 GLuint gCelBloomExtractProgram = 0;
 GLuint gCelBloomBlurProgram = 0;
@@ -851,6 +868,12 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform float currentNearPlane;\n"
             "uniform float currentFarPlane;\n"
             "uniform float previousNearPlane;\n"
+            "uniform float characterMaskEnabled;\n"
+            "uniform vec3 characterMaskPosition;\n"
+            "uniform vec2 characterMaskSize;\n"
+            "uniform float vehicleMaskEnabled;\n"
+            "uniform vec3 vehicleMaskPosition;\n"
+            "uniform vec2 vehicleMaskSize;\n"
             "varying vec2 texcoord;\n"
             "\n"
             "float sceneLuma(vec3 colour) {\n"
@@ -861,13 +884,26 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;\n"
             "}\n"
             "\n"
+            "float protectMotionBlurSubject(vec2 uv, float sceneViewZ, vec3 subjectPosition, vec2 halfSize, float enabled) {\n"
+            "    if (enabled < 0.5) return 0.0;\n"
+            "    vec3 fromCamera = subjectPosition - currentCameraPosition;\n"
+            "    float subjectZ = dot(fromCamera, currentCameraForward);\n"
+            "    if (subjectZ <= currentNearPlane || sceneViewZ > subjectZ + (halfSize.x + halfSize.y) * 1.7) return 0.0;\n"
+            "    vec2 subjectNdc = vec2(dot(fromCamera, currentCameraRight) / (subjectZ * currentTanHalfFovX), dot(fromCamera, currentCameraUp) / (subjectZ * currentTanHalfFovY));\n"
+            "    vec2 subjectUv = subjectNdc * 0.5 + 0.5;\n"
+            "    vec2 subjectRadius = vec2(halfSize.x / (subjectZ * currentTanHalfFovX), halfSize.y / (subjectZ * currentTanHalfFovY)) * 0.5;\n"
+            "    subjectRadius = max(subjectRadius, texelSize * 3.0);\n"
+            "    float ellipseDistance = length((uv - subjectUv) / subjectRadius);\n"
+            "    return 1.0 - smoothstep(0.82, 1.15, ellipseDistance);\n"
+            "}\n"
+            "\n"
             "vec3 applyCameraMotionBlur(vec2 uv, vec3 centreColour) {\n"
             "    if (motionBlurEnabled < 0.5 || motionBlurCameraValid < 0.5 || depthTextureAvailable < 0.5) return centreColour;\n"
             "    float depthValue = texture2D(depthTex, uv).r;\n"
             "    if (depthValue >= 0.9995) return centreColour;\n"
             "    float depthNdc = depthValue * 2.0 - 1.0;\n"
-            "    float depthDenominator = currentFarPlane - depthNdc * (currentFarPlane - currentNearPlane);\n"
-            "    float viewZ = currentNearPlane * currentFarPlane / max(depthDenominator, 0.0001);\n"
+            "    float depthDenominator = currentFarPlane + currentNearPlane - depthNdc * (currentFarPlane - currentNearPlane);\n"
+            "    float viewZ = (2.0 * currentNearPlane * currentFarPlane) / max(depthDenominator, 0.0001);\n"
             "    vec2 ndc = uv * 2.0 - 1.0;\n"
             "    vec3 currentViewPosition = vec3(ndc.x * viewZ * currentTanHalfFovX, ndc.y * viewZ * currentTanHalfFovY, viewZ);\n"
             "    vec3 worldPosition = currentCameraPosition + currentCameraRight * currentViewPosition.x + currentCameraUp * currentViewPosition.y + currentCameraForward * currentViewPosition.z;\n"
@@ -888,7 +924,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    blurred += texture2D(sceneTex, uv + blurOffset * 0.5).rgb * 0.20;\n"
             "    blurred += texture2D(sceneTex, uv - blurOffset).rgb * 0.10;\n"
             "    blurred += texture2D(sceneTex, uv + blurOffset).rgb * 0.10;\n"
-            "    return mix(centreColour, blurred, motionAmount);\n"
+            "    float characterProtection = protectMotionBlurSubject(uv, viewZ, characterMaskPosition, characterMaskSize, characterMaskEnabled);\n"
+            "    float vehicleProtection = protectMotionBlurSubject(uv, viewZ, vehicleMaskPosition, vehicleMaskSize, vehicleMaskEnabled);\n"
+            "    float subjectProtection = max(characterProtection, vehicleProtection);\n"
+            "    return mix(centreColour, blurred, motionAmount * (1.0 - subjectProtection));\n"
             "}\n"
             "\n"
             "void main() {\n"
@@ -1016,6 +1055,12 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostCurrentNearPlaneLocation = glGetUniformLocation(gCelPostProgram, "currentNearPlane");
         gCelPostCurrentFarPlaneLocation = glGetUniformLocation(gCelPostProgram, "currentFarPlane");
         gCelPostPreviousNearPlaneLocation = glGetUniformLocation(gCelPostProgram, "previousNearPlane");
+        gCelPostCharacterMaskEnabledLocation = glGetUniformLocation(gCelPostProgram, "characterMaskEnabled");
+        gCelPostCharacterMaskPositionLocation = glGetUniformLocation(gCelPostProgram, "characterMaskPosition");
+        gCelPostCharacterMaskSizeLocation = glGetUniformLocation(gCelPostProgram, "characterMaskSize");
+        gCelPostVehicleMaskEnabledLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskEnabled");
+        gCelPostVehicleMaskPositionLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskPosition");
+        gCelPostVehicleMaskSizeLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskSize");
 
         glGenTextures(1, &gCelPostTexture);
 
@@ -1650,6 +1695,19 @@ static void ApplyCelPostProcess(int width, int height)
             glUniform1f(gCelPostCurrentFarPlaneLocation, currentMotionBlurCamera.farPlane);
     }
 
+    if (gCelPostCharacterMaskEnabledLocation >= 0)
+        glUniform1f(gCelPostCharacterMaskEnabledLocation, gSHARMotionBlurCharacterSubject.valid ? 1.0f : 0.0f);
+    if (gCelPostCharacterMaskPositionLocation >= 0 && gSHARMotionBlurCharacterSubject.valid)
+        glUniform3f(gCelPostCharacterMaskPositionLocation, gSHARMotionBlurCharacterSubject.position[0], gSHARMotionBlurCharacterSubject.position[1], gSHARMotionBlurCharacterSubject.position[2]);
+    if (gCelPostCharacterMaskSizeLocation >= 0 && gSHARMotionBlurCharacterSubject.valid)
+        glUniform2f(gCelPostCharacterMaskSizeLocation, gSHARMotionBlurCharacterSubject.halfWidth, gSHARMotionBlurCharacterSubject.halfHeight);
+    if (gCelPostVehicleMaskEnabledLocation >= 0)
+        glUniform1f(gCelPostVehicleMaskEnabledLocation, gSHARMotionBlurVehicleSubject.valid ? 1.0f : 0.0f);
+    if (gCelPostVehicleMaskPositionLocation >= 0 && gSHARMotionBlurVehicleSubject.valid)
+        glUniform3f(gCelPostVehicleMaskPositionLocation, gSHARMotionBlurVehicleSubject.position[0], gSHARMotionBlurVehicleSubject.position[1], gSHARMotionBlurVehicleSubject.position[2]);
+    if (gCelPostVehicleMaskSizeLocation >= 0 && gSHARMotionBlurVehicleSubject.valid)
+        glUniform2f(gCelPostVehicleMaskSizeLocation, gSHARMotionBlurVehicleSubject.halfWidth, gSHARMotionBlurVehicleSubject.halfHeight);
+
     if (motionBlurCameraValid)
     {
         if (gCelPostPreviousCameraPositionLocation >= 0)
@@ -1714,8 +1772,28 @@ static void ApplyCelPostProcess(int width, int height)
 static void ApplyFrameSharpening(int width, int height);
 static void ApplyCRTFilter(int width, int height);
 
+void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, float z, float halfWidth, float halfHeight)
+{
+    SHARMotionBlurSubjectBounds* subject = NULL;
+    if (subjectType == 0)
+        subject = &gSHARMotionBlurCharacterSubject;
+    else if (subjectType == 1)
+        subject = &gSHARMotionBlurVehicleSubject;
+    if (subject == NULL)
+        return;
+
+    subject->position[0] = x;
+    subject->position[1] = y;
+    subject->position[2] = z;
+    subject->halfWidth = halfWidth > 0.05f ? halfWidth : 0.05f;
+    subject->halfHeight = halfHeight > 0.05f ? halfHeight : 0.05f;
+    subject->valid = true;
+}
+
 bool BeginCelPostProcessFrame(int width, int height)
 {
+    gSHARMotionBlurCharacterSubject.valid = false;
+    gSHARMotionBlurVehicleSubject.valid = false;
     gSHARFrameWidth = width;
     gSHARFrameHeight = height;
     gCelWorldInFbo = false;

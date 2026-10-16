@@ -33,6 +33,7 @@
 #include <p3d/effects/particlesystem.hpp>
 #include <pddi/pddi.hpp>
 #ifdef RAD_ANDROID
+void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, float z, float halfWidth, float halfHeight);
 bool IsCelShadingEnabled();
 bool IsCelShadingObjectEnabled();
 void SetCelShadingObjectEnabled(bool enabled);
@@ -648,6 +649,15 @@ void GeometryVehicle::Display()
 {
 BEGIN_PROFILE("GeometryVehicle::Display SetUp")
     rmt::Vector pos = mVehicleOwner->GetPosition ();
+#ifdef RAD_ANDROID
+    Avatar* motionBlurPlayerAvatar = GetAvatarManager()->GetAvatarForPlayer(0);
+    if (motionBlurPlayerAvatar != NULL && motionBlurPlayerAvatar->IsInCar() &&
+        motionBlurPlayerAvatar->GetVehicle() == mVehicleOwner)
+    {
+        // Protect the driving vehicle only; traffic and scenery stay in the blur pass.
+        RegisterSHARMotionBlurSubjectBounds(1, pos.x, pos.y + 0.65f, pos.z, 2.00f, 0.90f);
+    }
+#endif
     rmt::Vector movement = pos - mLastPosition;
     bool smokeFirst = true; // Used to fix draw order problem with the smoke and a vehicle's windshield.
     tCamera* camera = p3d::context->GetView()->GetCamera();

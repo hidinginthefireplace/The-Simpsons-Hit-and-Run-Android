@@ -42,6 +42,9 @@
 #include <camera/supercammanager.h>
 
 #include <mission/gameplaymanager.h>
+#ifdef RAD_ANDROID
+void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, float z, float halfWidth, float halfHeight);
+#endif
 
 #include <meta/locator.h>
 #include <meta/spheretriggervolume.h>
@@ -2038,7 +2041,9 @@ BEGIN_PROFILE("OnPostSimUpdate")
         mSecondsSinceOnPostSimUpdate = 0.0f;
     }
 
-    mbNeedChoreoUpdate = mbNeedChoreoUpdate && shouldUpdate && (!mTooFarToUpdate || ((frameCount & modulo) == (mIntersectFrame & modulo)));
+    mbNeedChoreoUpdate = mbNeedChoreoUpdate && shouldUpdate &&
+        (!mTooFarToUpdate || mbInAnyonesFrustrum ||
+         ((frameCount & modulo) == (mIntersectFrame & modulo)));
 
 END_PROFILE("OnPostSimUpdate")
 
@@ -4967,6 +4972,15 @@ void Character::Display(void)
 
     p3d::stack->Push();
     p3d::stack->Translate(rootPos);
+
+#ifdef RAD_ANDROID
+    Avatar* motionBlurPlayerAvatar = GetAvatarManager()->GetAvatarForPlayer(0);
+    if (motionBlurPlayerAvatar != NULL && motionBlurPlayerAvatar->GetCharacter() == this)
+    {
+        // Keep the player biped sharp while the surrounding scene receives camera blur.
+        RegisterSHARMotionBlurSubjectBounds(0, rootPos.x, rootPos.y + 0.90f, rootPos.z, 0.45f, 1.00f);
+    }
+#endif
 
     mpCharacterRenderable->Display( mSphere.centre, pose );
 

@@ -62,11 +62,11 @@
     const float PedestrianManager::REMOVE_RADIUS = 15.0f;  // in meters
     const float PedestrianManager::INITIAL_ADD_RADIUS = 10.0f; // in meters
 #else
-    const float PedestrianManager::FADE_RADIUS = 75.0f; // in meters
-    const float PedestrianManager::CENTER_OFFSET = 37.5f;  // in meters
-    const float PedestrianManager::ADD_RADIUS = 56.25f;     // in meters
-    const float PedestrianManager::REMOVE_RADIUS = 62.5f;  // in meters
-    const float PedestrianManager::INITIAL_ADD_RADIUS = 112.5f; // in meters
+    const float PedestrianManager::FADE_RADIUS = 90.0f; // in meters
+    const float PedestrianManager::CENTER_OFFSET = 45.0f;  // in meters
+    const float PedestrianManager::ADD_RADIUS = 67.5f;     // in meters
+    const float PedestrianManager::REMOVE_RADIUS = 75.0f;  // in meters
+    const float PedestrianManager::INITIAL_ADD_RADIUS = 135.0f; // in meters
 #endif
 const unsigned int PedestrianManager::MILLISECONDS_PER_GROUND_INTERSECT = 10;
 const unsigned int PedestrianManager::MILLISECONDS_BETW_ADDS = 1;
