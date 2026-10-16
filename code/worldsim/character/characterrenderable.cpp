@@ -581,11 +581,10 @@ void CharacterRenderable::DisplayModel( tPose* pose )
 #ifdef RAD_ANDROID
         if (IsCelShadingEnabled())
         {
-            // Diagnostic isolation build: retain toon lighting but skip the
-            // expanded-mesh black silhouette prepass. This determines whether
-            // the phone-only black patches originate in outline geometry/depth.
-            // This experimental branch is intentionally separate from baseline.
+            // Render the expanded-mesh black silhouette first, then the normal character.
             SetCelShadingObjectEnabled(true);
+            SetCelShadingOutlinePass(true);
+            draw->Display( pose );
             SetCelShadingOutlinePass(false);
             draw->Display( pose );
             SetCelShadingObjectEnabled(false);
