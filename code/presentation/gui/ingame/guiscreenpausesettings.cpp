@@ -63,6 +63,8 @@ bool IsCRTFilterEnabled();
 void SetCRTFilterEnabled(bool enabled);
 bool IsFrameSharpeningEnabled();
 void SetFrameSharpeningEnabled(bool enabled);
+bool IsMotionBlurEnabled();
+void SetMotionBlurEnabled(bool enabled);
 int GetFrameSharpeningLevel();
 void SetFrameSharpeningLevel(int level);
 bool RequestSHARAndroidRenderResolutionHeight(int targetHeight);
@@ -871,26 +873,29 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         }
     }
 
-    const int logicalItems[4] =
+    const int logicalItems[5] =
     {
         MENU_ITEM_CAMERA,
         MENU_ITEM_JUMP_CAMERAS,
         MENU_ITEM_INTERSECT_NAV_SYSTEM,
-        MENU_ITEM_RADAR
+        MENU_ITEM_RADAR,
+        MENU_ITEM_INVERT_CAM_CONTROL
     };
 
-    const char* labels[4] =
+    const char* labels[5] =
     {
         "Resolution",
         "Cel Shading",
         "CRT Filter",
-        "Sharpening"
+        "Sharpening",
+        "Motion Blur"
     };
 
-    const bool enabled[2] =
+    const bool enabled[3] =
     {
         IsCelShadingEnabled(),
-        IsCRTFilterEnabled()
+        IsCRTFilterEnabled(),
+        IsMotionBlurEnabled()
     };
 
     const char* sharpeningValues[6] =
@@ -905,7 +910,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         gSHARGraphicsResolutionSelection = 2;
     }
 
-    for( int i = 0; i < 4; ++i )
+    for( int i = 0; i < 5; ++i )
     {
         const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
         if( guiIndex < 0 )
@@ -974,13 +979,14 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
                     m_pMenu->SetSelectionValue( guiIndex, 0 );
                 }
             }
-            else if( i == 1 || i == 2 )
+            else if( i == 1 || i == 2 || i == 4 )
             {
                 value->SetVisible( true );
                 value->SetString( 0, "OFF" );
                 value->SetString( 1, "ON" );
                 m_pMenu->SetSelectionValueCount( guiIndex, 2 );
-                m_pMenu->SetSelectionValue( guiIndex, enabled[i - 1] ? 1 : 0 );
+                const int enabledIndex = ( i == 4 ) ? 2 : i - 1;
+                m_pMenu->SetSelectionValue( guiIndex, enabled[enabledIndex] ? 1 : 0 );
             }
             else if( i == 3 )
             {
@@ -1016,12 +1022,11 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
     }
 
     // The unused gameplay rows stay hidden while Graphics is open.
-    const int unusedItems[2] =
+    const int unusedItems[1] =
     {
-        MENU_ITEM_INVERT_CAM_CONTROL,
         MENU_ITEM_VIBRATION
     };
-    for( int unusedIndex = 0; unusedIndex < 2; ++unusedIndex )
+    for( int unusedIndex = 0; unusedIndex < 1; ++unusedIndex )
     {
         const int unusedGuiIndex =
             GetGuiMenuIndexFromMenuItem( unusedItems[unusedIndex] );
@@ -1578,6 +1583,10 @@ void CGuiScreenPauseSettings::HandleMessage
                         else if( logicalMenuItem == MENU_ITEM_RADAR )
                         {
                             SetFrameSharpeningLevel( static_cast<int>( param2 ) );
+                        }
+                        else if( logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL )
+                        {
+                            SetMotionBlurEnabled( enabled );
                         }
                     }
                     else

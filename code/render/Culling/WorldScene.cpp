@@ -141,7 +141,7 @@ WorldScene::WorldScene()
     mpStaticTree(NULL)
 {
     GetEventManager()->AddListener(this,(EventEnum)(EVENT_LOCATOR+LocatorEvent::FAR_PLANE));
-    mDrawDist = 200.0f;
+    mDrawDist = 250.0f;
 
     mpZSorts.reserve(5000);
     rTuneAssert( mpZSorts.capacity() == 5000 );
@@ -284,7 +284,7 @@ bool WorldScene::IsSphereInCone( rmt::Vector& irCenter, float iRadius )
 
     // nv:  cull small things that are far away
     const float SMALL_THING = 0.85f;
-    const float SMALL_THING_CULL_DIST_SQR = 4000.0f; // 40m
+    const float SMALL_THING_CULL_DIST_SQR = 6250.0f; // Raise the small-object cutoff distance by 25%.
     rmt::Vector v;
     v.Sub(mViewPosn, irCenter);
     if( (iRadius < SMALL_THING) && (v.MagnitudeSqr() > SMALL_THING_CULL_DIST_SQR) )
@@ -343,11 +343,11 @@ void WorldScene::HandleEvent( EventEnum id, void* pEventData )
         {
             if(((EventLocator*)pEventData)->GetPlayerEntered())
             {
-                mDrawDist = rmt::LtoF(newDrawDist);
+                mDrawDist = rmt::LtoF(newDrawDist) * 1.25f;
             }
             else //exit 
             {
-                mDrawDist = 200.0f;
+                mDrawDist = 250.0f;
             }
         }
         return;

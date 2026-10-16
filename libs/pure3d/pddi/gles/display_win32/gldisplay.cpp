@@ -21,8 +21,12 @@
 #include <jni.h>
 #include <dlfcn.h>
 #include <EGL/egl.h>
+#include <p3d/camera.hpp>
+#include <p3d/utility.hpp>
+#include <p3d/view.hpp>
 
 bool IsCelShadingEnabled();
+bool IsMotionBlurEnabled();
 bool IsFrameSharpeningEnabled();
 float GetFrameSharpenStrength();
 
@@ -31,6 +35,104 @@ void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* cu
 
 namespace
 {
+
+struct SHARMotionBlurCameraState
+{
+    float position[3];
+    float right[3];
+    float up[3];
+    float forward[3];
+    float tanHalfFovX;
+    float tanHalfFovY;
+    float nearPlane;
+    float farPlane;
+    bool valid;
+};
+
+static SHARMotionBlurCameraState gSHARPreviousMotionBlurCamera = {};
+static int gSHARMotionBlurHistoryWidth = 0;
+static int gSHARMotionBlurHistoryHeight = 0;
+
+static bool CaptureSHARMotionBlurCamera(SHARMotionBlurCameraState* state)
+{
+    if (state == NULL || p3d::context == NULL)
+        return false;
+
+    tView* view = p3d::context->GetView();
+    if (view == NULL || view->GetCamera() == NULL)
+        return false;
+
+    tCamera* camera = view->GetCamera();
+    const rmt::Matrix& cameraToWorld = camera->GetCameraToWorldMatrix();
+    const rmt::Vector& right = cameraToWorld.Row(0);
+    const rmt::Vector& up = cameraToWorld.Row(1);
+    const rmt::Vector& forward = cameraToWorld.Row(2);
+    const rmt::Vector& position = cameraToWorld.Row(3);
+
+    float fov = 0.0f;
+    float aspect = 0.0f;
+    camera->GetFOV(&fov, &aspect);
+    if (fov <= 0.01f || aspect <= 0.01f ||
+        camera->GetNearPlane() <= 0.0f ||
+        camera->GetFarPlane() <= camera->GetNearPlane())
+        return false;
+
+    state->position[0] = position.x;
+    state->position[1] = position.y;
+    state->position[2] = position.z;
+    state->right[0] = right.x;
+    state->right[1] = right.y;
+    state->right[2] = right.z;
+    state->up[0] = up.x;
+    state->up[1] = up.y;
+    state->up[2] = up.z;
+    state->forward[0] = forward.x;
+    state->forward[1] = forward.y;
+    state->forward[2] = forward.z;
+    state->tanHalfFovX = tanf(fov * 0.5f);
+    state->tanHalfFovY = state->tanHalfFovX / aspect;
+    state->nearPlane = camera->GetNearPlane();
+    state->farPlane = camera->GetFarPlane();
+    state->valid = true;
+    return true;
+}
+
+static bool IsSHARMotionBlurHistoryUsable(const SHARMotionBlurCameraState& current, int width, int height)
+{
+    if (!current.valid || !gSHARPreviousMotionBlurCamera.valid ||
+        width != gSHARMotionBlurHistoryWidth || height != gSHARMotionBlurHistoryHeight)
+        return false;
+
+    const float dx = current.position[0] - gSHARPreviousMotionBlurCamera.position[0];
+    const float dy = current.position[1] - gSHARPreviousMotionBlurCamera.position[1];
+    const float dz = current.position[2] - gSHARPreviousMotionBlurCamera.position[2];
+    if (dx * dx + dy * dy + dz * dz > 400.0f)
+        return false; // Avoid streaks across teleports and camera cuts.
+
+    const float forwardDot =
+        current.forward[0] * gSHARPreviousMotionBlurCamera.forward[0] +
+        current.forward[1] * gSHARPreviousMotionBlurCamera.forward[1] +
+        current.forward[2] * gSHARPreviousMotionBlurCamera.forward[2];
+    return forwardDot > 0.60f;
+}
+
+static void CommitSHARMotionBlurCameraHistory(
+    const SHARMotionBlurCameraState& current, bool captured, int width, int height)
+{
+    if (captured && current.valid && width > 0 && height > 0)
+    {
+        gSHARPreviousMotionBlurCamera = current;
+        gSHARMotionBlurHistoryWidth = width;
+        gSHARMotionBlurHistoryHeight = height;
+    }
+    else
+    {
+        gSHARPreviousMotionBlurCamera.valid = false;
+        gSHARMotionBlurHistoryWidth = 0;
+        gSHARMotionBlurHistoryHeight = 0;
+    }
+}
+
 GLuint gCelPostProgram = 0;
 GLuint gCelPostTexture = 0;
 GLuint gCelPostVbo = 0;
@@ -67,6 +169,24 @@ GLint gCelPostBloomLocation = -1;
 GLint gCelPostBloomStrengthLocation = -1;
 GLint gCelPostDepthLocation = -1;
 GLint gCelPostDepthAvailableLocation = -1;
+GLint gCelPostCelEffectsLocation = -1;
+GLint gCelPostMotionBlurEnabledLocation = -1;
+GLint gCelPostMotionBlurValidLocation = -1;
+GLint gCelPostCurrentCameraPositionLocation = -1;
+GLint gCelPostCurrentCameraRightLocation = -1;
+GLint gCelPostCurrentCameraUpLocation = -1;
+GLint gCelPostCurrentCameraForwardLocation = -1;
+GLint gCelPostPreviousCameraPositionLocation = -1;
+GLint gCelPostPreviousCameraRightLocation = -1;
+GLint gCelPostPreviousCameraUpLocation = -1;
+GLint gCelPostPreviousCameraForwardLocation = -1;
+GLint gCelPostCurrentTanHalfFovXLocation = -1;
+GLint gCelPostCurrentTanHalfFovYLocation = -1;
+GLint gCelPostPreviousTanHalfFovXLocation = -1;
+GLint gCelPostPreviousTanHalfFovYLocation = -1;
+GLint gCelPostCurrentNearPlaneLocation = -1;
+GLint gCelPostCurrentFarPlaneLocation = -1;
+GLint gCelPostPreviousNearPlaneLocation = -1;
 
 GLuint gCelBloomExtractProgram = 0;
 GLuint gCelBloomBlurProgram = 0;
@@ -717,13 +837,35 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "}\n";
 
         const char* fragmentSource =
+            "#ifdef GL_FRAGMENT_PRECISION_HIGH\n"
+            "precision highp float;\n"
+            "#else\n"
             "precision mediump float;\n"
+            "#endif\n"
             "uniform sampler2D sceneTex;\n"
             "uniform sampler2D bloomTex;\n"
             "uniform float bloomStrength;\n"
             "uniform sampler2D depthTex;\n"
             "uniform float depthTextureAvailable;\n"
             "uniform vec2 texelSize;\n"
+            "uniform float celEffectsEnabled;\n"
+            "uniform float motionBlurEnabled;\n"
+            "uniform float motionBlurCameraValid;\n"
+            "uniform vec3 currentCameraPosition;\n"
+            "uniform vec3 currentCameraRight;\n"
+            "uniform vec3 currentCameraUp;\n"
+            "uniform vec3 currentCameraForward;\n"
+            "uniform vec3 previousCameraPosition;\n"
+            "uniform vec3 previousCameraRight;\n"
+            "uniform vec3 previousCameraUp;\n"
+            "uniform vec3 previousCameraForward;\n"
+            "uniform float currentTanHalfFovX;\n"
+            "uniform float currentTanHalfFovY;\n"
+            "uniform float previousTanHalfFovX;\n"
+            "uniform float previousTanHalfFovY;\n"
+            "uniform float currentNearPlane;\n"
+            "uniform float currentFarPlane;\n"
+            "uniform float previousNearPlane;\n"
             "varying vec2 texcoord;\n"
             "\n"
             "float sceneLuma(vec3 colour) {\n"
@@ -734,8 +876,40 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;\n"
             "}\n"
             "\n"
+            "vec3 applyCameraMotionBlur(vec2 uv, vec3 centreColour) {\n"
+            "    if (motionBlurEnabled < 0.5 || motionBlurCameraValid < 0.5 || depthTextureAvailable < 0.5) return centreColour;\n"
+            "    float depthValue = texture2D(depthTex, uv).r;\n"
+            "    if (depthValue >= 0.9995) return centreColour;\n"
+            "    float depthDenominator = currentFarPlane - depthValue * (currentFarPlane - currentNearPlane);\n"
+            "    float viewZ = currentNearPlane * currentFarPlane / max(depthDenominator, 0.0001);\n"
+            "    vec2 ndc = uv * 2.0 - 1.0;\n"
+            "    vec3 currentViewPosition = vec3(ndc.x * viewZ * currentTanHalfFovX, ndc.y * viewZ * currentTanHalfFovY, viewZ);\n"
+            "    vec3 worldPosition = currentCameraPosition + currentCameraRight * currentViewPosition.x + currentCameraUp * currentViewPosition.y + currentCameraForward * currentViewPosition.z;\n"
+            "    vec3 fromPreviousCamera = worldPosition - previousCameraPosition;\n"
+            "    float previousZ = dot(fromPreviousCamera, previousCameraForward);\n"
+            "    if (previousZ <= previousNearPlane) return centreColour;\n"
+            "    vec2 previousNdc = vec2(dot(fromPreviousCamera, previousCameraRight) / (previousZ * previousTanHalfFovX), dot(fromPreviousCamera, previousCameraUp) / (previousZ * previousTanHalfFovY));\n"
+            "    vec2 previousUv = previousNdc * 0.5 + 0.5;\n"
+            "    if (previousUv.x < 0.0 || previousUv.x > 1.0 || previousUv.y < 0.0 || previousUv.y > 1.0) return centreColour;\n"
+            "    vec2 motion = uv - previousUv;\n"
+            "    float motionPixels = length(motion / texelSize);\n"
+            "    float motionAmount = smoothstep(0.75, 2.5, motionPixels);\n"
+            "    if (motionAmount <= 0.001) return centreColour;\n"
+            "    vec2 maxOffset = texelSize * 8.0;\n"
+            "    vec2 blurOffset = clamp(motion * 0.45, -maxOffset, maxOffset) * motionAmount;\n"
+            "    vec3 blurred = centreColour * 0.40;\n"
+            "    blurred += texture2D(sceneTex, uv - blurOffset * 0.5).rgb * 0.20;\n"
+            "    blurred += texture2D(sceneTex, uv + blurOffset * 0.5).rgb * 0.20;\n"
+            "    blurred += texture2D(sceneTex, uv - blurOffset).rgb * 0.10;\n"
+            "    blurred += texture2D(sceneTex, uv + blurOffset).rgb * 0.10;\n"
+            "    return mix(centreColour, blurred, motionAmount);\n"
+            "}\n"
+            "\n"
             "void main() {\n"
             "    vec4 scene = texture2D(sceneTex, texcoord);\n"
+            "    scene.rgb = applyCameraMotionBlur(texcoord, scene.rgb);\n"
+            "    vec3 finalColour = scene.rgb;\n"
+            "    if (celEffectsEnabled > 0.5) {\n"
             "\n"
             "    // Existing screen-space cel outline detection.\n"
             "    float centreLuma = sceneLuma(scene.rgb);\n"
@@ -789,7 +963,9 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    toonColour += vec3(randomNoise(texcoord) / 255.0);\n"
             "\n"
             "\n"
-            "    gl_FragColor = vec4(clamp(toonColour, 0.0, 1.0), scene.a);\n"
+            "    finalColour = toonColour;\n"
+            "    }\n"
+            "    gl_FragColor = vec4(clamp(finalColour, 0.0, 1.0), scene.a);\n"
             "}\n";
 
         GLuint vs = CompileCelPostShader(GL_VERTEX_SHADER, vertexSource);
@@ -836,6 +1012,24 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostBloomStrengthLocation = glGetUniformLocation(gCelPostProgram, "bloomStrength");
         gCelPostDepthLocation = glGetUniformLocation(gCelPostProgram, "depthTex");
         gCelPostDepthAvailableLocation = glGetUniformLocation(gCelPostProgram, "depthTextureAvailable");
+        gCelPostCelEffectsLocation = glGetUniformLocation(gCelPostProgram, "celEffectsEnabled");
+        gCelPostMotionBlurEnabledLocation = glGetUniformLocation(gCelPostProgram, "motionBlurEnabled");
+        gCelPostMotionBlurValidLocation = glGetUniformLocation(gCelPostProgram, "motionBlurCameraValid");
+        gCelPostCurrentCameraPositionLocation = glGetUniformLocation(gCelPostProgram, "currentCameraPosition");
+        gCelPostCurrentCameraRightLocation = glGetUniformLocation(gCelPostProgram, "currentCameraRight");
+        gCelPostCurrentCameraUpLocation = glGetUniformLocation(gCelPostProgram, "currentCameraUp");
+        gCelPostCurrentCameraForwardLocation = glGetUniformLocation(gCelPostProgram, "currentCameraForward");
+        gCelPostPreviousCameraPositionLocation = glGetUniformLocation(gCelPostProgram, "previousCameraPosition");
+        gCelPostPreviousCameraRightLocation = glGetUniformLocation(gCelPostProgram, "previousCameraRight");
+        gCelPostPreviousCameraUpLocation = glGetUniformLocation(gCelPostProgram, "previousCameraUp");
+        gCelPostPreviousCameraForwardLocation = glGetUniformLocation(gCelPostProgram, "previousCameraForward");
+        gCelPostCurrentTanHalfFovXLocation = glGetUniformLocation(gCelPostProgram, "currentTanHalfFovX");
+        gCelPostCurrentTanHalfFovYLocation = glGetUniformLocation(gCelPostProgram, "currentTanHalfFovY");
+        gCelPostPreviousTanHalfFovXLocation = glGetUniformLocation(gCelPostProgram, "previousTanHalfFovX");
+        gCelPostPreviousTanHalfFovYLocation = glGetUniformLocation(gCelPostProgram, "previousTanHalfFovY");
+        gCelPostCurrentNearPlaneLocation = glGetUniformLocation(gCelPostProgram, "currentNearPlane");
+        gCelPostCurrentFarPlaneLocation = glGetUniformLocation(gCelPostProgram, "currentFarPlane");
+        gCelPostPreviousNearPlaneLocation = glGetUniformLocation(gCelPostProgram, "previousNearPlane");
 
         glGenTextures(1, &gCelPostTexture);
 
@@ -1281,48 +1475,63 @@ static void ResetAndroidPostProcess()
     gCRTFailedWidth = gCRTFailedHeight = 0;
     gSHARLastRejectedWidth = gSHARLastRejectedHeight = gSHARLastRejectedReason = 0;
     gCelWorldInFbo = false;
+    gSHARPreviousMotionBlurCamera.valid = false;
+    gSHARMotionBlurHistoryWidth = gSHARMotionBlurHistoryHeight = 0;
     // Normal frames remain on the offscreen path immediately after a resize.
 
 }
 
 static void ApplyCelPostProcess(int width, int height)
 {
+    SHARMotionBlurCameraState currentMotionBlurCamera = {};
+    const bool haveCurrentMotionBlurCamera = CaptureSHARMotionBlurCamera(&currentMotionBlurCamera);
+
     if (gSHARFrameWidth > 0 && gSHARFrameHeight > 0)
     {
         width = gSHARFrameWidth;
         height = gSHARFrameHeight;
     }
 
+    const bool celEffectsEnabled = IsCelShadingEnabled();
+    const bool motionBlurRequested = IsMotionBlurEnabled();
+
     if (!gCelWorldInFbo)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        CommitSHARMotionBlurCameraHistory(currentMotionBlurCamera, false, width, height);
+        return;
+    }
+
+    const bool motionBlurCameraValid =
+        motionBlurRequested && gCelDepthTextureActive && haveCurrentMotionBlurCamera &&
+        IsSHARMotionBlurHistoryUsable(currentMotionBlurCamera, width, height);
+
+    if (!celEffectsEnabled && !motionBlurRequested)
+    {
+        ResolveSceneToScreen(width, height);
+        CommitSHARMotionBlurCameraHistory(currentMotionBlurCamera, haveCurrentMotionBlurCamera, width, height);
         return;
     }
 
     // Keep the framebuffer validity check used by the normal cel compose route.
-    // This is ordinary renderer state inspection; the costly pixel probes are gone.
     GLint currentFramebuffer = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFramebuffer);
-
-    if (!IsCelShadingEnabled())
-    {
-        ResolveSceneToScreen(width, height);
-        return;
-    }
 
     if ((GLuint)currentFramebuffer != gCelRenderFbo || !gCelRenderFboReady)
     {
         ResolveSceneToScreen(width, height);
+        CommitSHARMotionBlurCameraHistory(currentMotionBlurCamera, haveCurrentMotionBlurCamera, width, height);
         return;
     }
 
     if (!EnsureCelPostProcessResources(width, height))
     {
         ResolveSceneToScreen(width, height);
+        CommitSHARMotionBlurCameraHistory(currentMotionBlurCamera, haveCurrentMotionBlurCamera, width, height);
         return;
     }
 
-    const bool bloomReady = EnsureCelBloomResources(width, height);
+    const bool bloomReady = celEffectsEnabled ? EnsureCelBloomResources(width, height) : false;
 
     GLint viewport[4];
     glGetIntegerv(GL_VIEWPORT, viewport);
@@ -1428,6 +1637,51 @@ static void ApplyCelPostProcess(int width, int height)
     if (gCelPostDepthAvailableLocation >= 0)
         glUniform1f(gCelPostDepthAvailableLocation, gCelDepthTextureActive ? 1.0f : 0.0f);
 
+    if (gCelPostCelEffectsLocation >= 0)
+        glUniform1f(gCelPostCelEffectsLocation, celEffectsEnabled ? 1.0f : 0.0f);
+    if (gCelPostMotionBlurEnabledLocation >= 0)
+        glUniform1f(gCelPostMotionBlurEnabledLocation, motionBlurRequested ? 1.0f : 0.0f);
+    if (gCelPostMotionBlurValidLocation >= 0)
+        glUniform1f(gCelPostMotionBlurValidLocation, motionBlurCameraValid ? 1.0f : 0.0f);
+
+    if (haveCurrentMotionBlurCamera)
+    {
+        if (gCelPostCurrentCameraPositionLocation >= 0)
+            glUniform3f(gCelPostCurrentCameraPositionLocation, currentMotionBlurCamera.position[0], currentMotionBlurCamera.position[1], currentMotionBlurCamera.position[2]);
+        if (gCelPostCurrentCameraRightLocation >= 0)
+            glUniform3f(gCelPostCurrentCameraRightLocation, currentMotionBlurCamera.right[0], currentMotionBlurCamera.right[1], currentMotionBlurCamera.right[2]);
+        if (gCelPostCurrentCameraUpLocation >= 0)
+            glUniform3f(gCelPostCurrentCameraUpLocation, currentMotionBlurCamera.up[0], currentMotionBlurCamera.up[1], currentMotionBlurCamera.up[2]);
+        if (gCelPostCurrentCameraForwardLocation >= 0)
+            glUniform3f(gCelPostCurrentCameraForwardLocation, currentMotionBlurCamera.forward[0], currentMotionBlurCamera.forward[1], currentMotionBlurCamera.forward[2]);
+        if (gCelPostCurrentTanHalfFovXLocation >= 0)
+            glUniform1f(gCelPostCurrentTanHalfFovXLocation, currentMotionBlurCamera.tanHalfFovX);
+        if (gCelPostCurrentTanHalfFovYLocation >= 0)
+            glUniform1f(gCelPostCurrentTanHalfFovYLocation, currentMotionBlurCamera.tanHalfFovY);
+        if (gCelPostCurrentNearPlaneLocation >= 0)
+            glUniform1f(gCelPostCurrentNearPlaneLocation, currentMotionBlurCamera.nearPlane);
+        if (gCelPostCurrentFarPlaneLocation >= 0)
+            glUniform1f(gCelPostCurrentFarPlaneLocation, currentMotionBlurCamera.farPlane);
+    }
+
+    if (motionBlurCameraValid)
+    {
+        if (gCelPostPreviousCameraPositionLocation >= 0)
+            glUniform3f(gCelPostPreviousCameraPositionLocation, gSHARPreviousMotionBlurCamera.position[0], gSHARPreviousMotionBlurCamera.position[1], gSHARPreviousMotionBlurCamera.position[2]);
+        if (gCelPostPreviousCameraRightLocation >= 0)
+            glUniform3f(gCelPostPreviousCameraRightLocation, gSHARPreviousMotionBlurCamera.right[0], gSHARPreviousMotionBlurCamera.right[1], gSHARPreviousMotionBlurCamera.right[2]);
+        if (gCelPostPreviousCameraUpLocation >= 0)
+            glUniform3f(gCelPostPreviousCameraUpLocation, gSHARPreviousMotionBlurCamera.up[0], gSHARPreviousMotionBlurCamera.up[1], gSHARPreviousMotionBlurCamera.up[2]);
+        if (gCelPostPreviousCameraForwardLocation >= 0)
+            glUniform3f(gCelPostPreviousCameraForwardLocation, gSHARPreviousMotionBlurCamera.forward[0], gSHARPreviousMotionBlurCamera.forward[1], gSHARPreviousMotionBlurCamera.forward[2]);
+        if (gCelPostPreviousTanHalfFovXLocation >= 0)
+            glUniform1f(gCelPostPreviousTanHalfFovXLocation, gSHARPreviousMotionBlurCamera.tanHalfFovX);
+        if (gCelPostPreviousTanHalfFovYLocation >= 0)
+            glUniform1f(gCelPostPreviousTanHalfFovYLocation, gSHARPreviousMotionBlurCamera.tanHalfFovY);
+        if (gCelPostPreviousNearPlaneLocation >= 0)
+            glUniform1f(gCelPostPreviousNearPlaneLocation, gSHARPreviousMotionBlurCamera.nearPlane);
+    }
+
     glActiveTexture(GL_TEXTURE0);
     DrawCelPostFullscreenQuad();
 
@@ -1466,6 +1720,7 @@ static void ApplyCelPostProcess(int width, int height)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, outputWidth, outputHeight);
     gCelWorldInFbo = false;
+    CommitSHARMotionBlurCameraHistory(currentMotionBlurCamera, haveCurrentMotionBlurCamera, width, height);
 }
 
 }

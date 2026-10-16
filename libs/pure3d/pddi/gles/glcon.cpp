@@ -31,6 +31,8 @@ static bool gFrameSharpeningEnabled = false;
 static bool gSharpeningConfigurationLoaded = false;
 
 static bool gCRTConfigurationLoaded = false;
+static bool gMotionBlurConfigurationLoaded = false;
+static bool gMotionBlurEnabled = false;
 static bool gCRTEnabled = false;
 static float gCRTScanlineStrength = 0.5f;
 static float gCRTCurvature = 0.06f;
@@ -41,6 +43,7 @@ static float gCRTBrightness = 1.0f;
 static float gCRTContrast = 1.0f;
 
 static const char* CRT_CONFIGURATION_FILE_NAME = "Simpsons_crt_configuration.txt";
+static const char* MOTION_BLUR_CONFIGURATION_FILE_NAME = "Simpsons_motion_blur.txt";
 static const char* CEL_SHADING_CONFIGURATION_FILE_NAME = "Simpsons_cel_shading.txt";
 static const char* SHARPENING_CONFIGURATION_FILE_NAME = "Simpsons_sharpening.txt";
 
@@ -432,6 +435,87 @@ void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* cu
     if (overscan) *overscan = gCRTOverscan;
     if (brightness) *brightness = gCRTBrightness;
     if (contrast) *contrast = gCRTContrast;
+}
+
+
+static void WriteMotionBlurConfiguration()
+{
+    char filePath[512];
+    if (!BuildGraphicsConfigurationPath(filePath, sizeof(filePath), MOTION_BLUR_CONFIGURATION_FILE_NAME))
+        return;
+
+    FILE* file = fopen(filePath, "w");
+    if (file == nullptr)
+        return;
+
+    fprintf(file, "# Simpsons Hit & Run Android - camera-aware motion blur\n");
+    fprintf(file, "# This setting affects the 3D world only; menus and touch controls remain sharp.\n");
+    fprintf(file, "motion_blur=%s\n", gMotionBlurEnabled ? "true" : "false");
+    fclose(file);
+}
+
+static void LoadMotionBlurConfiguration()
+{
+    if (gMotionBlurConfigurationLoaded)
+        return;
+
+    gMotionBlurConfigurationLoaded = true;
+    char filePath[512];
+    if (!BuildGraphicsConfigurationPath(filePath, sizeof(filePath), MOTION_BLUR_CONFIGURATION_FILE_NAME))
+        return;
+
+    FILE* file = fopen(filePath, "r");
+    bool fromLegacyRoot = false;
+    char legacyPath[512];
+    if (file == nullptr &&
+        BuildLegacyRootConfigurationPath(legacyPath, sizeof(legacyPath), MOTION_BLUR_CONFIGURATION_FILE_NAME))
+    {
+        file = fopen(legacyPath, "r");
+        fromLegacyRoot = (file != nullptr);
+    }
+
+    if (file == nullptr)
+    {
+        // Motion blur deliberately defaults to disabled.
+        WriteMotionBlurConfiguration();
+        return;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), file) != nullptr)
+    {
+        char* value = strstr(line, "motion_blur=");
+        if (value == nullptr)
+            continue;
+        value += strlen("motion_blur=");
+        while (*value == ' ' || *value == '\t')
+            ++value;
+        gMotionBlurEnabled =
+            (*value == '1' || strncmp(value, "true", 4) == 0 ||
+             strncmp(value, "on", 2) == 0);
+    }
+    fclose(file);
+
+    if (fromLegacyRoot)
+    {
+        WriteMotionBlurConfiguration();
+        RemoveLegacyRootConfigurationIfMigrated(MOTION_BLUR_CONFIGURATION_FILE_NAME, filePath);
+    }
+}
+
+bool IsMotionBlurEnabled()
+{
+    LoadMotionBlurConfiguration();
+    return gMotionBlurEnabled;
+}
+
+void SetMotionBlurEnabled(bool enabled)
+{
+    LoadMotionBlurConfiguration();
+    if (gMotionBlurEnabled == enabled)
+        return;
+    gMotionBlurEnabled = enabled;
+    WriteMotionBlurConfiguration();
 }
 
 bool IsCelShadingEnabled()
