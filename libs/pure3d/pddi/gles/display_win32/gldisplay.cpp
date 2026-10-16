@@ -21,12 +21,10 @@
 #include <jni.h>
 #include <dlfcn.h>
 #include <EGL/egl.h>
-#include <p3d/camera.hpp>
-#include <p3d/utility.hpp>
-#include <p3d/view.hpp>
 
 bool IsCelShadingEnabled();
 bool IsMotionBlurEnabled();
+bool GetSHARMotionBlurCameraData(float* output);
 bool IsFrameSharpeningEnabled();
 float GetFrameSharpenStrength();
 
@@ -55,44 +53,31 @@ static int gSHARMotionBlurHistoryHeight = 0;
 
 static bool CaptureSHARMotionBlurCamera(SHARMotionBlurCameraState* state)
 {
-    if (state == NULL || p3d::context == NULL)
+    if (state == NULL)
         return false;
 
-    tView* view = p3d::context->GetView();
-    if (view == NULL || view->GetCamera() == NULL)
+    // Keep camera acquisition inside the PDDI context implementation so the
+    // display backend does not depend on Pure3D headers with broader includes.
+    float cameraData[16] = {};
+    if (!GetSHARMotionBlurCameraData(cameraData))
         return false;
 
-    tCamera* camera = view->GetCamera();
-    const rmt::Matrix& cameraToWorld = camera->GetCameraToWorldMatrix();
-    const rmt::Vector& right = cameraToWorld.Row(0);
-    const rmt::Vector& up = cameraToWorld.Row(1);
-    const rmt::Vector& forward = cameraToWorld.Row(2);
-    const rmt::Vector& position = cameraToWorld.Row(3);
-
-    float fov = 0.0f;
-    float aspect = 0.0f;
-    camera->GetFOV(&fov, &aspect);
-    if (fov <= 0.01f || aspect <= 0.01f ||
-        camera->GetNearPlane() <= 0.0f ||
-        camera->GetFarPlane() <= camera->GetNearPlane())
-        return false;
-
-    state->position[0] = position.x;
-    state->position[1] = position.y;
-    state->position[2] = position.z;
-    state->right[0] = right.x;
-    state->right[1] = right.y;
-    state->right[2] = right.z;
-    state->up[0] = up.x;
-    state->up[1] = up.y;
-    state->up[2] = up.z;
-    state->forward[0] = forward.x;
-    state->forward[1] = forward.y;
-    state->forward[2] = forward.z;
-    state->tanHalfFovX = tanf(fov * 0.5f);
-    state->tanHalfFovY = state->tanHalfFovX / aspect;
-    state->nearPlane = camera->GetNearPlane();
-    state->farPlane = camera->GetFarPlane();
+    state->position[0] = cameraData[0];
+    state->position[1] = cameraData[1];
+    state->position[2] = cameraData[2];
+    state->right[0] = cameraData[3];
+    state->right[1] = cameraData[4];
+    state->right[2] = cameraData[5];
+    state->up[0] = cameraData[6];
+    state->up[1] = cameraData[7];
+    state->up[2] = cameraData[8];
+    state->forward[0] = cameraData[9];
+    state->forward[1] = cameraData[10];
+    state->forward[2] = cameraData[11];
+    state->tanHalfFovX = cameraData[12];
+    state->tanHalfFovY = cameraData[13];
+    state->nearPlane = cameraData[14];
+    state->farPlane = cameraData[15];
     state->valid = true;
     return true;
 }

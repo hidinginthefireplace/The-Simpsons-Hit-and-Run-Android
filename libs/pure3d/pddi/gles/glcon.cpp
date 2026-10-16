@@ -518,6 +518,54 @@ void SetMotionBlurEnabled(bool enabled)
     WriteMotionBlurConfiguration();
 }
 
+
+bool GetSHARMotionBlurCameraData(float* output)
+{
+    if (output == NULL || gCelShadingContext == NULL)
+        return false;
+
+    float nearPlane = 0.0f;
+    float farPlane = 0.0f;
+    float fov = 0.0f;
+    float aspect = 0.0f;
+    gCelShadingContext->GetCamera(&nearPlane, &farPlane, &fov, &aspect);
+    if (nearPlane <= 0.0f || farPlane <= nearPlane ||
+        fov <= 0.01f || aspect <= 0.01f)
+        return false;
+
+    // At this point the world draw has restored the model-view stack to its
+    // camera view transform. Invert it to recover the camera's world transform.
+    rmt::Matrix* worldToCamera = gCelShadingContext->GetMatrix(PDDI_MATRIX_MODELVIEW);
+    if (worldToCamera == NULL)
+        return false;
+
+    rmt::Matrix cameraToWorld = *worldToCamera;
+    cameraToWorld.InvertOrtho();
+
+    const rmt::Vector& right = cameraToWorld.Row(0);
+    const rmt::Vector& up = cameraToWorld.Row(1);
+    const rmt::Vector& forward = cameraToWorld.Row(2);
+    const rmt::Vector& position = cameraToWorld.Row(3);
+
+    output[0] = position.x;
+    output[1] = position.y;
+    output[2] = position.z;
+    output[3] = right.x;
+    output[4] = right.y;
+    output[5] = right.z;
+    output[6] = up.x;
+    output[7] = up.y;
+    output[8] = up.z;
+    output[9] = forward.x;
+    output[10] = forward.y;
+    output[11] = forward.z;
+    output[12] = tanf(fov * 0.5f);
+    output[13] = output[12] / aspect;
+    output[14] = nearPlane;
+    output[15] = farPlane;
+    return true;
+}
+
 bool IsCelShadingEnabled()
 {
     LoadCelShadingConfiguration();
