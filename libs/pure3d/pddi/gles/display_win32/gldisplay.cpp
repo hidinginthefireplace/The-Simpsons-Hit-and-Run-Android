@@ -488,7 +488,10 @@ static bool EnsureCelRenderTarget(int width, int height)
     // depth texture for targets above four megapixels. This matches the nominal
     // storage of the existing GL_DEPTH_COMPONENT16 fallback renderbuffer.
     const size_t renderPixels = (size_t)width * (size_t)height;
-    const bool allowDepthTexture = IsCelShadingEnabled();
+    // Use the depth texture for the normal (cel-shading-off) render path too,
+    // when supported. This isolates distant depth-precision artefacts without
+    // enabling the cel-shading fullscreen effect itself.
+    const bool allowDepthTexture = true;
     const GLenum depthTextureType = renderPixels > (size_t)4 * 1024 * 1024
         ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
     gCelDepthTextureActive = false;
