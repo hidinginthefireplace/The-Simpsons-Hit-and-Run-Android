@@ -319,4 +319,38 @@ pddiExtVertexProgram* tContext::GetVertexProgram(void)
     return vertexProgram;
 }
 
+#ifdef RAD_ANDROID
+// Motion blur needs the camera transform after the world draw, when GetView()
+// is normally NULL and the PDDI model-view stack may have been used by actors.
+// CVMI is the inverse of the stable camera view matrix captured by BeginRender.
+bool GetSHARMotionBlurCameraBasis(float* output)
+{
+    if (output == NULL || p3d::context == NULL)
+        return false;
+
+    rmt::Matrix* cameraToWorld = p3d::context->GetInverseViewMatrix();
+    if (cameraToWorld == NULL)
+        return false;
+
+    const rmt::Vector& right = cameraToWorld->Row(0);
+    const rmt::Vector& up = cameraToWorld->Row(1);
+    const rmt::Vector& forward = cameraToWorld->Row(2);
+    const rmt::Vector& position = cameraToWorld->Row(3);
+
+    output[0] = position.x;
+    output[1] = position.y;
+    output[2] = position.z;
+    output[3] = right.x;
+    output[4] = right.y;
+    output[5] = right.z;
+    output[6] = up.x;
+    output[7] = up.y;
+    output[8] = up.z;
+    output[9] = forward.x;
+    output[10] = forward.y;
+    output[11] = forward.z;
+    return true;
+}
+#endif
+
 

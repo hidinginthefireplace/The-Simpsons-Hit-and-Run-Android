@@ -10,8 +10,7 @@
 #include <pddi/gles/glmat.hpp>
 #include <pddi/gles/glprog.hpp>
 #ifdef RAD_ANDROID
-#include <p3d/context.hpp>
-#include <p3d/utility.hpp>
+bool GetSHARMotionBlurCameraBasis(float* output);
 #endif
 
 #ifdef RAD_ANDROID
@@ -525,7 +524,7 @@ void SetMotionBlurEnabled(bool enabled)
 
 bool GetSHARMotionBlurCameraData(float* output)
 {
-    if (output == NULL || gCelShadingContext == NULL || p3d::context == NULL)
+    if (output == NULL || gCelShadingContext == NULL)
         return false;
 
     float nearPlane = 0.0f;
@@ -537,32 +536,10 @@ bool GetSHARMotionBlurCameraData(float* output)
         fov <= 0.01f || aspect <= 0.01f)
         return false;
 
-    // Use tContext's saved world-to-camera matrix. The PDDI model-view stack is
-    // mutable per drawable and can otherwise make moving actors look like camera motion.
-    rmt::Matrix* worldToCamera = p3d::context->GetViewMatrix();
-    if (worldToCamera == NULL)
+    // Use CVMI from tContext via the small helper above, avoiding a full P3D
+    // context-header dependency in the GLES backend.
+    if (!GetSHARMotionBlurCameraBasis(output))
         return false;
-
-    rmt::Matrix cameraToWorld = *worldToCamera;
-    cameraToWorld.InvertOrtho();
-
-    const rmt::Vector& right = cameraToWorld.Row(0);
-    const rmt::Vector& up = cameraToWorld.Row(1);
-    const rmt::Vector& forward = cameraToWorld.Row(2);
-    const rmt::Vector& position = cameraToWorld.Row(3);
-
-    output[0] = position.x;
-    output[1] = position.y;
-    output[2] = position.z;
-    output[3] = right.x;
-    output[4] = right.y;
-    output[5] = right.z;
-    output[6] = up.x;
-    output[7] = up.y;
-    output[8] = up.z;
-    output[9] = forward.x;
-    output[10] = forward.y;
-    output[11] = forward.z;
     output[12] = tanf(fov * 0.5f);
     output[13] = output[12] / aspect;
     output[14] = nearPlane;
