@@ -25,7 +25,7 @@
 #include "xml/XMLTree.h"
 #include <raddebug.hpp>
 
-#if defined(RAD_ANDROID)
+#if defined(RAD_ANDROID) || defined(__ANDROID__)
 #include <android/log.h>
 #define TVFRAME_DIAG(...) __android_log_print(ANDROID_LOG_INFO, "SHR-TVFrameDiag", __VA_ARGS__)
 #else
@@ -333,14 +333,16 @@ void FeScreen::DisplayForeground()
 
     if( !draw && tvFrameFallback != NULL )
     {
-        TVFRAME_DIAG( "Foreground fallback drawing TVFrame page=%p name=%s",
-                      (void*)tvFrameFallback, tvFrameFallback->GetName() );
+        // This pass may run once per movie frame; only report the first draw.
+        static bool s_loggedTVFrameFallback = false;
+        if( !s_loggedTVFrameFallback )
+        {
+            TVFRAME_DIAG( "Foreground fallback drawing TVFrame page=%p name=%s children=%d",
+                          (void*)tvFrameFallback, tvFrameFallback->GetName(),
+                          tvFrameFallback->GetChildrenCount() );
+            s_loggedTVFrameFallback = true;
+        }
         tvFrameFallback->Display();
-    }
-    else
-    {
-        TVFRAME_DIAG( "Foreground pass draw=%d TVFrame fallback=%p",
-                      draw ? 1 : 0, (void*)tvFrameFallback );
     }
     p3d::stack->Pop();
     p3d::pddi->PopState( PDDI_STATE_RENDER );
