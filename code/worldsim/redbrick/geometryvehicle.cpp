@@ -1088,9 +1088,10 @@ BEGIN_PROFILE("GeometryVehicle::CompDraw->Disp")
 #ifdef RAD_ANDROID
         if (IsCelShadingEnabled())
         {
+            // Diagnostic isolation build: retain toon lighting but skip the
+            // expanded-mesh black silhouette prepass. This mirrors the
+            // character test so vehicle-only outline artifacts can be isolated.
             SetCelShadingObjectEnabled(true);
-            SetCelShadingOutlinePass(true);
-            mCompositeDrawable->Display();
             SetCelShadingOutlinePass(false);
             mCompositeDrawable->Display();
             SetCelShadingObjectEnabled(false);
