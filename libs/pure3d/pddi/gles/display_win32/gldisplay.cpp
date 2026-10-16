@@ -21,6 +21,7 @@
 #include <jni.h>
 #include <dlfcn.h>
 #include <EGL/egl.h>
+#include <sys/stat.h>
 
 bool IsCelShadingEnabled();
 bool IsMotionBlurEnabled();
@@ -129,6 +130,57 @@ static void CommitSHARMotionBlurCameraHistory(
     }
 }
 
+// Temporary diagnostic selection:
+// 0 = normal blur; 1 = camera-motion field; 2 = linearized depth;
+// 3 = actual character/vehicle protection masks.
+static int GetSHARMotionBlurDiagnosticMode()
+{
+    static bool loaded = false;
+    static int mode = 1;
+    if (loaded)
+        return mode;
+    loaded = true;
+
+    const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if (basePath == NULL || basePath[0] == '\0')
+        return mode;
+
+    char graphicsPath[512];
+    char configPath[768];
+    snprintf(graphicsPath, sizeof(graphicsPath), "%s/Graphics", basePath);
+    snprintf(configPath, sizeof(configPath), "%s/Simpsons_motion_blur_diagnostic.txt", graphicsPath);
+    mkdir(graphicsPath, 0777);
+
+    FILE* file = fopen(configPath, "r");
+    if (file != NULL)
+    {
+        int requestedMode = 1;
+        if (fscanf(file, "%d", &requestedMode) == 1 &&
+            requestedMode >= 0 && requestedMode <= 3)
+        {
+            mode = requestedMode;
+        }
+        fclose(file);
+    }
+    else
+    {
+        // Start in motion-field mode so the first test immediately shows useful data.
+        file = fopen(configPath, "w");
+        if (file != NULL)
+        {
+            fprintf(file,
+                "1\n"
+                "# Temporary motion blur diagnostic mode\n"
+                "# 0 = normal blur\n"
+                "# 1 = camera motion field (grayscale)\n"
+                "# 2 = linearized scene depth (grayscale)\n"
+                "# 3 = subject protection mask (red=vehicle, green=character)\n");
+            fclose(file);
+        }
+    }
+    return mode;
+}
+
 GLuint gCelPostProgram = 0;
 GLuint gCelPostTexture = 0;
 GLuint gCelPostVbo = 0;
@@ -189,6 +241,7 @@ GLint gCelPostCharacterMaskSizeLocation = -1;
 GLint gCelPostVehicleMaskEnabledLocation = -1;
 GLint gCelPostVehicleMaskPositionLocation = -1;
 GLint gCelPostVehicleMaskSizeLocation = -1;
+GLint gCelPostMotionBlurDiagnosticLocation = -1;
 
 GLuint gCelBloomExtractProgram = 0;
 GLuint gCelBloomBlurProgram = 0;
@@ -874,6 +927,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform float vehicleMaskEnabled;\n"
             "uniform vec3 vehicleMaskPosition;\n"
             "uniform vec2 vehicleMaskSize;\n"
+            "uniform float motionBlurDiagnosticMode;\n"
             "varying vec2 texcoord;\n"
             "\n"
             "float sceneLuma(vec3 colour) {\n"
@@ -897,6 +951,52 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    subjectRadius += texelSize * 5.0;\n"
             "    float ellipseDistance = length((uv - subjectUv) / subjectRadius);\n"
             "    return 1.0 - smoothstep(0.90, 1.30, ellipseDistance);\n"
+            "}\n"
+            "\n"
+            "vec3 visualizeCameraMotion(vec2 uv) {\n"
+            "    if (depthTextureAvailable < 0.5) return vec3(1.0, 0.0, 0.0);\n"
+            "    if (motionBlurCameraValid < 0.5) return vec3(0.0, 0.0, 1.0);\n"
+            "    float depthValue = texture2D(depthTex, uv).r;\n"
+            "    if (depthValue >= 0.9995) return vec3(0.0);\n"
+            "    float depthNdc = depthValue * 2.0 - 1.0;\n"
+            "    float depthDenominator = currentFarPlane + currentNearPlane - depthNdc * (currentFarPlane - currentNearPlane);\n"
+            "    float viewZ = (2.0 * currentNearPlane * currentFarPlane) / max(depthDenominator, 0.0001);\n"
+            "    vec2 ndc = uv * 2.0 - 1.0;\n"
+            "    vec3 currentViewPosition = vec3(ndc.x * viewZ * currentTanHalfFovX, ndc.y * viewZ * currentTanHalfFovY, viewZ);\n"
+            "    vec3 worldPosition = currentCameraPosition + currentCameraRight * currentViewPosition.x + currentCameraUp * currentViewPosition.y + currentCameraForward * currentViewPosition.z;\n"
+            "    vec3 fromPreviousCamera = worldPosition - previousCameraPosition;\n"
+            "    float previousZ = dot(fromPreviousCamera, previousCameraForward);\n"
+            "    if (previousZ <= previousNearPlane) return vec3(1.0, 0.0, 1.0);\n"
+            "    vec2 previousNdc = vec2(dot(fromPreviousCamera, previousCameraRight) / (previousZ * previousTanHalfFovX), dot(fromPreviousCamera, previousCameraUp) / (previousZ * previousTanHalfFovY));\n"
+            "    vec2 previousUv = previousNdc * 0.5 + 0.5;\n"
+            "    if (previousUv.x < 0.0 || previousUv.x > 1.0 || previousUv.y < 0.0 || previousUv.y > 1.0) return vec3(1.0, 0.5, 0.0);\n"
+            "    vec2 motion = uv - previousUv;\n"
+            "    float motionPixels = length(motion / texelSize);\n"
+            "    float motionAmount = smoothstep(0.18, 1.15, motionPixels);\n"
+            "    return vec3(motionAmount);\n"
+            "}\n"
+            "\n"
+            "vec3 visualizeLinearDepth(vec2 uv) {\n"
+            "    if (depthTextureAvailable < 0.5) return vec3(1.0, 0.0, 0.0);\n"
+            "    float depthValue = texture2D(depthTex, uv).r;\n"
+            "    if (depthValue >= 0.9995) return vec3(0.0);\n"
+            "    float depthNdc = depthValue * 2.0 - 1.0;\n"
+            "    float depthDenominator = currentFarPlane + currentNearPlane - depthNdc * (currentFarPlane - currentNearPlane);\n"
+            "    float viewZ = (2.0 * currentNearPlane * currentFarPlane) / max(depthDenominator, 0.0001);\n"
+            "    float ramp = clamp(log(1.0 + max(viewZ, 0.0)) / log(1.0 + max(currentFarPlane, 1.0)), 0.0, 1.0);\n"
+            "    return vec3(ramp);\n"
+            "}\n"
+            "\n"
+            "vec3 visualizeSubjectProtection(vec2 uv) {\n"
+            "    if (depthTextureAvailable < 0.5) return vec3(0.0, 0.0, 1.0);\n"
+            "    float depthValue = texture2D(depthTex, uv).r;\n"
+            "    if (depthValue >= 0.9995) return vec3(0.0);\n"
+            "    float depthNdc = depthValue * 2.0 - 1.0;\n"
+            "    float depthDenominator = currentFarPlane + currentNearPlane - depthNdc * (currentFarPlane - currentNearPlane);\n"
+            "    float viewZ = (2.0 * currentNearPlane * currentFarPlane) / max(depthDenominator, 0.0001);\n"
+            "    float characterProtection = protectMotionBlurSubject(uv, viewZ, characterMaskPosition, characterMaskSize, characterMaskEnabled);\n"
+            "    float vehicleProtection = protectMotionBlurSubject(uv, viewZ, vehicleMaskPosition, vehicleMaskSize, vehicleMaskEnabled);\n"
+            "    return vec3(vehicleProtection, characterProtection, 0.0);\n"
             "}\n"
             "\n"
             "vec3 applyCameraMotionBlur(vec2 uv, vec3 centreColour) {\n"
@@ -935,6 +1035,14 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "\n"
             "void main() {\n"
             "    vec4 scene = texture2D(sceneTex, texcoord);\n"
+            "    if (motionBlurDiagnosticMode > 0.5 && motionBlurEnabled > 0.5) {\n"
+            "        vec3 diagnosticColour;\n"
+            "        if (motionBlurDiagnosticMode < 1.5) diagnosticColour = visualizeCameraMotion(texcoord);\n"
+            "        else if (motionBlurDiagnosticMode < 2.5) diagnosticColour = visualizeLinearDepth(texcoord);\n"
+            "        else diagnosticColour = visualizeSubjectProtection(texcoord);\n"
+            "        gl_FragColor = vec4(diagnosticColour, 1.0);\n"
+            "        return;\n"
+            "    }\n"
             "    scene.rgb = applyCameraMotionBlur(texcoord, scene.rgb);\n"
             "    vec3 finalColour = scene.rgb;\n"
             "    if (celEffectsEnabled > 0.5) {\n"
@@ -1064,6 +1172,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostVehicleMaskEnabledLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskEnabled");
         gCelPostVehicleMaskPositionLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskPosition");
         gCelPostVehicleMaskSizeLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskSize");
+        gCelPostMotionBlurDiagnosticLocation = glGetUniformLocation(gCelPostProgram, "motionBlurDiagnosticMode");
 
         glGenTextures(1, &gCelPostTexture);
 
@@ -1675,6 +1784,8 @@ static void ApplyCelPostProcess(int width, int height)
         glUniform1f(gCelPostCelEffectsLocation, celEffectsEnabled ? 1.0f : 0.0f);
     if (gCelPostMotionBlurEnabledLocation >= 0)
         glUniform1f(gCelPostMotionBlurEnabledLocation, motionBlurRequested ? 1.0f : 0.0f);
+    if (gCelPostMotionBlurDiagnosticLocation >= 0)
+        glUniform1f(gCelPostMotionBlurDiagnosticLocation, (float)GetSHARMotionBlurDiagnosticMode());
     if (gCelPostMotionBlurValidLocation >= 0)
         glUniform1f(gCelPostMotionBlurValidLocation, motionBlurCameraValid ? 1.0f : 0.0f);
 
