@@ -789,12 +789,9 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         // the two-band light/shadow jump and keeps the source texture colours intact.
         "const float toonFlatLight = 0.78;\n"
 
-        // Subtle camera-facing rim highlight for the flat toon pass.
-        "const float toonRimStrength = 0.20;\n"
-
         "vec3 toonLightingColor() {\n"
-        "    vec3 n = normalize(toonNormal);\n"
         "    if (toonEnabled == 0 || toonObjectEnabled == 0) {\n"
+        "        vec3 n = normalize(toonNormal);\n"
         "        vec3 diff = ecm.rgb + acm.rgb * acs.rgb;\n"
         "        vec3 spec = vec3(0.0);\n"
 #ifdef RAD_ANDROID
@@ -817,8 +814,10 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
 #ifdef RAD_ANDROID
         "    if (lit == 0) return vec3(1.0);\n"
 #endif
-        "    float rim = pow(1.0 - max(dot(n, normalize(-toonViewPos)), 0.0), 2.5);\n"
-        "    return dcm.rgb * (toonFlatLight + toonRimStrength * rim);\n"
+        // Diagnostic build: retain the flat toon base and silhouette pass, but
+        // bypass fragment normal/view-vector lighting for cel-shaded objects.
+        // This tests whether the rim calculation is producing device-specific black specks.
+        "    return dcm.rgb * toonFlatLight;\n"
         "}\n";
 
     GLuint fragmentShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
