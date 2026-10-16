@@ -26,6 +26,11 @@
 #include <FeTextBible.h>
 #include <string.h>
 
+#if defined(RAD_ANDROID) || defined(__ANDROID__)
+#include <android/log.h>
+#define TVFRAME_APP_DIAG(...) __android_log_print(ANDROID_LOG_INFO, "SHR-TVFrameDiag", __VA_ARGS__)
+#endif
+
 //===========================================================================
 // Global Data, Local Data, Local Classes
 //===========================================================================
@@ -499,16 +504,39 @@ void FeApp::DrawForeground( float deltaTime )
 {
     m_deltaTime = deltaTime;
     Scrooby::Project* project = this->GetProject();
-    if( project != NULL ) 
+    if( project != NULL )
     {
         rAssert( project );
         FeProject* feProject = dynamic_cast<FeProject*>(project);
         if( feProject )
         {
-            if( feProject->IsLoaded() )
+            FeScreen* screen = dynamic_cast<FeScreen*>(project->GetCurrentScreen());
+            const bool projectLoaded = feProject->IsLoaded();
+            const bool tvFrameAvailable = screen != NULL && screen->GetPage( "TVFrame" ) != NULL;
+
+#if defined(RAD_ANDROID) || defined(__ANDROID__)
+            // Only log once. During FMV playback this function may be called every frame.
+            static bool s_loggedTVFrameState = false;
+            if( tvFrameAvailable && !s_loggedTVFrameState )
             {
-                m_DrawingFrame = true;        
-                FeScreen* screen = dynamic_cast<FeScreen*>(project->GetCurrentScreen());
+                TVFRAME_APP_DIAG( "DrawForeground: loaded=%d screen=%p pages=%d TVFrame=%p; drawing=%d",
+                                  projectLoaded ? 1 : 0,
+                                  (void*)screen,
+                                  screen != NULL ? screen->GetNumberOfPages() : -1,
+                                  (void*)screen->GetPage( "TVFrame" ),
+                                  (projectLoaded || tvFrameAvailable) ? 1 : 0 );
+                s_loggedTVFrameState = true;
+            }
+#endif
+
+            // The FMV screen can already own its TVFrame page while the overall
+            // Scrooby project is not marked fully loaded. In that case the
+            // ordinary IsLoaded() guard suppresses the foreground pass. If the
+            // page is present, its resources are available, so permit the
+            // foreground draw needed to place the TV frame over the movie.
+            if( projectLoaded || tvFrameAvailable )
+            {
+                m_DrawingFrame = true;
                 if( screen )
                 {
                     screen->DisplayForeground();
