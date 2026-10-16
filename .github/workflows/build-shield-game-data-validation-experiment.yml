@@ -1,4 +1,4 @@
-name: Build TV Frame Direct Page Draw and Credits Position Test APK
+name: Build Phone Cel Outline Isolation Test APK
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
       - experimental-game-data-validation
       - experimental-credits-overlap-fix
       - experimental-credits-tvframe-diagnostics
+      - experimental-phone-cel-outline-isolation
   workflow_dispatch:
 
 permissions:
@@ -77,6 +78,6 @@ jobs:
       - name: Upload experimental APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simpsons-TVFrame-DirectPage-Credits-Position-Test
+          name: Simpsons-Phone-Cel-Outline-Isolation-Test
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
