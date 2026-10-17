@@ -32,6 +32,17 @@ float GetFrameSharpenStrength();
 
 void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature, float* glowStrength, float* cornerDarkening, float* overscan, float* brightness, float* contrast);
 
+// The GUI lives in libmain.so and the renderer is built as libpddi.a. Keep
+// this setter at global scope so the main library can link to it.
+void SetSHARAndroidTargetFPS(int targetFPS)
+{
+    if (targetFPS == 30 || targetFPS == 60 || targetFPS == 90 ||
+        targetFPS == 120 || targetFPS == 144)
+    {
+        gSHARAndroidTargetFPS = targetFPS;
+    }
+}
+
 namespace
 {
 
@@ -130,15 +141,6 @@ static void CommitSHARMotionBlurCameraHistory(
         gSHARPreviousMotionBlurCamera.valid = false;
         gSHARMotionBlurHistoryWidth = 0;
         gSHARMotionBlurHistoryHeight = 0;
-    }
-}
-
-void SetSHARAndroidTargetFPS(int targetFPS)
-{
-    if( targetFPS == 30 || targetFPS == 60 || targetFPS == 90 ||
-        targetFPS == 120 || targetFPS == 144 )
-    {
-        gSHARAndroidTargetFPS = targetFPS;
     }
 }
 
