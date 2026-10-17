@@ -33,7 +33,7 @@
 #include <p3d/effects/particlesystem.hpp>
 #include <pddi/pddi.hpp>
 #ifdef RAD_ANDROID
-void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, float z, float halfWidth, float halfHeight);
+void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, float z, float halfWidth, float halfHeight, float speedKmh);
 bool IsCelShadingEnabled();
 bool IsCelShadingObjectEnabled();
 void SetCelShadingObjectEnabled(bool enabled);
@@ -655,7 +655,7 @@ BEGIN_PROFILE("GeometryVehicle::Display SetUp")
         motionBlurPlayerAvatar->GetVehicle() == mVehicleOwner)
     {
         // Protect the driving vehicle only; traffic and scenery stay in the blur pass.
-        RegisterSHARMotionBlurSubjectBounds(1, pos.x, pos.y + 0.75f, pos.z, 2.60f, 1.15f);
+        RegisterSHARMotionBlurSubjectBounds(1, pos.x, pos.y + 0.75f, pos.z, 2.60f, 1.15f, mVehicleOwner->GetSpeedKmh());
     }
 #endif
     rmt::Vector movement = pos - mLastPosition;
