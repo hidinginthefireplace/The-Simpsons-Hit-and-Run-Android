@@ -58,7 +58,6 @@ struct SHARMotionBlurSubjectBounds
     float halfWidth;
     float halfHeight;
     float motionIntensity;
-    bool hasPreviousPosition;
     bool valid;
 };
 
@@ -1069,6 +1068,16 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float vehicleBodyMask = rawMotionBlurSubjectMask(uv, vehicleMaskPosition, vehicleSize, vehicleMaskEnabled);\n"
             "    return trailShape * (1.0 - vehicleBodyMask);\n"
             "}\n"
+            "\n"            "vec3 applyVehicleRoadTrail(vec2 uv, vec3 baseColour) {\n"
+            "    float roadTrailWeight = vehicleRoadTrailMask(uv) * vehicleMotionIntensity * 0.38;\n"
+            "    if (roadTrailWeight <= 0.001) return baseColour;\n"
+            "    vec3 roadTrailColour = baseColour * 0.42;\n"
+            "    roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 2.0)).rgb * 0.22;\n"
+            "    roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 4.0)).rgb * 0.16;\n"
+            "    roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 6.0)).rgb * 0.12;\n"
+            "    roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 8.0)).rgb * 0.08;\n"
+            "    return mix(baseColour, roadTrailColour, roadTrailWeight);\n"
+            "}\n"
             "\n"
             "float motionBlurSubjectDepthPass(vec3 subjectPosition, vec2 halfSize, float enabled, float sceneViewZ) {\n"
             "    if (enabled < 0.5) return 0.0;\n"
@@ -1134,9 +1143,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "}\n"
             "\n"
             "vec3 applyCameraMotionBlur(vec2 uv, vec3 centreColour) {\n"
-            "    if (motionBlurEnabled < 0.5 || motionBlurCameraValid < 0.5 || depthTextureAvailable < 0.5) return centreColour;\n"
+            "    if (motionBlurEnabled < 0.5 || depthTextureAvailable < 0.5) return centreColour;\n"
             "    float depthValue = texture2D(depthTex, uv).r;\n"
             "    if (depthValue >= 0.9995) return centreColour;\n"
+            "    if (motionBlurCameraValid < 0.5) return applyVehicleRoadTrail(uv, centreColour);\n"
             "    float depthNdc = depthValue * 2.0 - 1.0;\n"
             "    float depthDenominator = currentFarPlane + currentNearPlane - depthNdc * (currentFarPlane - currentNearPlane);\n"
             "    float viewZ = (2.0 * currentNearPlane * currentFarPlane) / max(depthDenominator, 0.0001);\n"
@@ -1145,10 +1155,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    vec3 worldPosition = currentCameraPosition + currentCameraRight * currentViewPosition.x + currentCameraUp * currentViewPosition.y + currentCameraForward * currentViewPosition.z;\n"
             "    vec3 fromPreviousCamera = worldPosition - previousCameraPosition;\n"
             "    float previousZ = dot(fromPreviousCamera, previousCameraForward);\n"
-            "    if (previousZ <= previousNearPlane) return centreColour;\n"
+            "    if (previousZ <= previousNearPlane) return applyVehicleRoadTrail(uv, centreColour);\n"
             "    vec2 previousNdc = vec2(dot(fromPreviousCamera, previousCameraRight) / (previousZ * previousTanHalfFovX), dot(fromPreviousCamera, previousCameraUp) / (previousZ * previousTanHalfFovY));\n"
             "    vec2 previousUv = previousNdc * 0.5 + 0.5;\n"
-            "    if (previousUv.x < 0.0 || previousUv.x > 1.0 || previousUv.y < 0.0 || previousUv.y > 1.0) return centreColour;\n"
+            "    if (previousUv.x < 0.0 || previousUv.x > 1.0 || previousUv.y < 0.0 || previousUv.y > 1.0) return applyVehicleRoadTrail(uv, centreColour);\n"
             "    vec2 motion = uv - previousUv;\n"
             "    float motionPixels = length(motion / texelSize);\n"
             "    float motionAmount = smoothstep(0.18, 1.15, motionPixels);\n"
@@ -1167,16 +1177,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float vehicleProtection = protectMotionBlurSubject(uv, viewZ, vehicleMaskPosition, vehicleMaskSize * vec2(1.08, 1.0), vehicleMaskEnabled);\n"
             "    float subjectProtection = max(characterProtection, vehicleProtection);\n"
             "    vec3 baseColour = mix(centreColour, blurred, motionAmount * (1.0 - subjectProtection));\n"
-            "    float roadTrailWeight = vehicleRoadTrailMask(uv) * vehicleMotionIntensity * 0.38;\n"
-            "    if (roadTrailWeight > 0.001) {\n"
-            "        vec3 roadTrailColour = centreColour * 0.42;\n"
-            "        roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 2.0)).rgb * 0.22;\n"
-            "        roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 4.0)).rgb * 0.16;\n"
-            "        roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 6.0)).rgb * 0.12;\n"
-            "        roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 8.0)).rgb * 0.08;\n"
-            "        baseColour = mix(baseColour, roadTrailColour, roadTrailWeight);\n"
-            "    }\n"
-            "    return baseColour;\n"
+            "    return applyVehicleRoadTrail(uv, baseColour);\n"
             "}\n"
             "\n"
             "void main() {\n"
@@ -2044,7 +2045,7 @@ static void ApplyCelPostProcess(int width, int height)
 static void ApplyFrameSharpening(int width, int height);
 static void ApplyCRTFilter(int width, int height);
 
-void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, float z, float halfWidth, float halfHeight)
+void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, float z, float halfWidth, float halfHeight, float speedKmh)
 {
     SHARMotionBlurSubjectBounds* subject = NULL;
     if (subjectType == 0)
@@ -2056,31 +2057,12 @@ void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, floa
 
     if (subjectType == 1)
     {
-        if (subject->hasPreviousPosition)
-        {
-            const float dx = x - subject->position[0];
-            const float dy = y - subject->position[1];
-            const float dz = z - subject->position[2];
-            const float frameTravel = sqrtf(dx * dx + dy * dy + dz * dz);
-            if (frameTravel < 2.0f)
-            {
-                // Normalise per-frame car travel into a stable 0..1 trail strength.
-                float t = (frameTravel - 0.015f) / (0.18f - 0.015f);
-                if (t < 0.0f) t = 0.0f;
-                if (t > 1.0f) t = 1.0f;
-                subject->motionIntensity = t * t * (3.0f - 2.0f * t);
-            }
-            else
-            {
-                // Ignore teleports or transitions into a different vehicle position.
-                subject->motionIntensity = 0.0f;
-            }
-        }
-        else
-        {
-            subject->motionIntensity = 0.0f;
-            subject->hasPreviousPosition = true;
-        }
+        // Use actual vehicle speed so repeated render passes cannot cancel the trail strength.
+        float speed = speedKmh < 0.0f ? -speedKmh : speedKmh;
+        float t = (speed - 5.0f) / (45.0f - 5.0f);
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        subject->motionIntensity = t * t * (3.0f - 2.0f * t);
     }
 
     subject->position[0] = x;
