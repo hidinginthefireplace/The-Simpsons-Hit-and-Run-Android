@@ -35,7 +35,7 @@ static bool gSharpeningConfigurationLoaded = false;
 
 static bool gCRTConfigurationLoaded = false;
 static bool gMotionBlurConfigurationLoaded = false;
-static bool gMotionBlurEnabled = true;
+static bool gMotionBlurEnabled = false;
 static bool gCRTEnabled = false;
 static float gCRTScanlineStrength = 0.5f;
 static float gCRTCurvature = 0.06f;
@@ -479,7 +479,7 @@ static void LoadMotionBlurConfiguration()
 
     if (file == nullptr)
     {
-        // Motion blur defaults to enabled for the Remastered Settings profile.
+        // Fresh installs default to motion blur disabled; an existing saved preference is preserved.
         WriteMotionBlurConfiguration();
         return;
     }
