@@ -1060,16 +1060,23 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float halfHeightInCameraUp = sqrt(vehicleSize.x * vehicleSize.x * (currentCameraUp.x * currentCameraUp.x + currentCameraUp.z * currentCameraUp.z) + vehicleSize.y * vehicleSize.y * currentCameraUp.y * currentCameraUp.y);\n"
             "    vec2 vehicleRadius = vec2(halfWidthInCameraRight / (vehicleZ * currentTanHalfFovX), halfHeightInCameraUp / (vehicleZ * currentTanHalfFovY)) * 0.5;\n"
             "    vehicleRadius = max(vehicleRadius, texelSize * 3.0) + texelSize * 5.0;\n"
-            "    // The trail sits below the projected vehicle, over the road toward the camera.\n"
-            "    vec2 trailCentre = vehicleUv - vec2(0.0, vehicleRadius.y * 1.55);\n"
-            "    vec2 trailRadius = vec2(max(vehicleRadius.x * 0.62, texelSize.x * 4.0), max(vehicleRadius.y * 1.10, texelSize.y * 8.0));\n"
-            "    float trailDistance = length((uv - trailCentre) / trailRadius);\n"
-            "    float trailShape = 1.0 - smoothstep(0.55, 1.20, trailDistance);\n"
+            "    // Trail begins behind the bumper and widens down toward both lower screen edges.\n"
+            "    // UV Y is higher toward the top of the scene, so only pixels below the car are included.\n"
+            "    float distanceBelowCar = vehicleUv.y - uv.y;\n"
+            "    float trailStart = vehicleRadius.y * 0.58;\n"
+            "    float trailLength = max(vehicleUv.y - trailStart, texelSize.y * 12.0);\n"
+            "    float trailProgress = clamp((distanceBelowCar - trailStart) / trailLength, 0.0, 1.0);\n"
+            "    float verticalFade = smoothstep(trailStart - texelSize.y * 5.0, trailStart + texelSize.y * 5.0, distanceBelowCar);\n"
+            "    float curvedProgress = smoothstep(0.0, 0.9, trailProgress);\n"
+            "    float sideWidth = mix(max(vehicleRadius.x * 0.72, texelSize.x * 6.0), 0.78, curvedProgress);\n"
+            "    float sideSoftness = max(texelSize.x * 14.0, 0.012);\n"
+            "    float sideMask = 1.0 - smoothstep(sideWidth, sideWidth + sideSoftness, abs(uv.x - vehicleUv.x));\n"
+            "    float trailShape = verticalFade * sideMask;\n"
             "    float vehicleBodyMask = rawMotionBlurSubjectMask(uv, vehicleMaskPosition, vehicleSize, vehicleMaskEnabled);\n"
             "    return trailShape * (1.0 - vehicleBodyMask);\n"
             "}\n"
             "\n"            "vec3 applyVehicleRoadTrail(vec2 uv, vec3 baseColour) {\n"
-            "    float roadTrailWeight = vehicleRoadTrailMask(uv) * vehicleMotionIntensity * 0.38;\n"
+            "    float roadTrailWeight = vehicleRoadTrailMask(uv) * vehicleMotionIntensity * 0.50;\n"
             "    if (roadTrailWeight <= 0.001) return baseColour;\n"
             "    vec3 roadTrailColour = baseColour * 0.42;\n"
             "    roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 2.0)).rgb * 0.22;\n"
@@ -2059,7 +2066,7 @@ void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, floa
     {
         // Use actual vehicle speed so repeated render passes cannot cancel the trail strength.
         float speed = speedKmh < 0.0f ? -speedKmh : speedKmh;
-        float t = (speed - 5.0f) / (45.0f - 5.0f);
+        float t = (speed - 12.0f) / (50.0f - 12.0f);
         if (t < 0.0f) t = 0.0f;
         if (t > 1.0f) t = 1.0f;
         subject->motionIntensity = t * t * (3.0f - 2.0f * t);
