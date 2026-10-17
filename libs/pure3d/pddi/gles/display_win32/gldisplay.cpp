@@ -136,52 +136,9 @@ static void CommitSHARMotionBlurCameraHistory(
 // 5 = separate raw, depth-approved and depth-rejected subject mask regions.
 static int GetSHARMotionBlurDiagnosticMode()
 {
-    static bool loaded = false;
-    static int mode = 1;
-    if (loaded)
-        return mode;
-    loaded = true;
-
-    const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
-    if (basePath == NULL || basePath[0] == '\0')
-        return mode;
-
-    char graphicsPath[512];
-    char configPath[768];
-    snprintf(graphicsPath, sizeof(graphicsPath), "%s/Graphics", basePath);
-    snprintf(configPath, sizeof(configPath), "%s/Simpsons_motion_blur_diagnostic.txt", graphicsPath);
-    mkdir(graphicsPath, 0777);
-
-    FILE* file = fopen(configPath, "r");
-    if (file != NULL)
-    {
-        int requestedMode = 1;
-        if (fscanf(file, "%d", &requestedMode) == 1 &&
-            requestedMode >= 0 && requestedMode <= 5)
-        {
-            mode = requestedMode;
-        }
-        fclose(file);
-    }
-    else
-    {
-        // Start in motion-field mode so the first test immediately shows useful data.
-        file = fopen(configPath, "w");
-        if (file != NULL)
-        {
-            fprintf(file,
-                "1\n"
-                "# Temporary motion blur diagnostic mode\n"
-                "# 0 = normal blur\n"
-                "# 1 = camera motion field (grayscale)\n"
-                "# 2 = linearized scene depth (grayscale)\n"
-                "# 3 = subject protection mask (red=vehicle, green=character)\n"
-                "# 4 = scene overlay: red vehicle bounds, green character bounds, tinted depth-clipped protection\n"
-                "# 5 = raw masks vs depth-approved/rejected overlays\n");
-            fclose(file);
-        }
-    }
-    return mode;
+    // Diagnostic overlays are disabled in the playable motion-blur test build.
+    // Ignore any persistent Simpsons_motion_blur_diagnostic.txt setting on-device.
+    return 0;
 }
 
 GLuint gCelPostProgram = 0;
@@ -948,7 +905,9 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    if (subjectZ <= currentNearPlane || sceneViewZ > subjectZ + (halfSize.x + halfSize.y) * 2.0) return 0.0;\n"
             "    vec2 subjectNdc = vec2(dot(fromCamera, currentCameraRight) / (subjectZ * currentTanHalfFovX), dot(fromCamera, currentCameraUp) / (subjectZ * currentTanHalfFovY));\n"
             "    vec2 subjectUv = subjectNdc * 0.5 + 0.5;\n"
-            "    vec2 subjectRadius = vec2(halfSize.x / (subjectZ * currentTanHalfFovX), halfSize.y / (subjectZ * currentTanHalfFovY)) * 0.5;\n"
+            "    float halfWidthInCameraRight = sqrt(halfSize.x * halfSize.x * (currentCameraRight.x * currentCameraRight.x + currentCameraRight.z * currentCameraRight.z) + halfSize.y * halfSize.y * currentCameraRight.y * currentCameraRight.y);\n"
+            "    float halfHeightInCameraUp = sqrt(halfSize.x * halfSize.x * (currentCameraUp.x * currentCameraUp.x + currentCameraUp.z * currentCameraUp.z) + halfSize.y * halfSize.y * currentCameraUp.y * currentCameraUp.y);\n"
+            "    vec2 subjectRadius = vec2(halfWidthInCameraRight / (subjectZ * currentTanHalfFovX), halfHeightInCameraUp / (subjectZ * currentTanHalfFovY)) * 0.5;\n"
             "    subjectRadius = max(subjectRadius, texelSize * 3.0);\n"
             "    // Pad the projected bounds slightly so the outline and extremities stay sharp too.\n"
             "    subjectRadius += texelSize * 5.0;\n"
@@ -1013,7 +972,9 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    if (subjectZ <= currentNearPlane) return sceneColour;\n"
             "    vec2 subjectNdc = vec2(dot(fromCamera, currentCameraRight) / (subjectZ * currentTanHalfFovX), dot(fromCamera, currentCameraUp) / (subjectZ * currentTanHalfFovY));\n"
             "    vec2 subjectUv = subjectNdc * 0.5 + 0.5;\n"
-            "    vec2 subjectRadius = vec2(halfSize.x / (subjectZ * currentTanHalfFovX), halfSize.y / (subjectZ * currentTanHalfFovY)) * 0.5;\n"
+            "    float halfWidthInCameraRight = sqrt(halfSize.x * halfSize.x * (currentCameraRight.x * currentCameraRight.x + currentCameraRight.z * currentCameraRight.z) + halfSize.y * halfSize.y * currentCameraRight.y * currentCameraRight.y);\n"
+            "    float halfHeightInCameraUp = sqrt(halfSize.x * halfSize.x * (currentCameraUp.x * currentCameraUp.x + currentCameraUp.z * currentCameraUp.z) + halfSize.y * halfSize.y * currentCameraUp.y * currentCameraUp.y);\n"
+            "    vec2 subjectRadius = vec2(halfWidthInCameraRight / (subjectZ * currentTanHalfFovX), halfHeightInCameraUp / (subjectZ * currentTanHalfFovY)) * 0.5;\n"
             "    subjectRadius = max(subjectRadius, texelSize * 3.0);\n"
             "    subjectRadius += texelSize * 5.0;\n"
             "    float ellipseDistance = length((uv - subjectUv) / subjectRadius);\n"
@@ -1067,7 +1028,9 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    if (subjectZ <= currentNearPlane) return 0.0;\n"
             "    vec2 subjectNdc = vec2(dot(fromCamera, currentCameraRight) / (subjectZ * currentTanHalfFovX), dot(fromCamera, currentCameraUp) / (subjectZ * currentTanHalfFovY));\n"
             "    vec2 subjectUv = subjectNdc * 0.5 + 0.5;\n"
-            "    vec2 subjectRadius = vec2(halfSize.x / (subjectZ * currentTanHalfFovX), halfSize.y / (subjectZ * currentTanHalfFovY)) * 0.5;\n"
+            "    float halfWidthInCameraRight = sqrt(halfSize.x * halfSize.x * (currentCameraRight.x * currentCameraRight.x + currentCameraRight.z * currentCameraRight.z) + halfSize.y * halfSize.y * currentCameraRight.y * currentCameraRight.y);\n"
+            "    float halfHeightInCameraUp = sqrt(halfSize.x * halfSize.x * (currentCameraUp.x * currentCameraUp.x + currentCameraUp.z * currentCameraUp.z) + halfSize.y * halfSize.y * currentCameraUp.y * currentCameraUp.y);\n"
+            "    vec2 subjectRadius = vec2(halfWidthInCameraRight / (subjectZ * currentTanHalfFovX), halfHeightInCameraUp / (subjectZ * currentTanHalfFovY)) * 0.5;\n"
             "    subjectRadius = max(subjectRadius, texelSize * 3.0);\n"
             "    subjectRadius += texelSize * 5.0;\n"
             "    float ellipseDistance = length((uv - subjectUv) / subjectRadius);\n"
@@ -1165,7 +1128,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    blurred += texture2D(sceneTex, uv - blurOffset * 0.50).rgb * 0.20;\n"
             "    blurred += texture2D(sceneTex, uv - blurOffset * 0.75).rgb * 0.10;\n"
             "    blurred += texture2D(sceneTex, uv - blurOffset).rgb * 0.10;\n"
-            "    float characterProtection = protectMotionBlurSubject(uv, viewZ, characterMaskPosition, characterMaskSize, characterMaskEnabled);\n"
+            "    // Character materials do not consistently contribute depth, so use the projected player bounds directly.\n"
+            "    float characterProtection = rawMotionBlurSubjectMask(uv, characterMaskPosition, characterMaskSize, characterMaskEnabled);\n"
             "    float vehicleProtection = protectMotionBlurSubject(uv, viewZ, vehicleMaskPosition, vehicleMaskSize, vehicleMaskEnabled);\n"
             "    float subjectProtection = max(characterProtection, vehicleProtection);\n"
             "    return mix(centreColour, blurred, motionAmount * (1.0 - subjectProtection));\n"
