@@ -57,6 +57,8 @@ struct SHARMotionBlurSubjectBounds
     float position[3];
     float halfWidth;
     float halfHeight;
+    float motionIntensity;
+    bool hasPreviousPosition;
     bool valid;
 };
 
@@ -201,6 +203,7 @@ GLint gCelPostCharacterMaskSizeLocation = -1;
 GLint gCelPostVehicleMaskEnabledLocation = -1;
 GLint gCelPostVehicleMaskPositionLocation = -1;
 GLint gCelPostVehicleMaskSizeLocation = -1;
+GLint gCelPostVehicleMotionIntensityLocation = -1;
 GLint gCelPostMotionBlurDiagnosticLocation = -1;
 
 GLuint gCelBloomExtractProgram = 0;
@@ -887,6 +890,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform float vehicleMaskEnabled;\n"
             "uniform vec3 vehicleMaskPosition;\n"
             "uniform vec2 vehicleMaskSize;\n"
+            "uniform float vehicleMotionIntensity;\n"
             "uniform float motionBlurDiagnosticMode;\n"
             "varying vec2 texcoord;\n"
             "\n"
@@ -1045,6 +1049,26 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float ellipseDistance = length((uv - subjectUv) / subjectRadius);\n"
             "    return 1.0 - smoothstep(0.90, 1.30, ellipseDistance);\n"
             "}\n"
+            "float vehicleRoadTrailMask(vec2 uv) {\n"
+            "    if (vehicleMaskEnabled < 0.5 || vehicleMotionIntensity < 0.01) return 0.0;\n"
+            "    vec2 vehicleSize = vehicleMaskSize * vec2(1.08, 1.0);\n"
+            "    vec3 fromCamera = vehicleMaskPosition - currentCameraPosition;\n"
+            "    float vehicleZ = dot(fromCamera, currentCameraForward);\n"
+            "    if (vehicleZ <= currentNearPlane) return 0.0;\n"
+            "    vec2 vehicleNdc = vec2(dot(fromCamera, currentCameraRight) / (vehicleZ * currentTanHalfFovX), dot(fromCamera, currentCameraUp) / (vehicleZ * currentTanHalfFovY));\n"
+            "    vec2 vehicleUv = vehicleNdc * 0.5 + 0.5;\n"
+            "    float halfWidthInCameraRight = sqrt(vehicleSize.x * vehicleSize.x * (currentCameraRight.x * currentCameraRight.x + currentCameraRight.z * currentCameraRight.z) + vehicleSize.y * vehicleSize.y * currentCameraRight.y * currentCameraRight.y);\n"
+            "    float halfHeightInCameraUp = sqrt(vehicleSize.x * vehicleSize.x * (currentCameraUp.x * currentCameraUp.x + currentCameraUp.z * currentCameraUp.z) + vehicleSize.y * vehicleSize.y * currentCameraUp.y * currentCameraUp.y);\n"
+            "    vec2 vehicleRadius = vec2(halfWidthInCameraRight / (vehicleZ * currentTanHalfFovX), halfHeightInCameraUp / (vehicleZ * currentTanHalfFovY)) * 0.5;\n"
+            "    vehicleRadius = max(vehicleRadius, texelSize * 3.0) + texelSize * 5.0;\n"
+            "    // The trail sits below the projected vehicle, over the road toward the camera.\n"
+            "    vec2 trailCentre = vehicleUv - vec2(0.0, vehicleRadius.y * 1.55);\n"
+            "    vec2 trailRadius = vec2(max(vehicleRadius.x * 0.62, texelSize.x * 4.0), max(vehicleRadius.y * 1.10, texelSize.y * 8.0));\n"
+            "    float trailDistance = length((uv - trailCentre) / trailRadius);\n"
+            "    float trailShape = 1.0 - smoothstep(0.55, 1.20, trailDistance);\n"
+            "    float vehicleBodyMask = rawMotionBlurSubjectMask(uv, vehicleMaskPosition, vehicleSize, vehicleMaskEnabled);\n"
+            "    return trailShape * (1.0 - vehicleBodyMask);\n"
+            "}\n"
             "\n"
             "float motionBlurSubjectDepthPass(vec3 subjectPosition, vec2 halfSize, float enabled, float sceneViewZ) {\n"
             "    if (enabled < 0.5) return 0.0;\n"
@@ -1128,7 +1152,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    vec2 motion = uv - previousUv;\n"
             "    float motionPixels = length(motion / texelSize);\n"
             "    float motionAmount = smoothstep(0.18, 1.15, motionPixels);\n"
-            "    if (motionAmount <= 0.001) return centreColour;\n"
+            "    if (motionAmount <= 0.001 && vehicleMotionIntensity <= 0.01) return centreColour;\n"
             "    vec2 maxOffset = texelSize * 8.0;\n"
             "    vec2 blurOffset = clamp(motion * 0.75, -maxOffset, maxOffset);\n"
             "    vec3 blurred = centreColour * 0.40;\n"
@@ -1142,7 +1166,17 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    // Add a small horizontal allowance so the tail stays mostly protected without greatly widening the mask.\n"
             "    float vehicleProtection = protectMotionBlurSubject(uv, viewZ, vehicleMaskPosition, vehicleMaskSize * vec2(1.08, 1.0), vehicleMaskEnabled);\n"
             "    float subjectProtection = max(characterProtection, vehicleProtection);\n"
-            "    return mix(centreColour, blurred, motionAmount * (1.0 - subjectProtection));\n"
+            "    vec3 baseColour = mix(centreColour, blurred, motionAmount * (1.0 - subjectProtection));\n"
+            "    float roadTrailWeight = vehicleRoadTrailMask(uv) * vehicleMotionIntensity * 0.38;\n"
+            "    if (roadTrailWeight > 0.001) {\n"
+            "        vec3 roadTrailColour = centreColour * 0.42;\n"
+            "        roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 2.0)).rgb * 0.22;\n"
+            "        roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 4.0)).rgb * 0.16;\n"
+            "        roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 6.0)).rgb * 0.12;\n"
+            "        roadTrailColour += texture2D(sceneTex, uv + vec2(0.0, texelSize.y * 8.0)).rgb * 0.08;\n"
+            "        baseColour = mix(baseColour, roadTrailColour, roadTrailWeight);\n"
+            "    }\n"
+            "    return baseColour;\n"
             "}\n"
             "\n"
             "void main() {\n"
@@ -1292,6 +1326,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostVehicleMaskEnabledLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskEnabled");
         gCelPostVehicleMaskPositionLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskPosition");
         gCelPostVehicleMaskSizeLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskSize");
+        gCelPostVehicleMotionIntensityLocation = glGetUniformLocation(gCelPostProgram, "vehicleMotionIntensity");
         gCelPostMotionBlurDiagnosticLocation = glGetUniformLocation(gCelPostProgram, "motionBlurDiagnosticMode");
 
         glGenTextures(1, &gCelPostTexture);
@@ -1941,6 +1976,9 @@ static void ApplyCelPostProcess(int width, int height)
         glUniform3f(gCelPostVehicleMaskPositionLocation, gSHARMotionBlurVehicleSubject.position[0], gSHARMotionBlurVehicleSubject.position[1], gSHARMotionBlurVehicleSubject.position[2]);
     if (gCelPostVehicleMaskSizeLocation >= 0 && gSHARMotionBlurVehicleSubject.valid)
         glUniform2f(gCelPostVehicleMaskSizeLocation, gSHARMotionBlurVehicleSubject.halfWidth, gSHARMotionBlurVehicleSubject.halfHeight);
+    if (gCelPostVehicleMotionIntensityLocation >= 0)
+        glUniform1f(gCelPostVehicleMotionIntensityLocation,
+            gSHARMotionBlurVehicleSubject.valid ? gSHARMotionBlurVehicleSubject.motionIntensity : 0.0f);
 
     if (motionBlurCameraValid)
     {
@@ -2015,6 +2053,35 @@ void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, floa
         subject = &gSHARMotionBlurVehicleSubject;
     if (subject == NULL)
         return;
+
+    if (subjectType == 1)
+    {
+        if (subject->hasPreviousPosition)
+        {
+            const float dx = x - subject->position[0];
+            const float dy = y - subject->position[1];
+            const float dz = z - subject->position[2];
+            const float frameTravel = sqrtf(dx * dx + dy * dy + dz * dz);
+            if (frameTravel < 2.0f)
+            {
+                // Normalise per-frame car travel into a stable 0..1 trail strength.
+                float t = (frameTravel - 0.015f) / (0.18f - 0.015f);
+                if (t < 0.0f) t = 0.0f;
+                if (t > 1.0f) t = 1.0f;
+                subject->motionIntensity = t * t * (3.0f - 2.0f * t);
+            }
+            else
+            {
+                // Ignore teleports or transitions into a different vehicle position.
+                subject->motionIntensity = 0.0f;
+            }
+        }
+        else
+        {
+            subject->motionIntensity = 0.0f;
+            subject->hasPreviousPosition = true;
+        }
+    }
 
     subject->position[0] = x;
     subject->position[1] = y;
