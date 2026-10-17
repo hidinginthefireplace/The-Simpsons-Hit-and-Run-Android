@@ -32,6 +32,7 @@ float GetFrameSharpenStrength();
 
 void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature, float* glowStrength, float* cornerDarkening, float* overscan, float* brightness, float* contrast);
 
+static int gSHARAndroidTargetFPS = 60;
 // The GUI lives in libmain.so and the renderer is built as libpddi.a. Keep
 // this setter at global scope so the main library can link to it.
 void SetSHARAndroidTargetFPS(int targetFPS)
@@ -60,7 +61,6 @@ struct SHARMotionBlurCameraState
 };
 
 static SHARMotionBlurCameraState gSHARPreviousMotionBlurCamera = {};
-static int gSHARAndroidTargetFPS = 60;
 static int gSHARMotionBlurHistoryWidth = 0;
 static int gSHARMotionBlurHistoryHeight = 0;
 static Uint64 gSHARPreviousMotionBlurSampleTime = 0;
