@@ -8,9 +8,9 @@ SOURCE = ROOT / "icon-source"
 RES = ROOT / "android-project/app/src/main/res"
 DRAWABLE = RES / "drawable-nodpi"
 CANVAS_SIZE = 1024
-# A modest 15% reduction is the midpoint between full-size artwork and a
-# 30%-smaller treatment. Leave the supplied background untouched.
-FOREGROUND_SCALE = 0.85
+# Use a 22.5% reduction as an intermediate size trial. Leave the supplied
+# background untouched.
+FOREGROUND_SCALE = 0.775
 
 
 def open_rgba(path: Path) -> Image.Image:
