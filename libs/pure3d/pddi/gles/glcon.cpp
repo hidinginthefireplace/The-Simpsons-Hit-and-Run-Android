@@ -927,9 +927,6 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
 #ifdef RAD_ANDROID
         "    if (lit == 0) return vec3(1.0);\n"
 #endif
-        // Diagnostic build: retain the flat toon base and silhouette pass, but
-        // bypass fragment normal/view-vector lighting for cel-shaded objects.
-        // This tests whether the rim calculation is producing device-specific black specks.
         "    return dcm.rgb * toonFlatLight;\n"
         "}\n";
 

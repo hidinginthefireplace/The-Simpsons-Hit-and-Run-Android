@@ -1,4 +1,4 @@
-name: Build Phone Flat-Toon Diagnostic APK
+name: Build Simpsons H&R Remastered APK
 
 on:
   push:
@@ -78,6 +78,6 @@ jobs:
       - name: Upload experimental APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simpsons-Phone-Flat-Toon-Diagnostic
+          name: Simpsons-HR-Remastered-Android
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
