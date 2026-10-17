@@ -217,6 +217,8 @@ GLint gCRTCornersLocation = -1;
 GLint gCRTOverscanLocation = -1;
 GLint gCRTBrightnessLocation = -1;
 GLint gCRTContrastLocation = -1;
+GLint gCRTCrtEnabledLocation = -1;
+GLint gCRTSaturationLocation = -1;
 int gCRTWidth = 0;
 int gCRTHeight = 0;
 
@@ -428,20 +430,14 @@ static bool CheckSHARRenderTargetSize(
             estimatedBytes += bloomWidth * bloomHeight * 8;
         }
 
-        // Count RGB full-screen copies as four bytes per pixel to allow for
-        // drivers that pad RGB allocations internally. Reason 5 (sharpening)
-        // reserves room for CRT too; if all effects exceed the cap, sharpening
-        // is bypassed first so CRT can still run. Reason 6 (CRT) assumes that
-        // higher-priority sharpening was already bypassed by reason 5.
+        // Count full-screen copies as four bytes per pixel to allow for drivers
+        // that pad RGB allocations internally. The global saturation pass shares
+        // its texture with CRT, so reserve one copy even when CRT is disabled.
+        // If the budget is tight, sharpening is bypassed first.
         if (reasonCode == 5 && sharpeningEnabled)
             estimatedBytes += pixels * 4;
 
-        bool crtEnabled = false;
-        float scanline = 0.0f, curvature = 0.0f, glow = 0.0f;
-        float corners = 0.0f, overscan = 0.0f, brightness = 1.0f, contrast = 1.0f;
-        GetCRTFilterConfiguration(&crtEnabled, &scanline, &curvature, &glow,
-                                  &corners, &overscan, &brightness, &contrast);
-        if (crtEnabled && (reasonCode == 5 || reasonCode == 6))
+        if (reasonCode == 5 || reasonCode == 6)
             estimatedBytes += pixels * 4;
 
         if (estimatedBytes > SHAR_POSTPROCESS_BUDGET_BYTES)
@@ -1076,9 +1072,9 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float glare = bright * sunRegion * 0.10;\n"
             "    toonColour += vec3(glare, glare * 0.95, glare * 0.82);\n"
             "\n"
-            "    // Requested colour grade: +35%% saturation, +2%% contrast, neutral brightness.\n"
+            "    // Global saturation adds +20%% later; 1.125 * 1.20 keeps Cel Shading at +35%% overall.\n"
             "    float gradedLuma = sceneLuma(toonColour);\n"
-            "    toonColour = mix(vec3(gradedLuma), toonColour, 1.35);\n"
+            "    toonColour = mix(vec3(gradedLuma), toonColour, 1.125);\n"
             "    toonColour = (toonColour - vec3(0.5)) * 1.02 + vec3(0.5);\n"
             "\n"
             "    // Very small dither to reduce visible gradient/band stepping.\n"
@@ -1955,6 +1951,9 @@ void ApplyCelPostProcessBeforeGui(int width, int height)
 // system at every selected internal render resolution.
 void BeginSHARAndroidFMVOutputRender()
 {
+    // Direct-output FMV frames must each receive the final global colour grade.
+    gSHARPostProcessAppliedBeforeTouchHud = false;
+
     int outputWidth = 0;
     int outputHeight = 0;
     if (!QueryDefaultFramebufferSize(&outputWidth, &outputHeight) ||
@@ -2129,8 +2128,8 @@ static void ApplyCRTFilter(int width, int height)
     float cornerDarkening = 0.05f, overscan = 0.0f, brightness = 1.0f, contrast = 1.0f;
     GetCRTFilterConfiguration(&enabled, &scanlineStrength, &curvature, &glowStrength,
                               &cornerDarkening, &overscan, &brightness, &contrast);
-    // When disabled, return before allocating resources or issuing any CRT draw calls.
-    if (!enabled || width <= 0 || height <= 0)
+    // This pass always provides global saturation; CRT-specific effects remain optional.
+    if (width <= 0 || height <= 0)
         return;
 
     if (gCRTFailedWidth == width && gCRTFailedHeight == height)
@@ -2156,21 +2155,30 @@ static void ApplyCRTFilter(int width, int height)
             "uniform sampler2D frameTex; uniform vec2 texelSize;\n"
             "uniform float scanlineStrength; uniform float curvature; uniform float glowStrength;\n"
             "uniform float cornerDarkening; uniform float overscan; uniform float brightness; uniform float contrast;\n"
+            "uniform float crtEnabled; uniform float saturation;\n"
             "varying vec2 texcoord;\n"
             "void main() {\n"
-            " vec2 uv=(texcoord-0.5)*(1.0+clamp(overscan,0.0,0.05)*2.0)+0.5;\n"
-            " vec2 p=uv*2.0-1.0; float curve=clamp(curvature,0.0,0.5);\n"
-            " uv=(p*(1.0+curve*vec2(p.y*p.y,p.x*p.x)))*0.5+0.5;\n"
-            " if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }\n"
+            " vec2 uv=texcoord;\n"
+            " if (crtEnabled > 0.5) {\n"
+            "  uv=(texcoord-0.5)*(1.0+clamp(overscan,0.0,0.05)*2.0)+0.5;\n"
+            "  vec2 p=uv*2.0-1.0; float curve=clamp(curvature,0.0,0.5);\n"
+            "  uv=(p*(1.0+curve*vec2(p.y*p.y,p.x*p.x)))*0.5+0.5;\n"
+            "  if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }\n"
+            " }\n"
             " vec3 color=texture2D(frameTex,uv).rgb;\n"
-            " vec3 glow=(texture2D(frameTex,uv+vec2(texelSize.x*1.5,0.0)).rgb+texture2D(frameTex,uv-vec2(texelSize.x*1.5,0.0)).rgb+texture2D(frameTex,uv+vec2(0.0,texelSize.y*1.5)).rgb+texture2D(frameTex,uv-vec2(0.0,texelSize.y*1.5)).rgb)*0.25;\n"
-            " color+=max(glow-vec3(0.68),vec3(0.0))*clamp(glowStrength,0.0,1.0)*0.35;\n"
-            " float scan=1.0-mod(floor(gl_FragCoord.y),2.0);\n"
-            " color*=1.0-clamp(scanlineStrength,0.0,1.0)*(0.22*(1.0-scan));\n"
-            " float edge=clamp(length((uv*2.0-1.0)*vec2(0.82,1.0)),0.0,1.4);\n"
-            " color*=1.0-clamp(cornerDarkening,0.0,1.0)*smoothstep(0.55,1.15,edge);\n"
-            " color=(color-vec3(0.5))*clamp(contrast,0.5,1.5)+vec3(0.5);\n"
-            " color*=clamp(brightness,0.5,1.5); gl_FragColor=vec4(clamp(color,0.0,1.0),1.0);\n"
+            " if (crtEnabled > 0.5) {\n"
+            "  vec3 glow=(texture2D(frameTex,uv+vec2(texelSize.x*1.5,0.0)).rgb+texture2D(frameTex,uv-vec2(texelSize.x*1.5,0.0)).rgb+texture2D(frameTex,uv+vec2(0.0,texelSize.y*1.5)).rgb+texture2D(frameTex,uv-vec2(0.0,texelSize.y*1.5)).rgb)*0.25;\n"
+            "  color+=max(glow-vec3(0.68),vec3(0.0))*clamp(glowStrength,0.0,1.0)*0.35;\n"
+            "  float scan=1.0-mod(floor(gl_FragCoord.y),2.0);\n"
+            "  color*=1.0-clamp(scanlineStrength,0.0,1.0)*(0.22*(1.0-scan));\n"
+            "  float edge=clamp(length((uv*2.0-1.0)*vec2(0.82,1.0)),0.0,1.4);\n"
+            "  color*=1.0-clamp(cornerDarkening,0.0,1.0)*smoothstep(0.55,1.15,edge);\n"
+            "  color=(color-vec3(0.5))*clamp(contrast,0.5,1.5)+vec3(0.5);\n"
+            "  color*=clamp(brightness,0.5,1.5);\n"
+            " }\n"
+            " float luma=dot(color,vec3(0.299,0.587,0.114));\n"
+            " color=mix(vec3(luma),color,clamp(saturation,1.0,1.5));\n"
+            " gl_FragColor=vec4(clamp(color,0.0,1.0),1.0);\n"
             "}\n";
         gCRTProgram = CreateCelPostProgram(vertexSource, fragmentSource, "CRT-Geom-style fullscreen filter");
         if (gCRTProgram != 0)
@@ -2184,6 +2192,8 @@ static void ApplyCRTFilter(int width, int height)
             gCRTOverscanLocation = glGetUniformLocation(gCRTProgram, "overscan");
             gCRTBrightnessLocation = glGetUniformLocation(gCRTProgram, "brightness");
             gCRTContrastLocation = glGetUniformLocation(gCRTProgram, "contrast");
+            gCRTCrtEnabledLocation = glGetUniformLocation(gCRTProgram, "crtEnabled");
+            gCRTSaturationLocation = glGetUniformLocation(gCRTProgram, "saturation");
             const GLfloat quad[] = {-1.0f,-1.0f, 1.0f,-1.0f, -1.0f,1.0f, 1.0f,1.0f};
             glGenBuffers(1, &gCRTVbo);
             glBindBuffer(GL_ARRAY_BUFFER, gCRTVbo);
@@ -2255,6 +2265,8 @@ static void ApplyCRTFilter(int width, int height)
         if (gCRTOverscanLocation>=0) glUniform1f(gCRTOverscanLocation,overscan);
         if (gCRTBrightnessLocation>=0) glUniform1f(gCRTBrightnessLocation,brightness);
         if (gCRTContrastLocation>=0) glUniform1f(gCRTContrastLocation,contrast);
+        if (gCRTCrtEnabledLocation>=0) glUniform1f(gCRTCrtEnabledLocation,enabled ? 1.0f : 0.0f);
+        if (gCRTSaturationLocation>=0) glUniform1f(gCRTSaturationLocation,1.20f);
         glBindBuffer(GL_ARRAY_BUFFER,gCRTVbo);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,(const GLvoid*)0);
