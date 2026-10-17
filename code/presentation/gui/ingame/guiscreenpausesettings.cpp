@@ -229,7 +229,7 @@ static int LoadSHARGraphicsResolutionSelection()
 
                 if( !supportedProfile )
                 {
-                    // Unsupported custom/MAX/2160p values are normalized to the
+                    // Unsupported custom render heights are normalized to the
                     // nearest supported menu profile before a future app launch.
                     gSHARGraphicsResolutionNeedsNormalization = true;
                 }
@@ -848,8 +848,8 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
     gSHARGraphicsResolutionSelection = LoadSHARGraphicsResolutionSelection();
     if( gSHARGraphicsResolutionNeedsNormalization )
     {
-        // Migrate unsupported MAX/2160p selections to the safe 1440p ceiling
-        // so the next full launch cannot unexpectedly use the unguarded 4K path.
+        // Normalize legacy MAX/custom settings to an explicit menu profile.
+        // 2160p remains available as an opt-in supersampling target on phones.
         if( SaveSHARGraphicsResolutionSelection( gSHARGraphicsResolutionSelection ) )
         {
             gSHARGraphicsResolutionNeedsNormalization = false;
