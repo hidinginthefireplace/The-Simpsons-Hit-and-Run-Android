@@ -1,4 +1,4 @@
-name: Build Simpsons H&R Remastered APK
+name: Build Simpsons H&R Revamped APK
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
       - experimental-phone-cel-outline-isolation
       - touch-overlay-position-staging
       - phone-supersampling-blur-default-touch-size
+      - revamped-app-name-icon
   workflow_dispatch:
 
 permissions:
@@ -80,6 +81,6 @@ jobs:
       - name: Upload experimental APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simpsons-HR-Remastered-Android
+          name: Simpsons-HR-Revamped-Android
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
