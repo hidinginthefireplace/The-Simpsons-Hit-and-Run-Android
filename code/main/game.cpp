@@ -72,6 +72,7 @@
   #define LOG_TAG "SimpsonsHitAndRun"
   #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
   #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+  void InitializeSHARAndroidFrameRateSelection();
 #endif
 //******************************************************************************
 //
@@ -713,6 +714,8 @@ void Game::Initialize()
     // hacemos que se utilice en el ciclo del juego al arrancar la configuración del archivo Simpsons_configuration.txt
     GetAndroidConfigurationManager()->Initialize();
 
+    // Load the persisted FPS cap and request a matching Android display mode where supported.
+    InitializeSHARAndroidFrameRateSelection();
 
     #endif
 

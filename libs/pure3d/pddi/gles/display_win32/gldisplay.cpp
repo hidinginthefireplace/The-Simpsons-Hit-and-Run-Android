@@ -25,6 +25,7 @@
 
 bool IsCelShadingEnabled();
 bool IsMotionBlurEnabled();
+int GetSHARAndroidTargetFPS();
 bool GetSHARMotionBlurCameraData(float* output);
 bool IsFrameSharpeningEnabled();
 float GetFrameSharpenStrength();
@@ -51,6 +52,7 @@ struct SHARMotionBlurCameraState
 static SHARMotionBlurCameraState gSHARPreviousMotionBlurCamera = {};
 static int gSHARMotionBlurHistoryWidth = 0;
 static int gSHARMotionBlurHistoryHeight = 0;
+static Uint64 gSHARPreviousMotionBlurSampleTime = 0;
 
 struct SHARMotionBlurSubjectBounds
 {
@@ -131,6 +133,40 @@ static void CommitSHARMotionBlurCameraHistory(
     }
 }
 
+static float GetSHARMotionBlurTimeScale()
+{
+    const Uint64 frequency = SDL_GetPerformanceFrequency();
+    const Uint64 now = SDL_GetPerformanceCounter();
+    float scale = 1.0f;
+
+    if( frequency > 0 && gSHARPreviousMotionBlurSampleTime > 0 &&
+        now > gSHARPreviousMotionBlurSampleTime )
+    {
+        const double elapsedTicks =
+            (double)(now - gSHARPreviousMotionBlurSampleTime);
+        const double referenceTicks = (double)frequency / 60.0;
+        const double ratio = referenceTicks / elapsedTicks;
+
+        // Preserve roughly the same screen-space blur duration as FPS changes,
+        // while preventing unusually long frames or timer anomalies from causing streaks.
+        if( ratio < 0.25 )
+        {
+            scale = 0.25f;
+        }
+        else if( ratio > 2.4 )
+        {
+            scale = 2.4f;
+        }
+        else
+        {
+            scale = (float)ratio;
+        }
+    }
+
+    gSHARPreviousMotionBlurSampleTime = now;
+    return scale;
+}
+
 GLuint gCelPostProgram = 0;
 GLuint gCelPostTexture = 0;
 GLuint gCelPostVbo = 0;
@@ -170,6 +206,7 @@ GLint gCelPostDepthAvailableLocation = -1;
 GLint gCelPostCelEffectsLocation = -1;
 GLint gCelPostMotionBlurEnabledLocation = -1;
 GLint gCelPostMotionBlurValidLocation = -1;
+GLint gCelPostMotionBlurScaleLocation = -1;
 GLint gCelPostCurrentCameraPositionLocation = -1;
 GLint gCelPostCurrentCameraRightLocation = -1;
 GLint gCelPostCurrentCameraUpLocation = -1;
@@ -852,6 +889,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform float celEffectsEnabled;\n"
             "uniform float motionBlurEnabled;\n"
             "uniform float motionBlurCameraValid;\n"
+            "uniform float motionBlurTimeScale;\n"
             "uniform vec3 currentCameraPosition;\n"
             "uniform vec3 currentCameraRight;\n"
             "uniform vec3 currentCameraUp;\n"
@@ -997,14 +1035,14 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    vec2 previousUv = previousNdc * 0.5 + 0.5;\n"
             "    if (previousUv.x < -0.12 || previousUv.x > 1.12 || previousUv.y < -0.12 || previousUv.y > 1.12) return applyVehicleRoadTrail(uv, centreColour);\n"
             "    vec2 motion = uv - previousUv;\n"
-            "    float motionPixels = length(motion / texelSize);\n"
+            "    float motionPixels = length(motion / texelSize) * motionBlurTimeScale;\n"
             "    float edgeDistance = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));\n"
             "    float edgeProximity = 1.0 - smoothstep(0.05, 0.30, edgeDistance);\n"
             "    float edgeBlurBoost = 1.0 + 0.80 * edgeProximity;\n"
             "    float motionAmount = smoothstep(0.10, 0.90, motionPixels);\n"
             "    if (motionAmount <= 0.001 && vehicleMotionIntensity <= 0.01) return centreColour;\n"
             "    vec2 maxOffset = texelSize * mix(12.0, 20.0, edgeProximity);\n"
-            "    vec2 blurOffset = clamp(motion * edgeBlurBoost, -maxOffset, maxOffset);\n"
+            "    vec2 blurOffset = clamp(motion * motionBlurTimeScale * edgeBlurBoost, -maxOffset, maxOffset);\n"
             "    vec3 blurred = centreColour * 0.40;\n"
             "    // Bias the same blur weight toward the previous screen position so passing scenery gets a visible directional trail.\n"
             "    blurred += texture2D(sceneTex, clamp(uv - blurOffset * 0.25, texelSize * 0.5, vec2(1.0) - texelSize * 0.5)).rgb * 0.20;\n"
@@ -1133,6 +1171,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostCelEffectsLocation = glGetUniformLocation(gCelPostProgram, "celEffectsEnabled");
         gCelPostMotionBlurEnabledLocation = glGetUniformLocation(gCelPostProgram, "motionBlurEnabled");
         gCelPostMotionBlurValidLocation = glGetUniformLocation(gCelPostProgram, "motionBlurCameraValid");
+        gCelPostMotionBlurScaleLocation = glGetUniformLocation(gCelPostProgram, "motionBlurTimeScale");
         gCelPostCurrentCameraPositionLocation = glGetUniformLocation(gCelPostProgram, "currentCameraPosition");
         gCelPostCurrentCameraRightLocation = glGetUniformLocation(gCelPostProgram, "currentCameraRight");
         gCelPostCurrentCameraUpLocation = glGetUniformLocation(gCelPostProgram, "currentCameraUp");
@@ -1602,12 +1641,14 @@ static void ResetAndroidPostProcess()
     gCelWorldInFbo = false;
     gSHARPreviousMotionBlurCamera.valid = false;
     gSHARMotionBlurHistoryWidth = gSHARMotionBlurHistoryHeight = 0;
+    gSHARPreviousMotionBlurSampleTime = 0;
     // Normal frames remain on the offscreen path immediately after a resize.
 
 }
 
 static void ApplyCelPostProcess(int width, int height)
 {
+    const float motionBlurTimeScale = GetSHARMotionBlurTimeScale();
     SHARMotionBlurCameraState currentMotionBlurCamera = {};
     const bool haveCurrentMotionBlurCamera = CaptureSHARMotionBlurCamera(&currentMotionBlurCamera);
 
@@ -1768,6 +1809,8 @@ static void ApplyCelPostProcess(int width, int height)
         glUniform1f(gCelPostMotionBlurEnabledLocation, motionBlurRequested ? 1.0f : 0.0f);
     if (gCelPostMotionBlurValidLocation >= 0)
         glUniform1f(gCelPostMotionBlurValidLocation, motionBlurCameraValid ? 1.0f : 0.0f);
+    if (gCelPostMotionBlurScaleLocation >= 0)
+        glUniform1f(gCelPostMotionBlurScaleLocation, motionBlurTimeScale);
 
     if (haveCurrentMotionBlurCamera)
     {
@@ -2345,6 +2388,77 @@ Java_org_libsdl_app_SDLSurface_nativeSetSHARRenderResolution(
         ++gSHARAndroidRenderResizeSerial;
     SDL_AtomicUnlock(&gSHARAndroidRenderResolutionLock);
 
+}
+
+// Request a preferred Android output refresh rate on API 30+ devices.
+// The selected FPS cap still functions if Android cannot or chooses not to change modes.
+bool RequestSHARAndroidDisplayFrameRate(int targetFPS)
+{
+#if defined(RAD_ANDROID)
+    if( targetFPS != 30 && targetFPS != 60 && targetFPS != 90 &&
+        targetFPS != 120 && targetFPS != 144 )
+    {
+        return false;
+    }
+
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    if( env == NULL )
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+            "SHAR FPS request deferred: JNI environment unavailable");
+        return false;
+    }
+
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if( activity == NULL )
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+            "SHAR FPS request deferred: Android activity unavailable");
+        return false;
+    }
+
+    jclass activityClass = env->GetObjectClass(activity);
+    jclass sdlActivityClass = activityClass != NULL
+        ? env->GetSuperclass(activityClass) : NULL;
+    if( env->ExceptionCheck() )
+    {
+        env->ExceptionClear();
+        sdlActivityClass = NULL;
+    }
+
+    jmethodID requestMethod = sdlActivityClass != NULL
+        ? env->GetStaticMethodID(
+            sdlActivityClass, "requestSHARDisplayFrameRate", "(I)Z" )
+        : NULL;
+    if( env->ExceptionCheck() )
+    {
+        env->ExceptionClear();
+        requestMethod = NULL;
+    }
+
+    bool queued = false;
+    if( requestMethod != NULL )
+    {
+        const jboolean result = env->CallStaticBooleanMethod(
+            sdlActivityClass, requestMethod, (jint)targetFPS );
+        if( env->ExceptionCheck() )
+        {
+            env->ExceptionClear();
+        }
+        else
+        {
+            queued = (result == JNI_TRUE);
+        }
+    }
+
+    if( sdlActivityClass != NULL ) env->DeleteLocalRef(sdlActivityClass);
+    if( activityClass != NULL ) env->DeleteLocalRef(activityClass);
+    env->DeleteLocalRef(activity);
+    return queued;
+#else
+    (void)targetFPS;
+    return false;
+#endif
 }
 
 // Called by the in-game Graphics menu. This only requests a Java/UI-thread
@@ -2939,14 +3053,11 @@ void pglDisplay::SwapBuffers(void)
     reset = false;
 #ifdef RAD_ANDROID
     /*
-     * Manual 60 FPS cap for Android.
+     * Selectable Android gameplay FPS cap.
      *
-     * This is intentionally independent from display refresh rate.
-     * It prevents 90 Hz / 120 Hz devices from running the game logic too fast.
-     *
-     * m_only60 must remain the switch:
-     * - true  = gameplay cap at 60 FPS
-     * - false = FMV/cinematics or special states, do not force 60 here
+     * m_only60 is retained as the legacy switch:
+     * - true  = apply the selected gameplay FPS cap
+     * - false = FMV/cinematics or special states, do not force this cap here
      */
     static Uint64 sCapFreq = 0;
     static Uint64 sLastFrameTime = 0;
@@ -2958,8 +3069,11 @@ void pglDisplay::SwapBuffers(void)
 
     if (m_only60)
     {
+        const int configuredFPS = GetSHARAndroidTargetFPS();
+        const int targetFPS =
+            (configuredFPS >= 30 && configuredFPS <= 144) ? configuredFPS : 60;
         const Uint64 targetTicks =
-            (Uint64)((double)sCapFreq / 60.0 + 0.5);
+            (Uint64)((double)sCapFreq / (double)targetFPS + 0.5);
 
         Uint64 now = SDL_GetPerformanceCounter();
 

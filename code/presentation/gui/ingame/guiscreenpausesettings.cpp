@@ -68,6 +68,9 @@ void SetMotionBlurEnabled(bool enabled);
 int GetFrameSharpeningLevel();
 void SetFrameSharpeningLevel(int level);
 bool RequestSHARAndroidRenderResolutionHeight(int targetHeight);
+int GetSHARAndroidTargetFPS();
+void InitializeSHARAndroidFrameRateSelection();
+bool RequestSHARAndroidDisplayFrameRate(int targetFPS);
 
 static bool gAndroidGraphicsSettingsRequested = false;
 static bool gAndroidCheatsSettingsRequested = false;
@@ -77,6 +80,14 @@ static bool gAndroidCheatsSettingsRequested = false;
 static const int SHAR_GRAPHICS_RESOLUTION_COUNT = 5;
 static int gSHARGraphicsResolutionSelection = 2; // default: 1080p
 static bool gSHARGraphicsResolutionNeedsNormalization = false;
+
+// FPS choices are render caps; Android may select a matching display mode when supported.
+static const int SHAR_GRAPHICS_FPS_COUNT = 5;
+static const int SHAR_GRAPHICS_FPS_VALUES[SHAR_GRAPHICS_FPS_COUNT] =
+{
+    30, 60, 90, 120, 144
+};
+static int gSHARGraphicsFPSSelection = 1; // default: 60 FPS
 
 void RequestAndroidGraphicsSettings()
 {
@@ -307,6 +318,152 @@ static bool SaveSHARGraphicsResolutionSelection( int selection )
     LOGI("[SHAR-RESOLUTION] Saved target_height=%d to %s",
          height, path);
     return true;
+}
+
+static int LoadSHARGraphicsFPSSelection()
+{
+    const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if( basePath == NULL || basePath[0] == '\0' )
+    {
+        return 1;
+    }
+
+    char path[512];
+    const int pathLength = snprintf(
+        path, sizeof(path), "%s/Graphics/Simpsons_fps.txt", basePath );
+    if( pathLength < 0 || pathLength >= static_cast<int>( sizeof(path) ) )
+    {
+        LOGE("[SHAR-FPS] Config path too long; defaulting to 60 FPS");
+        return 1;
+    }
+
+    FILE* file = fopen( path, "r" );
+    if( file == NULL )
+    {
+        return 1;
+    }
+
+    int selection = 1;
+    char line[256];
+    while( fgets( line, sizeof(line), file ) != NULL )
+    {
+        char* cursor = line;
+        while( *cursor == ' ' || *cursor == '\t' )
+        {
+            ++cursor;
+        }
+        if( *cursor == '\0' || *cursor == '#' ||
+            strncmp( cursor, "target_fps", 10 ) != 0 )
+        {
+            continue;
+        }
+
+        char* equals = strchr( cursor, '=' );
+        if( equals == NULL )
+        {
+            continue;
+        }
+
+        const int fps = static_cast<int>( strtol( equals + 1, NULL, 10 ) );
+        for( int i = 0; i < SHAR_GRAPHICS_FPS_COUNT; ++i )
+        {
+            if( fps == SHAR_GRAPHICS_FPS_VALUES[i] )
+            {
+                selection = i;
+                break;
+            }
+        }
+        break;
+    }
+
+    fclose( file );
+    return selection;
+}
+
+static bool SaveSHARGraphicsFPSSelection( int selection )
+{
+    if( selection < 0 || selection >= SHAR_GRAPHICS_FPS_COUNT )
+    {
+        selection = 1;
+    }
+
+    const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if( basePath == NULL || basePath[0] == '\0' )
+    {
+        LOGE("[SHAR-FPS] Cannot save selection: app files path unavailable");
+        return false;
+    }
+
+    char directory[512];
+    int written = snprintf( directory, sizeof(directory), "%s/Graphics", basePath );
+    if( written < 0 || written >= static_cast<int>( sizeof(directory) ) )
+    {
+        LOGE("[SHAR-FPS] Graphics path too long");
+        return false;
+    }
+
+    struct stat directoryInfo;
+    if( mkdir( directory, 0777 ) != 0 &&
+        ( errno != EEXIST || stat( directory, &directoryInfo ) != 0 ||
+          !S_ISDIR( directoryInfo.st_mode ) ) )
+    {
+        LOGE("[SHAR-FPS] Cannot create config directory %s (errno=%d)",
+             directory, errno);
+        return false;
+    }
+
+    char path[512];
+    written = snprintf( path, sizeof(path), "%s/Simpsons_fps.txt", directory );
+    if( written < 0 || written >= static_cast<int>( sizeof(path) ) )
+    {
+        LOGE("[SHAR-FPS] Config path too long");
+        return false;
+    }
+
+    FILE* file = fopen( path, "w" );
+    if( file == NULL )
+    {
+        LOGE("[SHAR-FPS] Cannot open config file %s (errno=%d)", path, errno);
+        return false;
+    }
+
+    const int fps = SHAR_GRAPHICS_FPS_VALUES[selection];
+    const int result = fprintf(
+        file,
+        "# Simpsons Hit & Run Android frame-rate cap\n"
+        "# Selected from the in-game Graphics menu.\n"
+        "# Android may use the closest supported display refresh rate.\n"
+        "target_fps=%d\n",
+        fps );
+    const int closeResult = fclose( file );
+
+    if( result < 0 || closeResult != 0 )
+    {
+        LOGE("[SHAR-FPS] Failed writing selector value to %s", path);
+        return false;
+    }
+
+    LOGI("[SHAR-FPS] Saved target_fps=%d to %s", fps, path);
+    return true;
+}
+
+int GetSHARAndroidTargetFPS()
+{
+    if( gSHARGraphicsFPSSelection < 0 ||
+        gSHARGraphicsFPSSelection >= SHAR_GRAPHICS_FPS_COUNT )
+    {
+        return 60;
+    }
+    return SHAR_GRAPHICS_FPS_VALUES[gSHARGraphicsFPSSelection];
+}
+
+void InitializeSHARAndroidFrameRateSelection()
+{
+    gSHARGraphicsFPSSelection = LoadSHARGraphicsFPSSelection();
+    if( !RequestSHARAndroidDisplayFrameRate( GetSHARAndroidTargetFPS() ) )
+    {
+        LOGI("[SHAR-FPS] Display refresh-rate request deferred; the FPS cap remains active");
+    }
 }
 
 #endif
@@ -785,6 +942,50 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
         }
     }
 
+    // Keep the original Jump Cameras ON/OFF text intact; the Graphics page gets
+    // a dedicated five-value frame-rate selector in the same row group.
+    {
+        Scrooby::Group* pFPSGroup = pPage->GetGroup( "JumpCamera" );
+        FeGroup* pFeFPSGroup = dynamic_cast<FeGroup*>( pFPSGroup );
+        FeText* pOriginalValue = pFPSGroup != NULL
+            ? dynamic_cast<FeText*>( pFPSGroup->GetText( "JumpCamera_Value" ) )
+            : NULL;
+
+        if( pFeFPSGroup != NULL && pOriginalValue != NULL )
+        {
+            m_pOriginalFPSValue = pOriginalValue;
+            FeText* pGraphicsValue =
+                pFeFPSGroup->AddText( "AndroidGraphicsFPSValue", 0, 0 );
+
+            if( pGraphicsValue != NULL )
+            {
+                CopyAndroidMenuTextAppearance( pGraphicsValue, pOriginalValue );
+
+                int width = 0;
+                int height = 0;
+                int centerX = 0;
+                int centerY = 0;
+                pOriginalValue->GetBoundingBoxSize( width, height );
+                pOriginalValue->GetBoundingBoxCenter( centerX, centerY );
+                pGraphicsValue->SetBoundingBoxSize( width, height );
+                pGraphicsValue->SetPositionOfCenter( centerX, centerY );
+
+                const char* fpsValues[SHAR_GRAPHICS_FPS_COUNT] =
+                {
+                    "30", "60", "90", "120", "144"
+                };
+                for( int valueIndex = 0; valueIndex < SHAR_GRAPHICS_FPS_COUNT; ++valueIndex )
+                {
+                    pGraphicsValue->AddHardCodedString( fpsValues[valueIndex] );
+                }
+
+                pGraphicsValue->SetIndex( 1 );
+                pGraphicsValue->SetVisible( false );
+                m_pGraphicsFPSValue = pGraphicsValue;
+            }
+        }
+    }
+
     // Do not expand the original Scrooby Settings value object to six strings.
     // Build a separate value object in the same row group and swap it in only
     // while the Graphics submenu is displayed. This keeps the resource's
@@ -846,6 +1047,8 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
 {
     m_configuringAndroidSubmenu = true;
     gSHARGraphicsResolutionSelection = LoadSHARGraphicsResolutionSelection();
+    gSHARGraphicsFPSSelection = LoadSHARGraphicsFPSSelection();
+    RequestSHARAndroidDisplayFrameRate( GetSHARAndroidTargetFPS() );
     if( gSHARGraphicsResolutionNeedsNormalization )
     {
         // Normalize legacy MAX/custom settings to an explicit menu profile.
@@ -873,18 +1076,32 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         }
     }
 
-    const int logicalItems[5] =
+    if( m_pGraphicsFPSValue != NULL )
+    {
+        const char* fpsValues[SHAR_GRAPHICS_FPS_COUNT] =
+        {
+            "30", "60", "90", "120", "144"
+        };
+        for( int valueIndex = 0; valueIndex < SHAR_GRAPHICS_FPS_COUNT; ++valueIndex )
+        {
+            m_pGraphicsFPSValue->SetString( valueIndex, fpsValues[valueIndex] );
+        }
+    }
+
+    const int logicalItems[6] =
     {
         MENU_ITEM_CAMERA,
         MENU_ITEM_JUMP_CAMERAS,
         MENU_ITEM_INTERSECT_NAV_SYSTEM,
         MENU_ITEM_RADAR,
-        MENU_ITEM_INVERT_CAM_CONTROL
+        MENU_ITEM_INVERT_CAM_CONTROL,
+        MENU_ITEM_VIBRATION
     };
 
-    const char* labels[5] =
+    const char* labels[6] =
     {
         "Resolution",
+        "Max FPS",
         "Cel Shading",
         "CRT Filter",
         "Sharpening",
@@ -909,8 +1126,13 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
     {
         gSHARGraphicsResolutionSelection = 2;
     }
+    if( gSHARGraphicsFPSSelection < 0 ||
+        gSHARGraphicsFPSSelection >= SHAR_GRAPHICS_FPS_COUNT )
+    {
+        gSHARGraphicsFPSSelection = 1;
+    }
 
-    for( int i = 0; i < 5; ++i )
+    for( int i = 0; i < 6; ++i )
     {
         const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
         if( guiIndex < 0 )
@@ -924,20 +1146,29 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
             continue;
         }
 
-        if( i == 0 && m_pGraphicsResolutionValue != NULL )
+        if( i == 0 && m_pGraphicsResolutionValue != NULL &&
+            m_pOriginalResolutionValue != NULL )
         {
             item->SetItemValue( m_pGraphicsResolutionValue );
             m_pOriginalResolutionValue->SetVisible( false );
             m_pGraphicsResolutionValue->SetVisible( true );
         }
-        else if( i == 3 && m_pGraphicsSharpeningValue != NULL )
+        else if( i == 1 && m_pGraphicsFPSValue != NULL &&
+                 m_pOriginalFPSValue != NULL )
+        {
+            item->SetItemValue( m_pGraphicsFPSValue );
+            m_pOriginalFPSValue->SetVisible( false );
+            m_pGraphicsFPSValue->SetVisible( true );
+        }
+        else if( i == 4 && m_pGraphicsSharpeningValue != NULL &&
+                 m_pOriginalSharpeningValue != NULL )
         {
             item->SetItemValue( m_pGraphicsSharpeningValue );
             m_pOriginalSharpeningValue->SetVisible( false );
             m_pGraphicsSharpeningValue->SetVisible( true );
         }
 
-        // All four Graphics entries are left/right value selectors.
+        // All six Graphics entries are left/right value selectors.
         item->m_attributes &= ~SELECTABLE;
         item->m_showValueArrows = true;
         item->m_useBackSoundOnSelection = false;
@@ -979,16 +1210,38 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
                     m_pMenu->SetSelectionValue( guiIndex, 0 );
                 }
             }
-            else if( i == 1 || i == 2 || i == 4 )
+            else if( i == 1 )
+            {
+                value->SetVisible( true );
+                if( m_pGraphicsFPSValue != NULL &&
+                    value == m_pGraphicsFPSValue )
+                {
+                    m_pMenu->SetSelectionValueCount( guiIndex, SHAR_GRAPHICS_FPS_COUNT );
+                    m_pMenu->SetSelectionValue( guiIndex, gSHARGraphicsFPSSelection );
+                }
+                else
+                {
+                    // Defensive fallback if the dedicated FPS text object cannot
+                    // be created; retain a visible, safe 60 FPS setting.
+                    value->SetString( 0, "60" );
+                    if( value->GetNumOfStrings() > 1 )
+                    {
+                        value->SetString( 1, "60" );
+                    }
+                    m_pMenu->SetSelectionValueCount( guiIndex, 1 );
+                    m_pMenu->SetSelectionValue( guiIndex, 0 );
+                }
+            }
+            else if( i == 2 || i == 3 || i == 5 )
             {
                 value->SetVisible( true );
                 value->SetString( 0, "OFF" );
                 value->SetString( 1, "ON" );
                 m_pMenu->SetSelectionValueCount( guiIndex, 2 );
-                const int enabledIndex = ( i == 4 ) ? 2 : i - 1;
+                const int enabledIndex = ( i == 5 ) ? 2 : i - 2;
                 m_pMenu->SetSelectionValue( guiIndex, enabled[enabledIndex] ? 1 : 0 );
             }
-            else if( i == 3 )
+            else if( i == 4 )
             {
                 value->SetVisible( true );
                 if( m_pGraphicsSharpeningValue != NULL &&
@@ -1018,35 +1271,6 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         if( item->m_itemValueArrowR != NULL )
         {
             item->m_itemValueArrowR->SetVisible( false );
-        }
-    }
-
-    // The unused gameplay rows stay hidden while Graphics is open.
-    const int unusedItems[1] =
-    {
-        MENU_ITEM_VIBRATION
-    };
-    for( int unusedIndex = 0; unusedIndex < 1; ++unusedIndex )
-    {
-        const int unusedGuiIndex =
-            GetGuiMenuIndexFromMenuItem( unusedItems[unusedIndex] );
-        if( unusedGuiIndex >= 0 )
-        {
-            GuiMenuItem* unusedItem = m_pMenu->GetMenuItem( unusedGuiIndex );
-            if( unusedItem != NULL )
-            {
-                Scrooby::Text* unusedLabel =
-                    dynamic_cast<Scrooby::Text*>( unusedItem->GetItem() );
-                Scrooby::Text* unusedValue =
-                    dynamic_cast<Scrooby::Text*>( unusedItem->GetItemValue() );
-                if( unusedLabel != NULL ) unusedLabel->SetVisible( false );
-                if( unusedValue != NULL ) unusedValue->SetVisible( false );
-                if( unusedItem->m_itemValueArrowL != NULL )
-                    unusedItem->m_itemValueArrowL->SetVisible( false );
-                if( unusedItem->m_itemValueArrowR != NULL )
-                    unusedItem->m_itemValueArrowR->SetVisible( false );
-            }
-            m_pMenu->SetMenuItemEnabled( unusedGuiIndex, false, true );
         }
     }
 
@@ -1320,6 +1544,16 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
             item->SetItemValue( m_pOriginalResolutionValue );
         }
 
+        // Restore the original Jump Cameras value text after the Graphics FPS selector.
+        if( logicalItems[i] == MENU_ITEM_JUMP_CAMERAS &&
+            m_pOriginalFPSValue != NULL &&
+            item->GetItemValue() == m_pGraphicsFPSValue )
+        {
+            m_pGraphicsFPSValue->SetVisible( false );
+            m_pOriginalFPSValue->SetVisible( true );
+            item->SetItemValue( m_pOriginalFPSValue );
+        }
+
         // Restore the original sharpening value text. Its OFF/ON resource
         // string table was never modified by the Graphics submenu.
         if( logicalItems[i] == MENU_ITEM_RADAR &&
@@ -1574,17 +1808,37 @@ void CGuiScreenPauseSettings::HandleMessage
                         }
                         else if( logicalMenuItem == MENU_ITEM_JUMP_CAMERAS )
                         {
-                            SetCelShadingEnabled( enabled );
+                            if( param2 < SHAR_GRAPHICS_FPS_COUNT )
+                            {
+                                const int newSelection = static_cast<int>( param2 );
+                                if( newSelection != gSHARGraphicsFPSSelection )
+                                {
+                                    gSHARGraphicsFPSSelection = newSelection;
+                                    const int targetFPS = GetSHARAndroidTargetFPS();
+                                    if( !SaveSHARGraphicsFPSSelection( newSelection ) )
+                                    {
+                                        LOGE("[SHAR-FPS] Could not save the selected cap; it remains active until app restart");
+                                    }
+                                    if( !RequestSHARAndroidDisplayFrameRate( targetFPS ) )
+                                    {
+                                        LOGE("[SHAR-FPS] Display refresh-rate request could not be queued; the software FPS cap remains active");
+                                    }
+                                }
+                            }
                         }
                         else if( logicalMenuItem == MENU_ITEM_INTERSECT_NAV_SYSTEM )
                         {
-                            SetCRTFilterEnabled( enabled );
+                            SetCelShadingEnabled( enabled );
                         }
                         else if( logicalMenuItem == MENU_ITEM_RADAR )
                         {
-                            SetFrameSharpeningLevel( static_cast<int>( param2 ) );
+                            SetCRTFilterEnabled( enabled );
                         }
                         else if( logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL )
+                        {
+                            SetFrameSharpeningLevel( static_cast<int>( param2 ) );
+                        }
+                        else if( logicalMenuItem == MENU_ITEM_VIBRATION )
                         {
                             SetMotionBlurEnabled( enabled );
                         }

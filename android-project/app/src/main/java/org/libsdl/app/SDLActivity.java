@@ -957,6 +957,20 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         return surface.requestSHARRenderResolutionHeight(targetHeight);
     }
 
+    /**
+     * Request the preferred output refresh rate for the selectable gameplay FPS cap.
+     * Android 11+ may switch to a matching supported display mode; this remains a hint.
+     */
+    public static boolean requestSHARDisplayFrameRate(int targetFPS) {
+        SDLSurface surface = mSurface;
+        if (surface == null) {
+            Log.w("SDL", "SHAR FPS request deferred: SurfaceView is unavailable");
+            return false;
+        }
+
+        return surface.requestSHARDisplayFrameRate(targetFPS);
+    }
+
     public static boolean setActivityTitle(String title) {
         // Called from SDLMain() thread and can't directly affect the view
         return mSingleton.sendCommand(COMMAND_CHANGE_TITLE, title);

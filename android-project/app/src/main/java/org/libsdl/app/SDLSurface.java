@@ -52,6 +52,9 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     // Pending render-target selection processed on the Android UI thread.
     private int mSHARPendingRenderHeight = 0;
 
+    // Preferred display refresh-rate request from the in-game Max FPS selector.
+    private int mSHARRequestedFrameRate = 60;
+
     // Avoid repeatedly sending the same render resolution to native code
     private int mLastNativeSentRenderWidth = 0;
     private int mLastNativeSentRenderHeight = 0;
@@ -916,12 +919,72 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         return getHolder().getSurface();
     }
 
+    private int sanitizeSHARFrameRate(int frameRate) {
+        switch (frameRate) {
+            case 30:
+            case 60:
+            case 90:
+            case 120:
+            case 144:
+                return frameRate;
+            default:
+                return -1;
+        }
+    }
+
+    /**
+     * Request a preferred display refresh rate. This is a best-effort request;
+     * the software frame cap continues to work when the device cannot switch modes.
+     */
+    public boolean requestSHARDisplayFrameRate(final int frameRate) {
+        final int sanitizedFrameRate = sanitizeSHARFrameRate(frameRate);
+        if (sanitizedFrameRate <= 0) {
+            return false;
+        }
+
+        SDLActivity activity = SDLActivity.mSingleton;
+        if (activity == null) {
+            return false;
+        }
+
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                mSHARRequestedFrameRate = sanitizedFrameRate;
+                applySHARRequestedFrameRate();
+            }
+        });
+        return true;
+    }
+
+    private void applySHARRequestedFrameRate() {
+        if (Build.VERSION.SDK_INT < 30 /* Android 11 */) {
+            return;
+        }
+
+        Surface surface = getHolder().getSurface();
+        if (surface == null || !surface.isValid()) {
+            return;
+        }
+
+        try {
+            surface.setFrameRate(
+                    (float)mSHARRequestedFrameRate,
+                    Surface.FRAME_RATE_COMPATIBILITY_DEFAULT
+            );
+        } catch (Exception e) {
+            Log.w("SDL", "Could not request SHAR display refresh rate: "
+                    + mSHARRequestedFrameRate, e);
+        }
+    }
+
     // Called when we have a valid drawing surface
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
         Log.v("SDL", "surfaceCreated()");
         // Keep Android's platform-sized output Surface and refresh only the render target.
         applyAdaptiveRenderResolution("surfaceCreated", true);
+        applySHARRequestedFrameRate();
 
         SDLActivity.onNativeSurfaceCreated();
     }
@@ -966,6 +1029,7 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
         // Preserve mRenderWidth/mRenderHeight and re-send that target if native startup
         // happened after the constructor's first attempt.
         sendSHARRenderResolutionToNative(mRenderWidth, mRenderHeight, "surfaceChanged");
+        applySHARRequestedFrameRate();
 
         /*
          * The SurfaceView remains fullscreen. Its output buffer is controlled by
