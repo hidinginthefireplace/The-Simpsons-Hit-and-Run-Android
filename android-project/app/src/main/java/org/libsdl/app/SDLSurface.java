@@ -73,14 +73,17 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
     private static final int SHAR_DEFAULT_TARGET_RENDER_HEIGHT = 1080;
     private static final int SHAR_MIN_TARGET_RENDER_HEIGHT = 300;
+    // Explicit render modes may supersample above the display's native resolution.
+    // Keep this cap aligned with the highest option exposed by the Graphics menu.
+    private static final int SHAR_MAX_TARGET_RENDER_HEIGHT = 2160;
 
     /*
-     * Fallback only. The real maximum is calculated at runtime using the
-     * physical short side of the device.
+     * Fallback for the "max" setting only. Explicit 1440p/2160p choices remain
+     * available for supersampling even when the screen's native short side is
+     * 1080 pixels.
      *
-     * Example:
-     * 2772x1280 -> max target height = 1280
-     * 2400x1080 -> max target height = 1080
+     * If physical display modes cannot be queried, use a conservative native
+     * maximum for "max"; explicit modes still use SHAR_MAX_TARGET_RENDER_HEIGHT.
      */
     private static final int SHAR_FALLBACK_MAX_TARGET_RENDER_HEIGHT = 1080;
 
@@ -649,22 +652,18 @@ private void createDefaultSHARTouchModeConfigIfNeeded(File configFile) {
     }
 
     private int sanitizeSHARTargetRenderHeight(int value) {
-        final int maxTargetHeight = getDeviceMaxTargetRenderHeight();
-
-      /*
-      *    Si es menor que el minimo, se establece al minimo
-       */
-        final int safeMinTargetHeight = Math.min(
-                SHAR_MIN_TARGET_RENDER_HEIGHT,
-                maxTargetHeight
-        );
-
+        /*
+         * Do not clamp explicit render modes to the screen's native resolution.
+         * Values such as 1440 and 2160 are deliberate supersampling targets.
+         * The special "max" config value is resolved separately by
+         * getDeviceMaxTargetRenderHeight(), so it still means native maximum.
+         */
         if (value < SHAR_MIN_TARGET_RENDER_HEIGHT) {
-            return safeMinTargetHeight;
+            return SHAR_MIN_TARGET_RENDER_HEIGHT;
         }
 
-        if (value > maxTargetHeight) {
-            return maxTargetHeight;
+        if (value > SHAR_MAX_TARGET_RENDER_HEIGHT) {
+            return SHAR_MAX_TARGET_RENDER_HEIGHT;
         }
 
         return value;
