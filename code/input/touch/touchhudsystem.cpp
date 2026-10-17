@@ -1351,7 +1351,7 @@ void TouchHudSystem::InitializeDefaultControls()
         TOUCH_HUD_CONTROL_EDITOR_ENTER_IN_GAME,
         TOUCH_PROFILE_FRONTEND,
         TOUCH_ACTION_INVALID,
-        TouchRect( 0.455f, 0.020f, 0.095f, 0.160f ),
+        TouchRect( 0.460f, 0.020f, 0.080f, 0.120f ),
         true,
         "EditorEnter"
     );
