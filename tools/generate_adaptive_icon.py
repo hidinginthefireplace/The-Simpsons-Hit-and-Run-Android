@@ -8,6 +8,9 @@ SOURCE = ROOT / "icon-source"
 RES = ROOT / "android-project/app/src/main/res"
 DRAWABLE = RES / "drawable-nodpi"
 CANVAS_SIZE = 1024
+# A modest 15% reduction is the midpoint between full-size artwork and a
+# 30%-smaller treatment. Leave the supplied background untouched.
+FOREGROUND_SCALE = 0.85
 
 
 def open_rgba(path: Path) -> Image.Image:
@@ -16,15 +19,31 @@ def open_rgba(path: Path) -> Image.Image:
 
 
 def open_source_layer(path: Path, label: str) -> Image.Image:
-    """Load a supplied square icon layer as-is; do not crop, pad, or scale it."""
+    """Load a supplied square icon layer without cropping or extending it."""
     image = open_rgba(path)
     if image.size != (CANVAS_SIZE, CANVAS_SIZE):
         raise ValueError(
             f"{label} is {image.width}x{image.height}; expected "
             f"{CANVAS_SIZE}x{CANVAS_SIZE}. Refusing to resize or extend source artwork."
         )
-    print(f"{label}: preserving original {CANVAS_SIZE}x{CANVAS_SIZE} pixels")
     return image
+
+
+def scale_foreground_layer(image: Image.Image, label: str) -> Image.Image:
+    """Center the original art at a slightly reduced scale on transparency."""
+    scaled_size = round(CANVAS_SIZE * FOREGROUND_SCALE)
+    artwork = image.resize(
+        (scaled_size, scaled_size),
+        Image.Resampling.LANCZOS,
+    )
+    canvas = Image.new("RGBA", (CANVAS_SIZE, CANVAS_SIZE), (0, 0, 0, 0))
+    offset = (CANVAS_SIZE - scaled_size) // 2
+    canvas.alpha_composite(artwork, (offset, offset))
+    print(
+        f"{label}: scaled to {scaled_size}x{scaled_size} "
+        f"({FOREGROUND_SCALE:.0%}) and centered"
+    )
+    return canvas
 
 
 def save_webp(image: Image.Image, path: Path) -> None:
@@ -36,20 +55,21 @@ def save_webp(image: Image.Image, path: Path) -> None:
 def main() -> None:
     DRAWABLE.mkdir(parents=True, exist_ok=True)
 
-    # Keep the artwork aligned exactly as supplied. In particular, do not crop
-    # transparent edges or shrink the foreground to the adaptive-icon safe zone:
-    # that moved the diagonal tire marks away from the edges on the previous icon.
-    # Android launchers may mask/clip edge artwork differently, but preserving the
-    # source composition is preferred over altering the original aesthetics.
+    # Keep the supplied green/yellow background pixel-for-pixel. Scale only
+    # the pink and monochrome artwork by 15% as an in-between size trial: this
+    # should be less zoomed-in than the full-size version while retaining much
+    # more detail than the previous 60% safe-area fit.
     background = open_source_layer(SOURCE / "background.png", "background.png")
-    foreground = open_source_layer(SOURCE / "foreground.png", "foreground.png")
-    monochrome = open_source_layer(SOURCE / "monochrome.png", "monochrome.png")
+    foreground_source = open_source_layer(SOURCE / "foreground.png", "foreground.png")
+    monochrome_source = open_source_layer(SOURCE / "monochrome.png", "monochrome.png")
+    foreground = scale_foreground_layer(foreground_source, "foreground.png")
+    monochrome = scale_foreground_layer(monochrome_source, "monochrome.png")
 
     save_webp(foreground, DRAWABLE / "ic_launcher_logo.webp")
     save_webp(monochrome, DRAWABLE / "ic_launcher_monochrome.webp")
 
     # Keep Play Store artwork synchronized with the unchanged green/yellow
-    # background and the full-size original foreground layer.
+    # background and the moderately scaled original foreground.
     combined = Image.alpha_composite(background, foreground)
     store_icon = combined.resize((512, 512), Image.Resampling.LANCZOS)
     save_webp(store_icon, ROOT / "android-project/app/src/main/ic_launcher-playstore.webp")
