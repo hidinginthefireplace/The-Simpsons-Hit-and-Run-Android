@@ -22,20 +22,20 @@ bool GetSHARMotionBlurCameraBasis(float* output);
 #include <errno.h>
 
 
-static bool gCelShadingEnabled = false;
+static bool gCelShadingEnabled = true;
 static bool gCelShadingObjectEnabled = false;
 static bool gCelShadingOutlinePass = false;
 static pglContext* gCelShadingContext = nullptr;
 static bool gCelShadingConfigurationLoaded = false;
-// Fresh installs start with sharpening disabled. User-selected values are
-// loaded from Simpsons_sharpening.txt and remain unchanged on existing installs.
-static float gFrameSharpenStrength = 0.0f;
-static bool gFrameSharpeningEnabled = false;
+// Fresh installs use the Remastered Settings sharpening default of 40%.
+// User-selected values are loaded from Simpsons_sharpening.txt and remain unchanged on existing installs.
+static float gFrameSharpenStrength = 0.4f;
+static bool gFrameSharpeningEnabled = true;
 static bool gSharpeningConfigurationLoaded = false;
 
 static bool gCRTConfigurationLoaded = false;
 static bool gMotionBlurConfigurationLoaded = false;
-static bool gMotionBlurEnabled = false;
+static bool gMotionBlurEnabled = true;
 static bool gCRTEnabled = false;
 static float gCRTScanlineStrength = 0.5f;
 static float gCRTCurvature = 0.06f;
@@ -160,7 +160,7 @@ static void LoadCelShadingConfiguration()
 
     if (file == nullptr)
     {
-        // New installs keep cel shading disabled unless explicitly enabled in the config.
+        // New installs keep cel shading enabled unless explicitly disabled in the config.
         WriteCelShadingConfiguration();
         return;
     }
@@ -479,7 +479,7 @@ static void LoadMotionBlurConfiguration()
 
     if (file == nullptr)
     {
-        // Motion blur deliberately defaults to disabled.
+        // Motion blur defaults to enabled for the Remastered Settings profile.
         WriteMotionBlurConfiguration();
         return;
     }
