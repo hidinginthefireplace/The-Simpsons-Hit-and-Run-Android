@@ -69,6 +69,7 @@ int GetFrameSharpeningLevel();
 void SetFrameSharpeningLevel(int level);
 bool RequestSHARAndroidRenderResolutionHeight(int targetHeight);
 int GetSHARAndroidTargetFPS();
+void SetSHARAndroidTargetFPS(int targetFPS);
 void InitializeSHARAndroidFrameRateSelection();
 bool RequestSHARAndroidDisplayFrameRate(int targetFPS);
 
@@ -460,6 +461,7 @@ int GetSHARAndroidTargetFPS()
 void InitializeSHARAndroidFrameRateSelection()
 {
     gSHARGraphicsFPSSelection = LoadSHARGraphicsFPSSelection();
+    SetSHARAndroidTargetFPS( GetSHARAndroidTargetFPS() );
     if( !RequestSHARAndroidDisplayFrameRate( GetSHARAndroidTargetFPS() ) )
     {
         LOGI("[SHAR-FPS] Display refresh-rate request deferred; the FPS cap remains active");
@@ -1048,6 +1050,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
     m_configuringAndroidSubmenu = true;
     gSHARGraphicsResolutionSelection = LoadSHARGraphicsResolutionSelection();
     gSHARGraphicsFPSSelection = LoadSHARGraphicsFPSSelection();
+    SetSHARAndroidTargetFPS( GetSHARAndroidTargetFPS() );
     RequestSHARAndroidDisplayFrameRate( GetSHARAndroidTargetFPS() );
     if( gSHARGraphicsResolutionNeedsNormalization )
     {
@@ -1815,6 +1818,7 @@ void CGuiScreenPauseSettings::HandleMessage
                                 {
                                     gSHARGraphicsFPSSelection = newSelection;
                                     const int targetFPS = GetSHARAndroidTargetFPS();
+                                    SetSHARAndroidTargetFPS( targetFPS );
                                     if( !SaveSHARGraphicsFPSSelection( newSelection ) )
                                     {
                                         LOGE("[SHAR-FPS] Could not save the selected cap; it remains active until app restart");

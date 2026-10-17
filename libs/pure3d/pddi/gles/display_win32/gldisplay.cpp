@@ -25,7 +25,6 @@
 
 bool IsCelShadingEnabled();
 bool IsMotionBlurEnabled();
-int GetSHARAndroidTargetFPS();
 bool GetSHARMotionBlurCameraData(float* output);
 bool IsFrameSharpeningEnabled();
 float GetFrameSharpenStrength();
@@ -50,6 +49,7 @@ struct SHARMotionBlurCameraState
 };
 
 static SHARMotionBlurCameraState gSHARPreviousMotionBlurCamera = {};
+static int gSHARAndroidTargetFPS = 60;
 static int gSHARMotionBlurHistoryWidth = 0;
 static int gSHARMotionBlurHistoryHeight = 0;
 static Uint64 gSHARPreviousMotionBlurSampleTime = 0;
@@ -130,6 +130,15 @@ static void CommitSHARMotionBlurCameraHistory(
         gSHARPreviousMotionBlurCamera.valid = false;
         gSHARMotionBlurHistoryWidth = 0;
         gSHARMotionBlurHistoryHeight = 0;
+    }
+}
+
+void SetSHARAndroidTargetFPS(int targetFPS)
+{
+    if( targetFPS == 30 || targetFPS == 60 || targetFPS == 90 ||
+        targetFPS == 120 || targetFPS == 144 )
+    {
+        gSHARAndroidTargetFPS = targetFPS;
     }
 }
 
@@ -3069,7 +3078,7 @@ void pglDisplay::SwapBuffers(void)
 
     if (m_only60)
     {
-        const int configuredFPS = GetSHARAndroidTargetFPS();
+        const int configuredFPS = gSHARAndroidTargetFPS;
         const int targetFPS =
             (configuredFPS >= 30 && configuredFPS <= 144) ? configuredFPS : 60;
         const Uint64 targetTicks =
