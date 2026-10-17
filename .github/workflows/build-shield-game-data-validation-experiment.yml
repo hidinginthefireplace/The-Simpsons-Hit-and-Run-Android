@@ -7,6 +7,7 @@ on:
       - experimental-credits-overlap-fix
       - experimental-credits-tvframe-diagnostics
       - experimental-phone-cel-outline-isolation
+      - touch-overlay-position-staging
   workflow_dispatch:
 
 permissions:
