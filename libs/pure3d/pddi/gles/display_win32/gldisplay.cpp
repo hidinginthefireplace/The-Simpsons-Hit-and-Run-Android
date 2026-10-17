@@ -1867,7 +1867,7 @@ static void ApplyCelPostProcess(int width, int height)
 }
 
 static void ApplyFrameSharpening(int width, int height);
-static void ApplyCRTFilter(int width, int height);
+static void ApplyCRTFilter(int width, int height, bool saturationOnly);
 
 void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, float z, float halfWidth, float halfHeight, float speedKmh)
 {
@@ -2121,16 +2121,18 @@ static void ApplyFrameSharpening(int width, int height)
 }
 
 
-static void ApplyCRTFilter(int width, int height)
+static void ApplyCRTFilter(int width, int height, bool saturationOnly)
 {
     bool enabled = false;
     float scanlineStrength = 0.35f, curvature = 0.15f, glowStrength = 0.10f;
     float cornerDarkening = 0.05f, overscan = 0.0f, brightness = 1.0f, contrast = 1.0f;
     GetCRTFilterConfiguration(&enabled, &scanlineStrength, &curvature, &glowStrength,
                               &cornerDarkening, &overscan, &brightness, &contrast);
-    // This pass always provides global saturation; CRT-specific effects remain optional.
-    if (width <= 0 || height <= 0)
+    // The pre-overlay call runs CRT only when enabled. The final call runs global
+    // saturation only, after all menu, GUI and touch-overlay rendering is complete.
+    if ((!saturationOnly && !enabled) || width <= 0 || height <= 0)
         return;
+    const bool crtPassEnabled = enabled && !saturationOnly;
 
     if (gCRTFailedWidth == width && gCRTFailedHeight == height)
         return;
@@ -2265,8 +2267,8 @@ static void ApplyCRTFilter(int width, int height)
         if (gCRTOverscanLocation>=0) glUniform1f(gCRTOverscanLocation,overscan);
         if (gCRTBrightnessLocation>=0) glUniform1f(gCRTBrightnessLocation,brightness);
         if (gCRTContrastLocation>=0) glUniform1f(gCRTContrastLocation,contrast);
-        if (gCRTCrtEnabledLocation>=0) glUniform1f(gCRTCrtEnabledLocation,enabled ? 1.0f : 0.0f);
-        if (gCRTSaturationLocation>=0) glUniform1f(gCRTSaturationLocation,1.20f);
+        if (gCRTCrtEnabledLocation>=0) glUniform1f(gCRTCrtEnabledLocation,crtPassEnabled ? 1.0f : 0.0f);
+        if (gCRTSaturationLocation>=0) glUniform1f(gCRTSaturationLocation,saturationOnly ? 1.20f : 1.0f);
         glBindBuffer(GL_ARRAY_BUFFER,gCRTVbo);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,(const GLvoid*)0);
@@ -2308,7 +2310,7 @@ void ApplySHARPostProcessingBeforeTouchHud()
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, outputWidth, outputHeight);
     ApplyFrameSharpening(outputWidth, outputHeight);
-    ApplyCRTFilter(outputWidth, outputHeight);
+    ApplyCRTFilter(outputWidth, outputHeight, false);
     gSHARPostProcessAppliedBeforeTouchHud = true;
 }
 #endif
@@ -2919,9 +2921,19 @@ void pglDisplay::SetGamma(float r, float g, float b)
 void pglDisplay::SwapBuffers(void)
 {
 #ifdef RAD_ANDROID
-    // Fallback for frames where neither touch-HUD renderer ran. Normally the
-    // pass has already happened before the touch overlay was drawn.
+    // First apply the existing optional filters before the touch HUD if they
+    // have not already run during rendering.
     ApplySHARPostProcessingBeforeTouchHud();
+
+    // Then apply global saturation to the final composed frame, including GUI,
+    // menus, videos and touch controls. This shares the CRT pass texture.
+    int outputWidth = 0;
+    int outputHeight = 0;
+    if (QueryDefaultFramebufferSize(&outputWidth, &outputHeight) &&
+        outputWidth > 0 && outputHeight > 0)
+    {
+        ApplyCRTFilter(outputWidth, outputHeight, true);
+    }
 #endif
     SDL_GL_SwapWindow(win);
     reset = false;
