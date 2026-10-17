@@ -132,7 +132,7 @@ static void CommitSHARMotionBlurCameraHistory(
 
 // Temporary diagnostic selection:
 // 0 = normal blur; 1 = camera-motion field; 2 = linearized depth;
-// 3 = actual character/vehicle protection masks.
+// 3 = actual character/vehicle protection masks; 4 = scene overlay with bounds/depth clipping.
 static int GetSHARMotionBlurDiagnosticMode()
 {
     static bool loaded = false;
@@ -156,7 +156,7 @@ static int GetSHARMotionBlurDiagnosticMode()
     {
         int requestedMode = 1;
         if (fscanf(file, "%d", &requestedMode) == 1 &&
-            requestedMode >= 0 && requestedMode <= 3)
+            requestedMode >= 0 && requestedMode <= 4)
         {
             mode = requestedMode;
         }
@@ -174,7 +174,8 @@ static int GetSHARMotionBlurDiagnosticMode()
                 "# 0 = normal blur\n"
                 "# 1 = camera motion field (grayscale)\n"
                 "# 2 = linearized scene depth (grayscale)\n"
-                "# 3 = subject protection mask (red=vehicle, green=character)\n");
+                "# 3 = subject protection mask (red=vehicle, green=character)\n"
+                "# 4 = scene overlay: red vehicle bounds, green character bounds, tinted depth-clipped protection\n");
             fclose(file);
         }
     }
@@ -999,6 +1000,64 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    return vec3(vehicleProtection, characterProtection, 0.0);\n"
             "}\n"
             "\n"
+            "float sharMotionBlurDiagnosticRect(vec2 uv, vec2 lowerBound, vec2 upperBound) {\n"
+            "    return step(lowerBound.x, uv.x) * (1.0 - step(upperBound.x, uv.x)) * step(lowerBound.y, uv.y) * (1.0 - step(upperBound.y, uv.y));\n"
+            "}\n"
+            "\n"
+            "vec3 overlayMotionBlurSubjectBounds(vec2 uv, vec3 sceneColour, vec3 subjectPosition, vec2 halfSize, float enabled, vec3 outlineColour) {\n"
+            "    if (enabled < 0.5) return sceneColour;\n"
+            "    vec3 fromCamera = subjectPosition - currentCameraPosition;\n"
+            "    float subjectZ = dot(fromCamera, currentCameraForward);\n"
+            "    if (subjectZ <= currentNearPlane) return sceneColour;\n"
+            "    vec2 subjectNdc = vec2(dot(fromCamera, currentCameraRight) / (subjectZ * currentTanHalfFovX), dot(fromCamera, currentCameraUp) / (subjectZ * currentTanHalfFovY));\n"
+            "    vec2 subjectUv = subjectNdc * 0.5 + 0.5;\n"
+            "    vec2 subjectRadius = vec2(halfSize.x / (subjectZ * currentTanHalfFovX), halfSize.y / (subjectZ * currentTanHalfFovY)) * 0.5;\n"
+            "    subjectRadius = max(subjectRadius, texelSize * 3.0);\n"
+            "    subjectRadius += texelSize * 5.0;\n"
+            "    float ellipseDistance = length((uv - subjectUv) / subjectRadius);\n"
+            "    float outline = 1.0 - smoothstep(0.025, 0.085, abs(ellipseDistance - 1.0));\n"
+            "    vec2 markerDelta = abs(uv - subjectUv) / texelSize;\n"
+            "    float centreMarker = max((1.0 - step(1.5, markerDelta.x)) * (1.0 - step(5.5, markerDelta.y)), (1.0 - step(5.5, markerDelta.x)) * (1.0 - step(1.5, markerDelta.y)));\n"
+            "    return mix(sceneColour, outlineColour, max(outline, centreMarker));\n"
+            "}\n"
+            "\n"
+            "vec3 visualizeSubjectOverlay(vec2 uv, vec3 sceneColour) {\n"
+            "    float depthValue = 1.0;\n"
+            "    float sceneViewZ = 0.0;\n"
+            "    if (depthTextureAvailable > 0.5) {\n"
+            "        depthValue = texture2D(depthTex, uv).r;\n"
+            "        if (depthValue < 0.9995) {\n"
+            "            float depthNdc = depthValue * 2.0 - 1.0;\n"
+            "            float depthDenominator = currentFarPlane + currentNearPlane - depthNdc * (currentFarPlane - currentNearPlane);\n"
+            "            sceneViewZ = (2.0 * currentNearPlane * currentFarPlane) / max(depthDenominator, 0.0001);\n"
+            "        }\n"
+            "    }\n"
+            "    float vehicleProtection = 0.0;\n"
+            "    float characterProtection = 0.0;\n"
+            "    if (depthTextureAvailable > 0.5 && depthValue < 0.9995) {\n"
+            "        vehicleProtection = protectMotionBlurSubject(uv, sceneViewZ, vehicleMaskPosition, vehicleMaskSize, vehicleMaskEnabled);\n"
+            "        characterProtection = protectMotionBlurSubject(uv, sceneViewZ, characterMaskPosition, characterMaskSize, characterMaskEnabled);\n"
+            "    }\n"
+            "    float protectionAmount = max(vehicleProtection, characterProtection);\n"
+            "    if (protectionAmount > 0.001) {\n"
+            "        vec3 protectionColour = vec3(vehicleProtection, characterProtection, 0.0) / max(protectionAmount, 0.001);\n"
+            "        sceneColour = mix(sceneColour, protectionColour, protectionAmount * 0.34);\n"
+            "    }\n"
+            "    sceneColour = overlayMotionBlurSubjectBounds(uv, sceneColour, vehicleMaskPosition, vehicleMaskSize, vehicleMaskEnabled, vec3(1.0, 0.10, 0.06));\n"
+            "    sceneColour = overlayMotionBlurSubjectBounds(uv, sceneColour, characterMaskPosition, characterMaskSize, characterMaskEnabled, vec3(0.08, 1.0, 0.12));\n"
+            "    // Three status bars: vehicle registration, character registration, depth-texture availability.\n"
+            "    float vehicleStatus = sharMotionBlurDiagnosticRect(uv, vec2(0.018, 0.945), vec2(0.105, 0.970));\n"
+            "    float characterStatus = sharMotionBlurDiagnosticRect(uv, vec2(0.018, 0.910), vec2(0.105, 0.935));\n"
+            "    float depthStatus = sharMotionBlurDiagnosticRect(uv, vec2(0.018, 0.875), vec2(0.105, 0.900));\n"
+            "    vec3 vehicleStatusColour = vehicleMaskEnabled > 0.5 ? vec3(1.0, 0.10, 0.06) : vec3(0.18, 0.035, 0.025);\n"
+            "    vec3 characterStatusColour = characterMaskEnabled > 0.5 ? vec3(0.08, 1.0, 0.12) : vec3(0.025, 0.16, 0.035);\n"
+            "    vec3 depthStatusColour = depthTextureAvailable > 0.5 ? vec3(0.12, 0.70, 1.0) : vec3(0.025, 0.045, 0.16);\n"
+            "    sceneColour = mix(sceneColour, vehicleStatusColour, vehicleStatus);\n"
+            "    sceneColour = mix(sceneColour, characterStatusColour, characterStatus);\n"
+            "    sceneColour = mix(sceneColour, depthStatusColour, depthStatus);\n"
+            "    return sceneColour;\n"
+            "}\n"
+            "\n"
             "vec3 applyCameraMotionBlur(vec2 uv, vec3 centreColour) {\n"
             "    if (motionBlurEnabled < 0.5 || motionBlurCameraValid < 0.5 || depthTextureAvailable < 0.5) return centreColour;\n"
             "    float depthValue = texture2D(depthTex, uv).r;\n"
@@ -1036,6 +1095,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "void main() {\n"
             "    vec4 scene = texture2D(sceneTex, texcoord);\n"
             "    if (motionBlurDiagnosticMode > 0.5 && motionBlurEnabled > 0.5) {\n"
+            "        if (motionBlurDiagnosticMode >= 3.5) {\n"
+            "            gl_FragColor = vec4(visualizeSubjectOverlay(texcoord, scene.rgb), 1.0);\n"
+            "            return;\n"
+            "        }\n"
             "        vec3 diagnosticColour;\n"
             "        if (motionBlurDiagnosticMode < 1.5) diagnosticColour = visualizeCameraMotion(texcoord);\n"
             "        else if (motionBlurDiagnosticMode < 2.5) diagnosticColour = visualizeLinearDepth(texcoord);\n"
