@@ -8,6 +8,7 @@ on:
       - experimental-credits-tvframe-diagnostics
       - experimental-phone-cel-outline-isolation
       - touch-overlay-position-staging
+      - phone-supersampling-blur-default-touch-size
   workflow_dispatch:
 
 permissions:
