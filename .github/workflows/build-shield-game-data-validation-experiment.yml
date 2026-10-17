@@ -10,6 +10,7 @@ on:
       - touch-overlay-position-staging
       - phone-supersampling-blur-default-touch-size
       - revamped-app-name-icon
+      - revamped-app-name-icon
   workflow_dispatch:
 
 permissions:
