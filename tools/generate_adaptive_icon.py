@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""Generate launcher icon layers from the PNGs in icon-source/ before Gradle."""
+"""Generate Android launcher icon layers without changing the supplied artwork."""
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "icon-source"
 RES = ROOT / "android-project/app/src/main/res"
 DRAWABLE = RES / "drawable-nodpi"
 CANVAS_SIZE = 1024
-# The adaptive icon's central safe area is about 61% of its full layer.
-# Use 60% to leave a little extra room for circular and squircle launcher masks.
-SAFE_ART_FRACTION = 0.60
 
 
 def open_rgba(path: Path) -> Image.Image:
@@ -18,37 +15,16 @@ def open_rgba(path: Path) -> Image.Image:
         return image.convert("RGBA")
 
 
-def trim_alpha(image: Image.Image, label: str) -> Image.Image:
-    alpha = image.getchannel("A")
-    if alpha.getextrema()[0] == 255:
+def open_source_layer(path: Path, label: str) -> Image.Image:
+    """Load a supplied square icon layer as-is; do not crop, pad, or scale it."""
+    image = open_rgba(path)
+    if image.size != (CANVAS_SIZE, CANVAS_SIZE):
         raise ValueError(
-            f"{label} has no transparent pixels; refusing to use it as a "
-            "foreground layer because it could cover the background."
+            f"{label} is {image.width}x{image.height}; expected "
+            f"{CANVAS_SIZE}x{CANVAS_SIZE}. Refusing to resize or extend source artwork."
         )
-    # Ignore negligible alpha noise when finding the visible artwork bounds.
-    bounds = alpha.point(lambda p: 255 if p > 2 else 0).getbbox()
-    if not bounds:
-        raise ValueError(f"{label} contains no visible artwork.")
-    return image.crop(bounds)
-
-
-def fit_foreground(path: Path, label: str) -> Image.Image:
-    source = trim_alpha(open_rgba(path), label)
-    max_extent = round(CANVAS_SIZE * SAFE_ART_FRACTION)
-    scale = min(max_extent / source.width, max_extent / source.height, 1.0)
-    out_w = max(1, round(source.width * scale))
-    out_h = max(1, round(source.height * scale))
-    artwork = source.resize((out_w, out_h), Image.Resampling.LANCZOS)
-    canvas = Image.new("RGBA", (CANVAS_SIZE, CANVAS_SIZE), (0, 0, 0, 0))
-    canvas.alpha_composite(
-        artwork,
-        ((CANVAS_SIZE - out_w) // 2, (CANVAS_SIZE - out_h) // 2),
-    )
-    print(
-        f"{label}: cropped visible artwork {source.width}x{source.height}; "
-        f"scaled to {out_w}x{out_h} on a {CANVAS_SIZE}x{CANVAS_SIZE} canvas"
-    )
-    return canvas
+    print(f"{label}: preserving original {CANVAS_SIZE}x{CANVAS_SIZE} pixels")
+    return image
 
 
 def save_webp(image: Image.Image, path: Path) -> None:
@@ -59,30 +35,27 @@ def save_webp(image: Image.Image, path: Path) -> None:
 
 def main() -> None:
     DRAWABLE.mkdir(parents=True, exist_ok=True)
-    background = ImageOps.fit(
-        open_rgba(SOURCE / "background.png"),
-        (CANVAS_SIZE, CANVAS_SIZE),
-        method=Image.Resampling.LANCZOS,
-        centering=(0.5, 0.5),
-    )
-    # Do not let transparent pixels in the supplied background show through.
-    if background.getchannel("A").getextrema()[0] < 255:
-        matte = Image.new("RGBA", background.size, (37, 143, 65, 255))
-        matte.alpha_composite(background)
-        background = matte
 
-    foreground = fit_foreground(SOURCE / "foreground.png", "foreground.png")
-    monochrome = fit_foreground(SOURCE / "monochrome.png", "monochrome.png")
+    # Keep the artwork aligned exactly as supplied. In particular, do not crop
+    # transparent edges or shrink the foreground to the adaptive-icon safe zone:
+    # that moved the diagonal tire marks away from the edges on the previous icon.
+    # Android launchers may mask/clip edge artwork differently, but preserving the
+    # source composition is preferred over altering the original aesthetics.
+    background = open_source_layer(SOURCE / "background.png", "background.png")
+    foreground = open_source_layer(SOURCE / "foreground.png", "foreground.png")
+    monochrome = open_source_layer(SOURCE / "monochrome.png", "monochrome.png")
 
     save_webp(foreground, DRAWABLE / "ic_launcher_logo.webp")
     save_webp(monochrome, DRAWABLE / "ic_launcher_monochrome.webp")
 
-    # Keep the Play Store artwork synchronized with the same green background.
+    # Keep Play Store artwork synchronized with the unchanged green/yellow
+    # background and the full-size original foreground layer.
     combined = Image.alpha_composite(background, foreground)
     store_icon = combined.resize((512, 512), Image.Resampling.LANCZOS)
     save_webp(store_icon, ROOT / "android-project/app/src/main/ic_launcher-playstore.webp")
 
-    # Preview artifacts let the design be checked before installing the APK.
+    # Preview artifacts allow checking both the full square artwork and a
+    # circular mask without modifying either supplied source layer.
     preview = combined.resize((512, 512), Image.Resampling.LANCZOS)
     preview.save(ROOT / "adaptive-icon-preview.png", format="PNG", optimize=True)
     round_mask = Image.new("L", preview.size, 0)
