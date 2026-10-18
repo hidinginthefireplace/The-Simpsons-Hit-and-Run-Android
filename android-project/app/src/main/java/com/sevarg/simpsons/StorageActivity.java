@@ -634,7 +634,6 @@ public class StorageActivity extends Activity {
                     float headBaseY = bottom - dp(24);
                     float headHalfWidth = dp(23);
 
-                    canvas.drawLine(centerX, dp(3), centerX, headBaseY, arrowPaint);
                     arrowHead.reset();
                     arrowHead.moveTo(centerX - headHalfWidth, headBaseY);
                     arrowHead.lineTo(centerX, bottom);
