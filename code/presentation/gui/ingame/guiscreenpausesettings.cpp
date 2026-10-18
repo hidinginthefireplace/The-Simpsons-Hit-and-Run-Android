@@ -993,10 +993,13 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
     // while the Graphics submenu is displayed. This keeps the resource's
     // original OFF/ON strings intact for the regular Settings menu.
     {
-        Scrooby::Group* pSharpeningGroup = pPage->GetGroup( "Radar" );
+        // Sharpening is displayed on the Invert Camera row in the
+        // Graphics submenu, so its percentage selector must use that row's
+        // actual text object and coordinates rather than Radar's CRT toggle.
+        Scrooby::Group* pSharpeningGroup = pPage->GetGroup( "InvertCamControl" );
         FeGroup* pFeSharpeningGroup = dynamic_cast<FeGroup*>( pSharpeningGroup );
         FeText* pOriginalValue = pSharpeningGroup != NULL
-            ? dynamic_cast<FeText*>( pSharpeningGroup->GetText( "Radar_Value" ) )
+            ? dynamic_cast<FeText*>( pSharpeningGroup->GetText( "InvertCamControl_Value" ) )
             : NULL;
 
         if( pFeSharpeningGroup != NULL && pOriginalValue != NULL )
@@ -1557,9 +1560,9 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
             item->SetItemValue( m_pOriginalFPSValue );
         }
 
-        // Restore the original sharpening value text. Its OFF/ON resource
-        // string table was never modified by the Graphics submenu.
-        if( logicalItems[i] == MENU_ITEM_RADAR &&
+        // Restore the original Invert Camera value text after the
+        // temporary sharpening-percentage selector is removed.
+        if( logicalItems[i] == MENU_ITEM_INVERT_CAM_CONTROL &&
             m_pOriginalSharpeningValue != NULL &&
             item->GetItemValue() == m_pGraphicsSharpeningValue )
         {

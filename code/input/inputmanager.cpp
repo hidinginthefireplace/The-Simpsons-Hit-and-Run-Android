@@ -395,6 +395,8 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
         )
     )
     {
+        // This controller may be taking priority back after a touchscreen tap.
+        inputMode.NotifyGamepadInput( magnitude );
         return;
     }
 
@@ -413,6 +415,10 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
         return;
     }
 
+    // Every real controller-input confirmation selects Gamepad mode,
+    // including another controller or a controller resuming after touch input.
+    inputMode.NotifyGamepadConnected();
+
     /*
      * Only the transition 0 -> 1 should do the strong cleanup.
      * If this is a second/third/fourth gamepad, the HUD is already hidden.
@@ -426,8 +432,6 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
          * which races the raw event stream and causes intermittent button
          * failures.
          */
-        inputMode.NotifyGamepadConnected();
-
         TouchInputAdapter::GetInstance().ClearQueuedInputs();
         TouchInputAdapter::GetInstance().ClearActiveInputs();
 

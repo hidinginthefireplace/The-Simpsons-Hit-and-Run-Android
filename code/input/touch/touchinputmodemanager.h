@@ -106,7 +106,9 @@ inline bool TouchInputModeManager::IsGamepadConfirmed() const
 
 inline bool TouchInputModeManager::IsTouchInputBlockedByGamepad() const
 {
-    return mGamepadConnected;
+    // A connected controller blocks touch only while Gamepad is the active
+    // input mode. A later screen touch can request Touch mode again.
+    return mGamepadConnected && IsGamepadMode();
 }
 
 inline void TouchInputModeManager::SetTouchHudEnabled( bool enabled )

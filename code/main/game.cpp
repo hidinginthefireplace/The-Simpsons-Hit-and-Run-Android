@@ -58,6 +58,7 @@
 #ifdef RAD_ANDROID
 #include <input/touch/touchcontextresolver.h>
 #include <input/touch/touchhudsystem.h>
+#include <input/touch/touchinputmodemanager.h>
 #include <input/touch/touchinputadapter.h>
 #include <worldsim/avatarmanager.h>
 #include <input/touch/touchassetextractor.h>
@@ -144,6 +145,13 @@ static void UpdateTouchHudSystemFromSDLEvent( const SDL_Event& msg )
     {
         case SDL_FINGERDOWN:
         {
+            // A screen touch explicitly reselects the touchscreen mode and
+            // restores the in-game HUD before the touch is routed.
+            TouchInputModeManager::GetInstance().NotifyTouchInput();
+            TouchInputModeManager::GetInstance().SetTouchHudEnabled( true );
+            TouchHudSystem::GetInstance().SetEnabled( true );
+            UpdateTouchContextResolverFromGame();
+
             TouchInputAdapter::GetInstance().SetEnabled( true );
             TouchInputAdapter::GetInstance().SetTargetControllerIndex( 0 );
 
@@ -193,6 +201,13 @@ static void UpdateTouchHudSystemFromSDLEvent( const SDL_Event& msg )
     {
         case SDL_EVENT_FINGER_DOWN:
         {
+            // A screen touch explicitly reselects the touchscreen mode and
+            // restores the in-game HUD before the touch is routed.
+            TouchInputModeManager::GetInstance().NotifyTouchInput();
+            TouchInputModeManager::GetInstance().SetTouchHudEnabled( true );
+            TouchHudSystem::GetInstance().SetEnabled( true );
+            UpdateTouchContextResolverFromGame();
+
             TouchInputAdapter::GetInstance().SetEnabled( true );
             TouchInputAdapter::GetInstance().SetTargetControllerIndex( 0 );
 
@@ -259,7 +274,8 @@ static void UpdateTouchInputModeFromSDLEvent( const SDL_Event& msg )
 
         case SDL_CONTROLLERDEVICEADDED:
         {
-            TouchInputModeManager::GetInstance().NotifyGamepadConnected();
+            // Device enumeration alone must not hide touchscreen controls.
+            TouchInputModeManager::GetInstance().NotifyGamepadCandidateConnected();
             break;
         }
 
@@ -286,7 +302,8 @@ static void UpdateTouchInputModeFromSDLEvent( const SDL_Event& msg )
 
         case SDL_JOYDEVICEADDED:
         {
-            TouchInputModeManager::GetInstance().NotifyGamepadConnected();
+            // Device enumeration alone must not hide touchscreen controls.
+            TouchInputModeManager::GetInstance().NotifyGamepadCandidateConnected();
             break;
         }
 
@@ -331,7 +348,8 @@ static void UpdateTouchInputModeFromSDLEvent( const SDL_Event& msg )
 
         case SDL_EVENT_GAMEPAD_ADDED:
         {
-            TouchInputModeManager::GetInstance().NotifyGamepadConnected();
+            // Device enumeration alone must not hide touchscreen controls.
+            TouchInputModeManager::GetInstance().NotifyGamepadCandidateConnected();
             break;
         }
 
@@ -358,7 +376,8 @@ static void UpdateTouchInputModeFromSDLEvent( const SDL_Event& msg )
 
         case SDL_EVENT_JOYSTICK_ADDED:
         {
-            TouchInputModeManager::GetInstance().NotifyGamepadConnected();
+            // Device enumeration alone must not hide touchscreen controls.
+            TouchInputModeManager::GetInstance().NotifyGamepadCandidateConnected();
             break;
         }
 

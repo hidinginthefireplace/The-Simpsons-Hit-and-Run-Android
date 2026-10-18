@@ -44,16 +44,11 @@ void TouchInputModeManager::NotifyTouchInput()
 {
     mLastTouchInputTimeMs = mTimeMs;
 
-     /*
-     * Confirmed physical gamepad has priority.
-     * Touch input must not steal the active mode while a real gamepad
-     * is confirmed and connected.
+    /*
+     * A direct touch is an explicit request to use the touchscreen again.
+     * A confirmed controller remains tracked, but its next real input will
+     * switch the active mode back to Gamepad and hide the touch HUD.
      */
-    if ( mGamepadConnected )
-    {
-        return;
-    }
-
     mCurrentMode = TOUCH_INPUT_MODE_TOUCH;
 }
 
@@ -79,16 +74,14 @@ void TouchInputModeManager::NotifyGamepadCandidateConnected()
 
 void TouchInputModeManager::NotifyGamepadConnected()
 {
-      /*
+    /*
      * This now means:
      * A physical gamepad has been CONFIRMED by real input.
      *
-     * Do not call this just because SDL enumerated a device.
+     * Keep selecting Gamepad mode whenever this is called, not just on the
+     * first connection transition. That lets real controller input take back
+     * priority after the user has temporarily touched the screen.
      */
-    if ( mGamepadConnected )
-    {
-        return;
-    }
     mGamepadCandidate = true;
     mGamepadConnected = true;
     mCurrentMode = TOUCH_INPUT_MODE_GAMEPAD;
