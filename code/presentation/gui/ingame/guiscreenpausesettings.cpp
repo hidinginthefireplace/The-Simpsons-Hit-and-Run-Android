@@ -993,14 +993,34 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
     // while the Graphics submenu is displayed. This keeps the resource's
     // original OFF/ON strings intact for the regular Settings menu.
     {
-        // Sharpening is displayed on the Invert Camera row in the
-        // Graphics submenu, so its percentage selector must use that row's
-        // actual text object and coordinates rather than Radar's CRT toggle.
+        // Sharpening belongs to the Invert Camera row. On some Android
+        // layouts that row is provided by the normal resource group; on
+        // others it is generated under the page's "Menu" group because the
+        // original InvertCamControl artwork is absent. Create the six-value
+        // selector alongside whichever value object the menu actually uses,
+        // so it retains the correct row coordinates and group transforms.
         Scrooby::Group* pSharpeningGroup = pPage->GetGroup( "InvertCamControl" );
         FeGroup* pFeSharpeningGroup = dynamic_cast<FeGroup*>( pSharpeningGroup );
         FeText* pOriginalValue = pSharpeningGroup != NULL
             ? dynamic_cast<FeText*>( pSharpeningGroup->GetText( "InvertCamControl_Value" ) )
             : NULL;
+
+        if( pFeSharpeningGroup == NULL || pOriginalValue == NULL )
+        {
+            Scrooby::Group* pMenuGroup = pPage->GetGroup( "Menu" );
+            FeGroup* pFeMenuGroup = dynamic_cast<FeGroup*>( pMenuGroup );
+            FeText* pGeneratedValue = pMenuGroup != NULL
+                ? dynamic_cast<FeText*>(
+                    pMenuGroup->GetText( "AndroidSettings_InvertCamera_Value" ) )
+                : NULL;
+
+            if( pFeMenuGroup != NULL && pGeneratedValue != NULL )
+            {
+                pSharpeningGroup = pMenuGroup;
+                pFeSharpeningGroup = pFeMenuGroup;
+                pOriginalValue = pGeneratedValue;
+            }
+        }
 
         if( pFeSharpeningGroup != NULL && pOriginalValue != NULL )
         {
