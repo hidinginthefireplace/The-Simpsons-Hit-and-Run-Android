@@ -11,7 +11,10 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
@@ -21,6 +24,9 @@ import android.os.Environment;
 import android.os.storage.StorageManager;
 import android.os.storage.StorageVolume;
 import android.provider.Settings;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 import android.view.Gravity;
 import android.view.View;
 import android.view.animation.AccelerateDecelerateInterpolator;
@@ -515,7 +521,14 @@ public class StorageActivity extends Activity {
         content.setPadding(sidePad, topPad, sidePad, dp(portraitLayout ? 18 : 28));
 
         TextView title = new TextView(this);
-        title.setText("The Simpsons: Hit & Run\nGame Data Location");
+        SpannableString heading = new SpannableString("The Simpsons: Hit & Run\n Revamped!");
+        int revampedStart = heading.toString().indexOf("Revamped!");
+        heading.setSpan(
+                new ForegroundColorSpan(PINK),
+                revampedStart,
+                heading.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        title.setText(heading);
         title.setTextSize(portraitLayout ? 25 : 29);
         title.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         title.setTextColor(YELLOW);
@@ -596,17 +609,43 @@ public class StorageActivity extends Activity {
         }
 
         if (portraitLayout) {
-            TextView downArrow = new TextView(this);
-            downArrow.setText("↓");
-            downArrow.setTextSize(38);
-            downArrow.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
-            downArrow.setTextColor(PINK);
-            downArrow.setGravity(Gravity.CENTER);
-            downArrow.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
-            downArrow.setContentDescription("Storage choices below");
+            // Draw the arrow as a stroked shape instead of a font glyph so its
+            // thickness and proportions stay clear across Android devices.
+            View downArrow = new View(this) {
+                private final Paint arrowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                private final Path arrowHead = new Path();
+
+                {
+                    arrowPaint.setColor(PINK);
+                    arrowPaint.setStyle(Paint.Style.STROKE);
+                    arrowPaint.setStrokeWidth(dp(8));
+                    arrowPaint.setStrokeCap(Paint.Cap.ROUND);
+                    arrowPaint.setStrokeJoin(Paint.Join.ROUND);
+                    arrowPaint.setShadowLayer(dp(2), 0, dp(1), Color.BLACK);
+                    setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                    setContentDescription("Storage choices below");
+                }
+
+                @Override
+                protected void onDraw(Canvas canvas) {
+                    super.onDraw(canvas);
+                    float centerX = getWidth() / 2.0f;
+                    float bottom = getHeight() - dp(5);
+                    float headBaseY = bottom - dp(24);
+                    float headHalfWidth = dp(23);
+
+                    canvas.drawLine(centerX, dp(3), centerX, headBaseY, arrowPaint);
+                    arrowHead.reset();
+                    arrowHead.moveTo(centerX - headHalfWidth, headBaseY);
+                    arrowHead.lineTo(centerX, bottom);
+                    arrowHead.lineTo(centerX + headHalfWidth, headBaseY);
+                    canvas.drawPath(arrowHead, arrowPaint);
+                }
+            };
+            downArrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
             LinearLayout.LayoutParams arrowParams = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
+                    dp(66));
             arrowParams.setMargins(0, dp(8), 0, dp(12));
             content.addView(downArrow, arrowParams);
         }
