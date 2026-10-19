@@ -4975,13 +4975,33 @@ void Character::Display(void)
     p3d::stack->Translate(rootPos);
 
 #ifdef RAD_ANDROID
-    // Register a separate, tight face region for every character drawn this frame.
-    // This path is independent of the player/vehicle bounds used by motion blur.
-    RegisterSHARCharacterOutlineBounds(
+    // Use the animated head joint when the character skeleton exposes one. The
+    // old world-height estimate remains as a fallback for unusual skeletons.
+    rmt::Vector facePosition(
         rootPos.x,
         rootPos.y + mYAdjust + 1.48f * mScale,
-        rootPos.z,
-        0.20f * mScale);
+        rootPos.z);
+    int faceJointIndex = pose->FindJointIndex("head");
+    if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("Head");
+    if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("HEAD");
+    if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("Bip01 Head");
+    if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("Bip01_Head");
+    if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("head_joint");
+    if (faceJointIndex >= 0)
+    {
+        // Character::Display has already made joint transforms root-relative and
+        // applied mScale above, so add the animated head position back to rootPos.
+        const rmt::Vector headOffset =
+            pose->GetJoint(faceJointIndex)->worldMatrix.Row(3);
+        facePosition.x = rootPos.x + headOffset.x;
+        facePosition.y = rootPos.y + mYAdjust + headOffset.y;
+        facePosition.z = rootPos.z + headOffset.z;
+    }
+
+    // Facial outlines use their own list; motion-blur subject bounds below are
+    // intentionally unchanged and remain player-only.
+    RegisterSHARCharacterOutlineBounds(
+        facePosition.x, facePosition.y, facePosition.z, 0.20f * mScale);
 
     Avatar* motionBlurPlayerAvatar = GetAvatarManager()->GetAvatarForPlayer(0);
     if (motionBlurPlayerAvatar != NULL && motionBlurPlayerAvatar->GetCharacter() == this)
