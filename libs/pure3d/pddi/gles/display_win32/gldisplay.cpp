@@ -1152,7 +1152,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "        float resolutionRatio = clamp(outlineTexelSize.y / max(texelSize.y, 0.000001), 0.25, 1.0);\n"
             "        float distanceThresholdScale = mix(1.0, 2.0 - resolutionRatio, distanceFade);\n"
             "        float depthEdge = smoothstep(0.0025 * distanceThresholdScale, 0.018 * distanceThresholdScale, relativeDepthCurvature);\n"
-            "        depthOutlineEdge = depthEdge * 0.55;\n"
+            "        depthOutlineEdge = 0.0; // Diagnostic test: suppress depth-only contours while preserving colour-based and fine-detail edges.\n"
             "    }\n"
             "    // Fade the broad colour mask and geometric-depth mask independently.\n"
             "    // Leave the fine-detail mask at its existing distance tuning to protect character contours.\n"
