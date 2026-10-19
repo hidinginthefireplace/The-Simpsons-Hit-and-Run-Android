@@ -210,6 +210,7 @@ bool gCelDepthTextureExtensionAvailable = false;
 bool gCelRenderFboReady = false;
 GLint gCelPostSceneLocation = -1;
 GLint gCelPostTexelLocation = -1;
+GLint gCelPostOutlineTexelSizeLocation = -1;
 GLint gCelPostBloomLocation = -1;
 GLint gCelPostBloomStrengthLocation = -1;
 GLint gCelPostDepthLocation = -1;
@@ -897,6 +898,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform sampler2D depthTex;\n"
             "uniform float depthTextureAvailable;\n"
             "uniform vec2 texelSize;\n"
+            "uniform vec2 outlineTexelSize;\n"
             "uniform float celEffectsEnabled;\n"
             "uniform float motionBlurEnabled;\n"
             "uniform float motionBlurCameraValid;\n"
@@ -1080,10 +1082,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "\n"
             "    // Existing screen-space cel outline detection.\n"
             "    float centreLuma = sceneLuma(scene.rgb);\n"
-            "    float leftLuma  = sceneLuma(texture2D(sceneTex, texcoord - vec2(texelSize.x, 0.0)).rgb);\n"
-            "    float rightLuma = sceneLuma(texture2D(sceneTex, texcoord + vec2(texelSize.x, 0.0)).rgb);\n"
-            "    float upLuma    = sceneLuma(texture2D(sceneTex, texcoord + vec2(0.0, texelSize.y)).rgb);\n"
-            "    float downLuma  = sceneLuma(texture2D(sceneTex, texcoord - vec2(0.0, texelSize.y)).rgb);\n"
+            "    float leftLuma  = sceneLuma(texture2D(sceneTex, texcoord - vec2(outlineTexelSize.x, 0.0)).rgb);\n"
+            "    float rightLuma = sceneLuma(texture2D(sceneTex, texcoord + vec2(outlineTexelSize.x, 0.0)).rgb);\n"
+            "    float upLuma    = sceneLuma(texture2D(sceneTex, texcoord + vec2(0.0, outlineTexelSize.y)).rgb);\n"
+            "    float downLuma  = sceneLuma(texture2D(sceneTex, texcoord - vec2(0.0, outlineTexelSize.y)).rgb);\n"
             "    float edgeStrength = max(max(abs(centreLuma - leftLuma), abs(centreLuma - rightLuma)),\n"
             "                             max(abs(centreLuma - upLuma), abs(centreLuma - downLuma)));\n"
             "    float edge = smoothstep(0.10, 0.22, edgeStrength);\n"
@@ -1098,10 +1100,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    // Lightweight edge smoothing: soften high-contrast edges only,\n"
             "    // avoiding the heavier full-screen FXAA experiment.\n"
             "    vec3 neighbourAverage = (scene.rgb +\n"
-            "        texture2D(sceneTex, texcoord - vec2(texelSize.x, 0.0)).rgb +\n"
-            "        texture2D(sceneTex, texcoord + vec2(texelSize.x, 0.0)).rgb +\n"
-            "        texture2D(sceneTex, texcoord - vec2(0.0, texelSize.y)).rgb +\n"
-            "        texture2D(sceneTex, texcoord + vec2(0.0, texelSize.y)).rgb) * 0.2;\n"
+            "        texture2D(sceneTex, texcoord - vec2(outlineTexelSize.x, 0.0)).rgb +\n"
+            "        texture2D(sceneTex, texcoord + vec2(outlineTexelSize.x, 0.0)).rgb +\n"
+            "        texture2D(sceneTex, texcoord - vec2(0.0, outlineTexelSize.y)).rgb +\n"
+            "        texture2D(sceneTex, texcoord + vec2(0.0, outlineTexelSize.y)).rgb) * 0.2;\n"
             "    float smoothAmount = 0.12 * smoothstep(0.025, 0.14, edgeStrength);\n"
             "    vec3 toonColour = mix(scene.rgb, neighbourAverage, smoothAmount);\n"
             "\n"
@@ -1175,6 +1177,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
 
         gCelPostSceneLocation = glGetUniformLocation(gCelPostProgram, "sceneTex");
         gCelPostTexelLocation = glGetUniformLocation(gCelPostProgram, "texelSize");
+        gCelPostOutlineTexelSizeLocation = glGetUniformLocation(gCelPostProgram, "outlineTexelSize");
         gCelPostBloomLocation = glGetUniformLocation(gCelPostProgram, "bloomTex");
         gCelPostBloomStrengthLocation = glGetUniformLocation(gCelPostProgram, "bloomStrength");
         gCelPostDepthLocation = glGetUniformLocation(gCelPostProgram, "depthTex");
@@ -1799,6 +1802,19 @@ static void ApplyCelPostProcess(int width, int height)
     glUniform1i(gCelPostSceneLocation, 0);
     if (gCelPostTexelLocation >= 0)
         glUniform2f(gCelPostTexelLocation, 1.0f / (float)width, 1.0f / (float)height);
+
+    // The cel edge detector samples the internal scene texture, but the texture
+    // is enlarged to fit the physical output Surface. Increase its sampling
+    // distance at higher internal resolutions to preserve the apparent outline
+    // thickness. Leave 1080p-and-lower tuning unchanged; cap compensation at 2x.
+    if (gCelPostOutlineTexelSizeLocation >= 0)
+    {
+        float outlineScale = (float)height / 1080.0f;
+        if (outlineScale < 1.0f) outlineScale = 1.0f;
+        if (outlineScale > 2.0f) outlineScale = 2.0f;
+        glUniform2f(gCelPostOutlineTexelSizeLocation,
+            outlineScale / (float)width, outlineScale / (float)height);
+    }
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, bloomReady ? gCelBloomTexture : 0);
