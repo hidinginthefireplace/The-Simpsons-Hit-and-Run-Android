@@ -215,6 +215,7 @@ GLint gCelPostBloomLocation = -1;
 GLint gCelPostBloomStrengthLocation = -1;
 GLint gCelPostDepthLocation = -1;
 GLint gCelPostDepthAvailableLocation = -1;
+GLint gCelPostDepthEdgeDetectionAvailableLocation = -1;
 GLint gCelPostCelEffectsLocation = -1;
 GLint gCelPostMotionBlurEnabledLocation = -1;
 GLint gCelPostMotionBlurValidLocation = -1;
@@ -897,6 +898,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform float bloomStrength;\n"
             "uniform sampler2D depthTex;\n"
             "uniform float depthTextureAvailable;\n"
+            "uniform float depthEdgeDetectionAvailable;\n"
             "uniform vec2 texelSize;\n"
             "uniform vec2 outlineTexelSize;\n"
             "uniform float celEffectsEnabled;\n"
@@ -929,6 +931,15 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "\n"
             "float sceneLuma(vec3 colour) {\n"
             "    return dot(colour, vec3(0.299, 0.587, 0.114));\n"
+            "}\n"
+            "\n"
+            "// Convert the nonlinear OpenGL depth-buffer value to positive view-space distance.\n"
+            "float linearViewDepth(float depth) {\n"
+            "    float nearPlane = currentNearPlane;\n"
+            "    float farPlane = currentFarPlane;\n"
+            "    float denominator = farPlane - depth * (farPlane - nearPlane);\n"
+            "    if (nearPlane <= 0.0 || farPlane <= nearPlane || denominator <= 0.00001) return 0.0;\n"
+            "    return (nearPlane * farPlane) / denominator;\n"
             "}\n"
             "\n"
             "float randomNoise(vec2 p) {\n"
@@ -1089,6 +1100,18 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float edgeStrength = max(max(abs(centreLuma - leftLuma), abs(centreLuma - rightLuma)),\n"
             "                             max(abs(centreLuma - upLuma), abs(centreLuma - downLuma)));\n"
             "    float edge = smoothstep(0.10, 0.22, edgeStrength);\n"
+            "    // Use depth discontinuities to recover geometric creases that flat toon colours hide.\n"
+            "    // Only mark the nearer side of an edge to reduce double-thick outlines.\n"
+            "    if (depthEdgeDetectionAvailable > 0.5 && depthTextureAvailable > 0.5) {\n"
+            "        float centreDepth = linearViewDepth(texture2D(depthTex, texcoord).r);\n"
+            "        float leftDepth = linearViewDepth(texture2D(depthTex, texcoord - vec2(outlineTexelSize.x, 0.0)).r);\n"
+            "        float rightDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2(outlineTexelSize.x, 0.0)).r);\n"
+            "        float upDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2(0.0, outlineTexelSize.y)).r);\n"
+            "        float downDepth = linearViewDepth(texture2D(depthTex, texcoord - vec2(0.0, outlineTexelSize.y)).r);\n"
+            "        float depthEdgeStrength = max(0.0, max(max(leftDepth - centreDepth, rightDepth - centreDepth), max(upDepth - centreDepth, downDepth - centreDepth)));\n"
+            "        float depthEdge = smoothstep(0.035, 0.12, depthEdgeStrength);\n"
+            "        edge = max(edge, depthEdge * 0.65);\n"
+            "    }\n"
             "    // Fade only this fullscreen edge-darkening pass with scene depth.\n"
             "    // The separate character/vehicle outline renderer is not modified.\n"
             "    if (depthTextureAvailable > 0.5) {\n"
@@ -1182,6 +1205,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostBloomStrengthLocation = glGetUniformLocation(gCelPostProgram, "bloomStrength");
         gCelPostDepthLocation = glGetUniformLocation(gCelPostProgram, "depthTex");
         gCelPostDepthAvailableLocation = glGetUniformLocation(gCelPostProgram, "depthTextureAvailable");
+        gCelPostDepthEdgeDetectionAvailableLocation = glGetUniformLocation(gCelPostProgram, "depthEdgeDetectionAvailable");
         gCelPostCelEffectsLocation = glGetUniformLocation(gCelPostProgram, "celEffectsEnabled");
         gCelPostMotionBlurEnabledLocation = glGetUniformLocation(gCelPostProgram, "motionBlurEnabled");
         gCelPostMotionBlurValidLocation = glGetUniformLocation(gCelPostProgram, "motionBlurCameraValid");
@@ -1813,8 +1837,8 @@ static void ApplyCelPostProcess(int width, int height)
         float outlineScale = 1.0f;
         if (height > 1080)
         {
-            outlineScale = (float)height / 720.0f;
-            if (outlineScale > 3.0f) outlineScale = 3.0f;
+            outlineScale = (float)height / 960.0f;
+            if (outlineScale > 2.25f) outlineScale = 2.25f;
         }
         glUniform2f(gCelPostOutlineTexelSizeLocation,
             outlineScale / (float)width, outlineScale / (float)height);
@@ -1833,6 +1857,11 @@ static void ApplyCelPostProcess(int width, int height)
         glUniform1i(gCelPostDepthLocation, 2);
     if (gCelPostDepthAvailableLocation >= 0)
         glUniform1f(gCelPostDepthAvailableLocation, gCelDepthTextureActive ? 1.0f : 0.0f);
+    if (gCelPostDepthEdgeDetectionAvailableLocation >= 0)
+        glUniform1f(gCelPostDepthEdgeDetectionAvailableLocation,
+            (gCelDepthTextureActive && haveCurrentMotionBlurCamera &&
+             currentMotionBlurCamera.nearPlane > 0.0f &&
+             currentMotionBlurCamera.farPlane > currentMotionBlurCamera.nearPlane) ? 1.0f : 0.0f);
 
     if (gCelPostCelEffectsLocation >= 0)
         glUniform1f(gCelPostCelEffectsLocation, celEffectsEnabled ? 1.0f : 0.0f);
