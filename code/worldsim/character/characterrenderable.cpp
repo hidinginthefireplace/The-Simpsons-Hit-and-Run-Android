@@ -22,6 +22,7 @@ void SetCelShadingOutlinePass(bool enabled);
 //  [6/27/2002]
 #include <worldsim/character/charactermanager.h>
 #include <worldsim/character/character.h>
+#include <worldsim/levelmodeltint.h>
 
 /*
 ==============================================================================
@@ -567,6 +568,8 @@ void CharacterRenderable::DisplayModel( tPose* pose )
     tDrawablePose* draw = GetDrawable();
     if(draw)
     {
+        // Apply the level-specific tint only while this character is rendered.
+        SHARLevelModelLightingTint modelLightingTint;
         if( mpSwatchShader != NULL )
         {
             if( mpSwatchTexture != NULL )

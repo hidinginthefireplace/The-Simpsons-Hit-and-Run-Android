@@ -45,6 +45,7 @@
 #include <worldsim/worldphysicsmanager.h>
 
 #include <worldsim/redbrick/geometryvehicle.h>
+#include <worldsim/levelmodeltint.h>
 #include <worldsim/redbrick/wheel.h>
 #include <worldsim/redbrick/redbrickcollisionsolveragent.h>
 
@@ -3735,7 +3736,11 @@ void Vehicle::Display()
 
       
     mPoseEngine->End();     // copy over what we're gonna render
-    mGeometryVehicle->Display();
+    {
+        // Keep the level-specific tint scoped to the vehicle and restore lighting immediately afterward.
+        SHARLevelModelLightingTint modelLightingTint;
+        mGeometryVehicle->Display();
+    }
 
 
 
