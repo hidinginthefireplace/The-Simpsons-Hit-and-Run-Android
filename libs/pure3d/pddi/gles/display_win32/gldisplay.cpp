@@ -1806,12 +1806,16 @@ static void ApplyCelPostProcess(int width, int height)
     // The cel edge detector samples the internal scene texture, but the texture
     // is enlarged to fit the physical output Surface. Increase its sampling
     // distance at higher internal resolutions to preserve the apparent outline
-    // thickness. Leave 1080p-and-lower tuning unchanged; cap compensation at 2x.
+    // thickness. Keep 1080p and lower at the original tuning; use stronger
+    // compensation only for 1440p/2160p where outlines were still too thin.
     if (gCelPostOutlineTexelSizeLocation >= 0)
     {
-        float outlineScale = (float)height / 1080.0f;
-        if (outlineScale < 1.0f) outlineScale = 1.0f;
-        if (outlineScale > 2.0f) outlineScale = 2.0f;
+        float outlineScale = 1.0f;
+        if (height > 1080)
+        {
+            outlineScale = (float)height / 720.0f;
+            if (outlineScale > 3.0f) outlineScale = 3.0f;
+        }
         glUniform2f(gCelPostOutlineTexelSizeLocation,
             outlineScale / (float)width, outlineScale / (float)height);
     }
