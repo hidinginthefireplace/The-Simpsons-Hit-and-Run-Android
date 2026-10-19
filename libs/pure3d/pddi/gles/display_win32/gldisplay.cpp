@@ -1108,9 +1108,12 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "        float rightDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2(outlineTexelSize.x, 0.0)).r);\n"
             "        float upDepth = linearViewDepth(texture2D(depthTex, texcoord + vec2(0.0, outlineTexelSize.y)).r);\n"
             "        float downDepth = linearViewDepth(texture2D(depthTex, texcoord - vec2(0.0, outlineTexelSize.y)).r);\n"
-            "        float depthEdgeStrength = max(0.0, max(max(leftDepth - centreDepth, rightDepth - centreDepth), max(upDepth - centreDepth, downDepth - centreDepth)));\n"
+            "        float fartherDelta = max(0.0, max(max(leftDepth - centreDepth, rightDepth - centreDepth), max(upDepth - centreDepth, downDepth - centreDepth)));\n"
+            "        float nearerDelta = max(0.0, max(max(centreDepth - leftDepth, centreDepth - rightDepth), max(centreDepth - upDepth, centreDepth - downDepth)));\n"
+            "        // Cancel ordinary depth gradients across tilted surfaces; retain asymmetric occlusion steps.\n"
+            "        float depthEdgeStrength = max(0.0, fartherDelta - nearerDelta);\n"
             "        float depthEdge = smoothstep(0.035, 0.12, depthEdgeStrength);\n"
-            "        edge = max(edge, depthEdge * 0.65);\n"
+            "        edge = max(edge, depthEdge * 0.55);\n"
             "    }\n"
             "    // Fade only this fullscreen edge-darkening pass with scene depth.\n"
             "    // The separate character/vehicle outline renderer is not modified.\n"
@@ -1835,10 +1838,18 @@ static void ApplyCelPostProcess(int width, int height)
     if (gCelPostOutlineTexelSizeLocation >= 0)
     {
         float outlineScale = 1.0f;
-        if (height > 1080)
+        if (height <= 480)
         {
-            outlineScale = (float)height / 960.0f;
-            if (outlineScale > 2.25f) outlineScale = 2.25f;
+            outlineScale = 0.25f;
+        }
+        else if (height <= 720)
+        {
+            outlineScale = 0.50f;
+        }
+        else if (height > 1080)
+        {
+            outlineScale = (float)height / 1080.0f;
+            if (outlineScale > 2.0f) outlineScale = 2.0f;
         }
         glUniform2f(gCelPostOutlineTexelSizeLocation,
             outlineScale / (float)width, outlineScale / (float)height);
