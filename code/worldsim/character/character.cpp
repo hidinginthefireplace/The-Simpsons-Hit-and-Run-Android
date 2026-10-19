@@ -44,6 +44,7 @@
 #include <mission/gameplaymanager.h>
 #ifdef RAD_ANDROID
 void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, float z, float halfWidth, float halfHeight, float speedKmh);
+void RegisterSHARCharacterOutlineBounds(float x, float y, float z, float faceHalfWidth);
 #endif
 
 #include <meta/locator.h>
@@ -4974,6 +4975,14 @@ void Character::Display(void)
     p3d::stack->Translate(rootPos);
 
 #ifdef RAD_ANDROID
+    // Register a separate, tight face region for every character drawn this frame.
+    // This path is independent of the player/vehicle bounds used by motion blur.
+    RegisterSHARCharacterOutlineBounds(
+        rootPos.x,
+        rootPos.y + mYAdjust + 1.48f * mScale,
+        rootPos.z,
+        0.20f * mScale);
+
     Avatar* motionBlurPlayerAvatar = GetAvatarManager()->GetAvatarForPlayer(0);
     if (motionBlurPlayerAvatar != NULL && motionBlurPlayerAvatar->GetCharacter() == this)
     {
