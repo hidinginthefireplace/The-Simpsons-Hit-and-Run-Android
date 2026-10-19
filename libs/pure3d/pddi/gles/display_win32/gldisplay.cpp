@@ -212,6 +212,8 @@ GLint gCelPostSceneLocation = -1;
 GLint gCelPostTexelLocation = -1;
 GLint gCelPostOutlineTexelSizeLocation = -1;
 GLint gCelPostFineDetailEnabledLocation = -1;
+GLint gCelPostOutlineDarkeningLocation = -1;
+GLint gCelPostEdgeSmoothingLocation = -1;
 GLint gCelPostBloomLocation = -1;
 GLint gCelPostBloomStrengthLocation = -1;
 GLint gCelPostDepthLocation = -1;
@@ -903,6 +905,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform vec2 texelSize;\n"
             "uniform vec2 outlineTexelSize;\n"
             "uniform float fineDetailEnabled;\n"
+            "uniform float outlineDarkeningMultiplier;\n"
+            "uniform float edgeSmoothingStrength;\n"
             "uniform float celEffectsEnabled;\n"
             "uniform float motionBlurEnabled;\n"
             "uniform float motionBlurCameraValid;\n"
@@ -1170,11 +1174,11 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "        texture2D(sceneTex, texcoord + vec2(outlineTexelSize.x, 0.0)).rgb +\n"
             "        texture2D(sceneTex, texcoord - vec2(0.0, outlineTexelSize.y)).rgb +\n"
             "        texture2D(sceneTex, texcoord + vec2(0.0, outlineTexelSize.y)).rgb) * 0.2;\n"
-            "    float smoothAmount = 0.12 * smoothstep(0.025, 0.14, edgeStrength);\n"
+            "    float smoothAmount = edgeSmoothingStrength * smoothstep(0.025, 0.14, edgeStrength);\n"
             "    vec3 toonColour = mix(scene.rgb, neighbourAverage, smoothAmount);\n"
             "\n"
             "    // Retain the existing full-scene toon edge darkening.\n"
-            "    toonColour = mix(toonColour, toonColour * 0.35, edge);\n"
+            "    toonColour = mix(toonColour, toonColour * outlineDarkeningMultiplier, edge);\n"
             "\n"
             "\n"
             "    // Add the blurred bright-pass texture produced by the multi-pass bloom pipeline.\n"
@@ -1245,6 +1249,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostTexelLocation = glGetUniformLocation(gCelPostProgram, "texelSize");
         gCelPostOutlineTexelSizeLocation = glGetUniformLocation(gCelPostProgram, "outlineTexelSize");
         gCelPostFineDetailEnabledLocation = glGetUniformLocation(gCelPostProgram, "fineDetailEnabled");
+        gCelPostOutlineDarkeningLocation = glGetUniformLocation(gCelPostProgram, "outlineDarkeningMultiplier");
+        gCelPostEdgeSmoothingLocation = glGetUniformLocation(gCelPostProgram, "edgeSmoothingStrength");
         gCelPostBloomLocation = glGetUniformLocation(gCelPostProgram, "bloomTex");
         gCelPostBloomStrengthLocation = glGetUniformLocation(gCelPostProgram, "bloomStrength");
         gCelPostDepthLocation = glGetUniformLocation(gCelPostProgram, "depthTex");
@@ -1889,6 +1895,25 @@ static void ApplyCelPostProcess(int width, int height)
     }
     if (gCelPostFineDetailEnabledLocation >= 0)
         glUniform1f(gCelPostFineDetailEnabledLocation, height > 1080 ? 1.0f : 0.0f);
+
+    // Preserve the existing 1080p look; restore high-resolution contour contrast
+    // with less edge smoothing, without changing outline sampling or depth masks.
+    float outlineDarkeningMultiplier = 0.35f;
+    float edgeSmoothingStrength = 0.12f;
+    if (height > 1080 && height <= 1440)
+    {
+        outlineDarkeningMultiplier = 0.30f;
+        edgeSmoothingStrength = 0.08f;
+    }
+    else if (height > 1440)
+    {
+        outlineDarkeningMultiplier = 0.25f;
+        edgeSmoothingStrength = 0.05f;
+    }
+    if (gCelPostOutlineDarkeningLocation >= 0)
+        glUniform1f(gCelPostOutlineDarkeningLocation, outlineDarkeningMultiplier);
+    if (gCelPostEdgeSmoothingLocation >= 0)
+        glUniform1f(gCelPostEdgeSmoothingLocation, edgeSmoothingStrength);
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, bloomReady ? gCelBloomTexture : 0);
