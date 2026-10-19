@@ -211,6 +211,7 @@ bool gCelRenderFboReady = false;
 GLint gCelPostSceneLocation = -1;
 GLint gCelPostTexelLocation = -1;
 GLint gCelPostOutlineTexelSizeLocation = -1;
+GLint gCelPostFineDetailEnabledLocation = -1;
 GLint gCelPostBloomLocation = -1;
 GLint gCelPostBloomStrengthLocation = -1;
 GLint gCelPostDepthLocation = -1;
@@ -901,6 +902,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform float depthEdgeDetectionAvailable;\n"
             "uniform vec2 texelSize;\n"
             "uniform vec2 outlineTexelSize;\n"
+            "uniform float fineDetailEnabled;\n"
             "uniform float celEffectsEnabled;\n"
             "uniform float motionBlurEnabled;\n"
             "uniform float motionBlurCameraValid;\n"
@@ -1100,10 +1102,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float edgeStrength = max(max(abs(centreLuma - leftLuma), abs(centreLuma - rightLuma)),\n"
             "                             max(abs(centreLuma - upLuma), abs(centreLuma - downLuma)));\n"
             "    float edge = smoothstep(0.10, 0.22, edgeStrength);\n"
+            "    float depthOutlineEdge = 0.0;\n"
             "    float fineDetailEdge = 0.0;\n"
-            "    // Preserve the preferred 1080p settings, but recover tiny colour edges when\n"
-            "    // the broad high-resolution outline step is wider than one render pixel.\n"
-            "    if (outlineTexelSize.x > texelSize.x * 1.05) {\n"
+            "    // Recover tiny colour edges only above 1080p, independently of the broad outline sampling scale.\n"
+            "    if (fineDetailEnabled > 0.5) {\n"
             "        float fineCentreLuma = sceneLuma(texture2D(sceneTex, texcoord).rgb);\n"
             "        float fineLeftLuma = sceneLuma(texture2D(sceneTex, texcoord - vec2(texelSize.x, 0.0)).rgb);\n"
             "        float fineRightLuma = sceneLuma(texture2D(sceneTex, texcoord + vec2(texelSize.x, 0.0)).rgb);\n"
@@ -1136,7 +1138,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "        float depthCurvatureY = abs(upDepth + downDepth - 2.0 * centreDepth);\n"
             "        float relativeDepthCurvature = max(depthCurvatureX, depthCurvatureY) / max(centreDepth, 1.0);\n"
             "        float depthEdge = smoothstep(0.0025, 0.018, relativeDepthCurvature);\n"
-            "        edge = max(edge, depthEdge * 0.55);\n"
+            "        depthOutlineEdge = depthEdge * 0.55;\n"
             "    }\n"
             "    // Fade only this fullscreen edge-darkening pass with scene depth.\n"
             "    // The separate character/vehicle outline renderer is not modified.\n"
@@ -1145,7 +1147,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "        float distanceFade = smoothstep(0.985, 0.998, sceneDepth);\n"
             "        edge *= mix(1.0, 0.30, distanceFade);\n"
             "        fineDetailEdge *= mix(1.0, 0.30, distanceFade);\n"
+            "        // Suppress distant depth-only terrain artifacts more strongly than colour edges.\n"
+            "        depthOutlineEdge *= mix(1.0, 0.05, distanceFade);\n"
             "    }\n"
+            "    edge = max(edge, depthOutlineEdge);\n"
             "    // Combine independent masks instead of maxing the fine signal into a broad edge.\n"
             "    // This lets narrow eye contours contribute even if the wider sample detects only a weak edge.\n"
             "    edge = 1.0 - (1.0 - edge) * (1.0 - fineDetailEdge * 0.80);\n"
@@ -1231,6 +1236,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostSceneLocation = glGetUniformLocation(gCelPostProgram, "sceneTex");
         gCelPostTexelLocation = glGetUniformLocation(gCelPostProgram, "texelSize");
         gCelPostOutlineTexelSizeLocation = glGetUniformLocation(gCelPostProgram, "outlineTexelSize");
+        gCelPostFineDetailEnabledLocation = glGetUniformLocation(gCelPostProgram, "fineDetailEnabled");
         gCelPostBloomLocation = glGetUniformLocation(gCelPostProgram, "bloomTex");
         gCelPostBloomStrengthLocation = glGetUniformLocation(gCelPostProgram, "bloomStrength");
         gCelPostDepthLocation = glGetUniformLocation(gCelPostProgram, "depthTex");
@@ -1857,11 +1863,8 @@ static void ApplyCelPostProcess(int width, int height)
     if (gCelPostTexelLocation >= 0)
         glUniform2f(gCelPostTexelLocation, 1.0f / (float)width, 1.0f / (float)height);
 
-    // The cel edge detector samples the internal scene texture, but the texture
-    // is enlarged to fit the physical output Surface. Increase its sampling
-    // distance at higher internal resolutions to preserve the apparent outline
-    // thickness. Keep 1080p and lower at the original tuning; use stronger
-    // compensation only for 1440p/2160p where outlines were still too thin.
+    // Keep 480p/720p at their existing tuning. Use a fixed 1.00x sampling
+    // distance at 1080p and above so fine contours are not skipped at high resolution.
     if (gCelPostOutlineTexelSizeLocation >= 0)
     {
         float outlineScale = 1.0f;
@@ -1873,14 +1876,11 @@ static void ApplyCelPostProcess(int width, int height)
         {
             outlineScale = 0.50f;
         }
-        else if (height > 1080)
-        {
-            outlineScale = (float)height / 1080.0f;
-            if (outlineScale > 2.0f) outlineScale = 2.0f;
-        }
         glUniform2f(gCelPostOutlineTexelSizeLocation,
             outlineScale / (float)width, outlineScale / (float)height);
     }
+    if (gCelPostFineDetailEnabledLocation >= 0)
+        glUniform1f(gCelPostFineDetailEnabledLocation, height > 1080 ? 1.0f : 0.0f);
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, bloomReady ? gCelBloomTexture : 0);
