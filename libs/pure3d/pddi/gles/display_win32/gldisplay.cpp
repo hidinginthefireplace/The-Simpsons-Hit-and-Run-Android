@@ -252,6 +252,8 @@ GLint gCelPostCharacterMaskEnabledLocation = -1;
 GLint gCelPostCharacterMaskPositionLocation = -1;
 GLint gCelPostCharacterMaskSizeLocation = -1;
 GLint gCelPostCharacterOutlineBoundsLocation = -1;
+GLint gCelPostCharacterOutlineDepthLocation = -1;
+GLint gCelPostCharacterOutlineCountLocation = -1;
 GLint gCelPostVehicleMaskEnabledLocation = -1;
 GLint gCelPostVehicleMaskPositionLocation = -1;
 GLint gCelPostVehicleMaskSizeLocation = -1;
@@ -941,6 +943,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform vec3 characterMaskPosition;\n"
             "uniform vec2 characterMaskSize;\n"
             "uniform vec4 characterOutlineBounds[16];\n"
+            "uniform vec4 characterOutlineDepth[16];\n"
+            "uniform int characterOutlineBoundCount;\n"
             "uniform float vehicleMaskEnabled;\n"
             "uniform vec3 vehicleMaskPosition;\n"
             "uniform vec2 vehicleMaskSize;\n"
@@ -1005,40 +1009,36 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float ellipseDistance = length((uv - subjectUv) / subjectRadius);\n"
             "    return 1.0 - smoothstep(0.90, 1.30, ellipseDistance);\n"
             "}\n"
-            "float rawCharacterFaceOutlineMask(vec2 uv, vec3 subjectPosition, vec2 halfSize) {\n"
-            "    vec3 fromCamera = subjectPosition - currentCameraPosition;\n"
-            "    float subjectZ = dot(fromCamera, currentCameraForward);\n"
-            "    if (subjectZ <= currentNearPlane) return 0.0;\n"
-            "    vec2 subjectNdc = vec2(dot(fromCamera, currentCameraRight) / (subjectZ * currentTanHalfFovX), dot(fromCamera, currentCameraUp) / (subjectZ * currentTanHalfFovY));\n"
-            "    vec2 subjectUv = subjectNdc * 0.5 + 0.5;\n"
-            "    float halfWidthInCameraRight = sqrt(halfSize.x * halfSize.x * (currentCameraRight.x * currentCameraRight.x + currentCameraRight.z * currentCameraRight.z) + halfSize.y * halfSize.y * currentCameraRight.y * currentCameraRight.y);\n"
-            "    float halfHeightInCameraUp = sqrt(halfSize.x * halfSize.x * (currentCameraUp.x * currentCameraUp.x + currentCameraUp.z * currentCameraUp.z) + halfSize.y * halfSize.y * currentCameraUp.y * currentCameraUp.y);\n"
-            "    vec2 subjectRadius = vec2(halfWidthInCameraRight / (subjectZ * currentTanHalfFovX), halfHeightInCameraUp / (subjectZ * currentTanHalfFovY)) * 0.5;\n"
-            "    subjectRadius = max(subjectRadius, texelSize * 1.5);\n"
-            "    float ellipseDistance = length((uv - subjectUv) / subjectRadius);\n"
-            "    return 1.0 - smoothstep(0.82, 1.12, ellipseDistance);\n"
-            "}\n"
-            "\n"
             "float characterFaceOutlineMask(vec2 uv) {\n"
-            "    float depthValue = texture2D(depthTex, uv).r;\n"
-            "    if (depthValue >= 0.9995) return 0.0;\n"
-            "    float sceneZ = linearViewDepth(depthValue);\n"
-            "    if (sceneZ <= 0.0) return 0.0;\n"
+            "    if (characterOutlineBoundCount <= 0) return 0.0;\n"
             "    float combinedMask = 0.0;\n"
+            "    float sceneZ = -1.0;\n"
+            "    bool haveSceneDepth = false;\n"
             "    for (int i = 0; i < 16; ++i) {\n"
+            "        if (i >= characterOutlineBoundCount) break;\n"
             "        vec4 bounds = characterOutlineBounds[i];\n"
-            "        if (bounds.w > 0.0) {\n"
-            "            vec3 fromCamera = bounds.xyz - currentCameraPosition;\n"
-            "            float subjectZ = dot(fromCamera, currentCameraForward);\n"
-            "            if (subjectZ > currentNearPlane) {\n"
-            "                float depthDifference = sceneZ - subjectZ;\n"
-            "                float frontAllowance = max(0.30, subjectZ * 0.010);\n"
-            "                float backAllowance = max(0.16, subjectZ * 0.006);\n"
-            "                float frontAgreement = smoothstep(-frontAllowance, -frontAllowance * 0.75, depthDifference);\n"
-            "                float backAgreement = 1.0 - smoothstep(backAllowance, backAllowance * 1.7, depthDifference);\n"
-            "                float depthAgreement = frontAgreement * backAgreement;\n"
-            "                float faceMask = rawCharacterFaceOutlineMask(uv, bounds.xyz, vec2(bounds.w, bounds.w * 0.82));\n"
-            "                combinedMask = max(combinedMask, faceMask * depthAgreement);\n"
+            "        if (bounds.z > 0.0 && bounds.w > 0.0) {\n"
+            "            vec2 normalizedOffset = (uv - bounds.xy) / bounds.zw;\n"
+            "            if (abs(normalizedOffset.x) <= 1.12 && abs(normalizedOffset.y) <= 1.12) {\n"
+            "                float ellipseDistance = length(normalizedOffset);\n"
+            "                float faceMask = 1.0 - smoothstep(0.82, 1.12, ellipseDistance);\n"
+            "                if (faceMask > 0.001) {\n"
+            "                    if (!haveSceneDepth) {\n"
+            "                        float depthValue = texture2D(depthTex, uv).r;\n"
+            "                        if (depthValue >= 0.9995) return 0.0;\n"
+            "                        sceneZ = linearViewDepth(depthValue);\n"
+            "                        if (sceneZ <= 0.0) return 0.0;\n"
+            "                        haveSceneDepth = true;\n"
+            "                    }\n"
+            "                    float subjectZ = characterOutlineDepth[i].x;\n"
+            "                    float depthDifference = sceneZ - subjectZ;\n"
+            "                    float frontAllowance = max(0.30, subjectZ * 0.010);\n"
+            "                    float backAllowance = max(0.16, subjectZ * 0.006);\n"
+            "                    float frontAgreement = smoothstep(-frontAllowance, -frontAllowance * 0.75, depthDifference);\n"
+            "                    float backAgreement = 1.0 - smoothstep(backAllowance, backAllowance * 1.7, depthDifference);\n"
+            "                    float depthAgreement = frontAgreement * backAgreement;\n"
+            "                    combinedMask = max(combinedMask, faceMask * depthAgreement);\n"
+            "                }\n"
             "            }\n"
             "        }\n"
             "    }\n"
@@ -1333,6 +1333,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostCharacterMaskPositionLocation = glGetUniformLocation(gCelPostProgram, "characterMaskPosition");
         gCelPostCharacterMaskSizeLocation = glGetUniformLocation(gCelPostProgram, "characterMaskSize");
         gCelPostCharacterOutlineBoundsLocation = glGetUniformLocation(gCelPostProgram, "characterOutlineBounds[0]");
+        gCelPostCharacterOutlineDepthLocation = glGetUniformLocation(gCelPostProgram, "characterOutlineDepth[0]");
+        gCelPostCharacterOutlineCountLocation = glGetUniformLocation(gCelPostProgram, "characterOutlineBoundCount");
         gCelPostVehicleMaskEnabledLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskEnabled");
         gCelPostVehicleMaskPositionLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskPosition");
         gCelPostVehicleMaskSizeLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskSize");
@@ -2025,22 +2027,97 @@ static void ApplyCelPostProcess(int width, int height)
     if (gCelPostCharacterMaskSizeLocation >= 0 && gSHARMotionBlurCharacterSubject.valid)
         glUniform2f(gCelPostCharacterMaskSizeLocation, gSHARMotionBlurCharacterSubject.halfWidth, gSHARMotionBlurCharacterSubject.halfHeight);
 
-    // Facial-outline bounds have their own per-frame storage and never alter motion-blur subject data.
+    // Facial bounds are projected once on the CPU, not reprojected for every pixel.
+    // Their uniforms are independent of the player/vehicle motion-blur subject data.
     if (gCelPostCharacterOutlineBoundsLocation >= 0)
     {
         GLfloat outlineBoundsUniforms[SHAR_MAX_CHARACTER_OUTLINE_BOUNDS * 4] = { 0.0f };
-        int outlineBoundCount = gSHARCharacterOutlineBoundsCount;
-        if (outlineBoundCount > SHAR_MAX_CHARACTER_OUTLINE_BOUNDS)
-            outlineBoundCount = SHAR_MAX_CHARACTER_OUTLINE_BOUNDS;
-        for (int i = 0; i < outlineBoundCount; ++i)
+        GLfloat outlineDepthUniforms[SHAR_MAX_CHARACTER_OUTLINE_BOUNDS * 4] = { 0.0f };
+        int outlineBoundCount = 0;
+        const int registeredBoundCount =
+            gSHARCharacterOutlineBoundsCount < SHAR_MAX_CHARACTER_OUTLINE_BOUNDS
+                ? gSHARCharacterOutlineBoundsCount
+                : SHAR_MAX_CHARACTER_OUTLINE_BOUNDS;
+
+        if (haveCurrentMotionBlurCamera &&
+            currentMotionBlurCamera.nearPlane > 0.0f &&
+            currentMotionBlurCamera.tanHalfFovX > 0.0001f &&
+            currentMotionBlurCamera.tanHalfFovY > 0.0001f)
         {
-            outlineBoundsUniforms[i * 4 + 0] = gSHARCharacterOutlineBounds[i].position[0];
-            outlineBoundsUniforms[i * 4 + 1] = gSHARCharacterOutlineBounds[i].position[1];
-            outlineBoundsUniforms[i * 4 + 2] = gSHARCharacterOutlineBounds[i].position[2];
-            outlineBoundsUniforms[i * 4 + 3] = gSHARCharacterOutlineBounds[i].halfWidth;
+            for (int i = 0; i < registeredBoundCount; ++i)
+            {
+                const SHARCharacterOutlineBounds& face = gSHARCharacterOutlineBounds[i];
+                const float fromCameraX = face.position[0] - currentMotionBlurCamera.position[0];
+                const float fromCameraY = face.position[1] - currentMotionBlurCamera.position[1];
+                const float fromCameraZ = face.position[2] - currentMotionBlurCamera.position[2];
+                const float subjectZ =
+                    fromCameraX * currentMotionBlurCamera.forward[0] +
+                    fromCameraY * currentMotionBlurCamera.forward[1] +
+                    fromCameraZ * currentMotionBlurCamera.forward[2];
+                if (subjectZ <= currentMotionBlurCamera.nearPlane)
+                    continue;
+
+                const float cameraX =
+                    fromCameraX * currentMotionBlurCamera.right[0] +
+                    fromCameraY * currentMotionBlurCamera.right[1] +
+                    fromCameraZ * currentMotionBlurCamera.right[2];
+                const float cameraY =
+                    fromCameraX * currentMotionBlurCamera.up[0] +
+                    fromCameraY * currentMotionBlurCamera.up[1] +
+                    fromCameraZ * currentMotionBlurCamera.up[2];
+                const float ndcX = cameraX /
+                    (subjectZ * currentMotionBlurCamera.tanHalfFovX);
+                const float ndcY = cameraY /
+                    (subjectZ * currentMotionBlurCamera.tanHalfFovY);
+                const float centerU = ndcX * 0.5f + 0.5f;
+                const float centerV = ndcY * 0.5f + 0.5f;
+
+                const float halfWidth = face.halfWidth;
+                const float halfHeight = face.halfWidth * 0.82f;
+                const float rightExtent = sqrtf(
+                    halfWidth * halfWidth *
+                        (currentMotionBlurCamera.right[0] * currentMotionBlurCamera.right[0] +
+                         currentMotionBlurCamera.right[2] * currentMotionBlurCamera.right[2]) +
+                    halfHeight * halfHeight *
+                        currentMotionBlurCamera.right[1] * currentMotionBlurCamera.right[1]);
+                const float upExtent = sqrtf(
+                    halfWidth * halfWidth *
+                        (currentMotionBlurCamera.up[0] * currentMotionBlurCamera.up[0] +
+                         currentMotionBlurCamera.up[2] * currentMotionBlurCamera.up[2]) +
+                    halfHeight * halfHeight *
+                        currentMotionBlurCamera.up[1] * currentMotionBlurCamera.up[1]);
+                float radiusU = rightExtent /
+                    (subjectZ * currentMotionBlurCamera.tanHalfFovX) * 0.5f;
+                float radiusV = upExtent /
+                    (subjectZ * currentMotionBlurCamera.tanHalfFovY) * 0.5f;
+                const float minRadiusU = width > 0 ? 1.5f / (float)width : 0.001f;
+                const float minRadiusV = height > 0 ? 1.5f / (float)height : 0.001f;
+                if (radiusU < minRadiusU) radiusU = minRadiusU;
+                if (radiusV < minRadiusV) radiusV = minRadiusV;
+
+                // Drop faces fully outside the viewport so they cost no fragment-shader iterations.
+                if (centerU + radiusU * 1.12f < 0.0f ||
+                    centerU - radiusU * 1.12f > 1.0f ||
+                    centerV + radiusV * 1.12f < 0.0f ||
+                    centerV - radiusV * 1.12f > 1.0f)
+                    continue;
+
+                const int slot = outlineBoundCount++;
+                outlineBoundsUniforms[slot * 4 + 0] = centerU;
+                outlineBoundsUniforms[slot * 4 + 1] = centerV;
+                outlineBoundsUniforms[slot * 4 + 2] = radiusU;
+                outlineBoundsUniforms[slot * 4 + 3] = radiusV;
+                outlineDepthUniforms[slot * 4 + 0] = subjectZ;
+            }
         }
+
         glUniform4fv(gCelPostCharacterOutlineBoundsLocation,
             SHAR_MAX_CHARACTER_OUTLINE_BOUNDS, outlineBoundsUniforms);
+        if (gCelPostCharacterOutlineDepthLocation >= 0)
+            glUniform4fv(gCelPostCharacterOutlineDepthLocation,
+                SHAR_MAX_CHARACTER_OUTLINE_BOUNDS, outlineDepthUniforms);
+        if (gCelPostCharacterOutlineCountLocation >= 0)
+            glUniform1i(gCelPostCharacterOutlineCountLocation, outlineBoundCount);
     }
     if (gCelPostVehicleMaskEnabledLocation >= 0)
         glUniform1f(gCelPostVehicleMaskEnabledLocation, gSHARMotionBlurVehicleSubject.valid ? 1.0f : 0.0f);
