@@ -60,6 +60,8 @@ pglProgram::pglProgram()
     toonObjectEnabled = -1;
     toonOutlinePass = -1;
     toonOutlineWidth = -1;
+    nightObjectBrightness = -1;
+    nightObjectSaturation = -1;
     #endif
 
 #endif
@@ -235,7 +237,7 @@ void pglProgram::SetCelShadingEnabled(bool enabled)
 }
 
 #ifdef RAD_ANDROID
-void pglProgram::SetCelShadingState(bool enabled, bool objectEnabled, bool outlinePass)
+void pglProgram::SetCelShadingState(bool enabled, bool objectEnabled, bool outlinePass, float objectBrightness, float objectSaturation)
 {
     if (toonEnabled >= 0)
         glUniform1i(toonEnabled, enabled ? 1 : 0);
@@ -245,6 +247,10 @@ void pglProgram::SetCelShadingState(bool enabled, bool objectEnabled, bool outli
         glUniform1i(toonOutlinePass, outlinePass ? 1 : 0);
     if (toonOutlineWidth >= 0)
         glUniform1f(toonOutlineWidth, 0.009f);
+    if (nightObjectBrightness >= 0)
+        glUniform1f(nightObjectBrightness, objectBrightness);
+    if (nightObjectSaturation >= 0)
+        glUniform1f(nightObjectSaturation, objectSaturation);
 }
 #endif
 
@@ -351,6 +357,8 @@ bool pglProgram::LinkProgram(GLuint vertexShader, GLuint fragmentShader)
     toonObjectEnabled = glGetUniformLocation(program, "toonObjectEnabled");
     toonOutlinePass = glGetUniformLocation(program, "toonOutlinePass");
     toonOutlineWidth = glGetUniformLocation(program, "toonOutlineWidth");
+    nightObjectBrightness = glGetUniformLocation(program, "nightObjectBrightness");
+    nightObjectSaturation = glGetUniformLocation(program, "nightObjectSaturation");
     #endif
 
 #ifndef RAD_VITAGL

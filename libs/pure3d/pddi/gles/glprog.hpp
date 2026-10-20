@@ -38,7 +38,7 @@ public:
     void SetAmbientLight(pddiColour ambient);
     void SetCelShadingEnabled(bool enabled);
 #ifdef RAD_ANDROID
-    void SetCelShadingState(bool enabled, bool objectEnabled, bool outlinePass);
+    void SetCelShadingState(bool enabled, bool objectEnabled, bool outlinePass, float objectBrightness, float objectSaturation);
 #endif
 
     inline bool SupportsLighting() { return acs >= 0; }
@@ -78,6 +78,8 @@ protected:
     GLint toonObjectEnabled;
     GLint toonOutlinePass;
     GLint toonOutlineWidth;
+    GLint nightObjectBrightness;
+    GLint nightObjectSaturation;
     #endif
 #endif
 };

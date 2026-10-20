@@ -11,6 +11,7 @@
 #ifdef RAD_ANDROID
 bool IsCelShadingEnabled();
 void SetSHARCharacterMaskModelPass(bool enabled);
+void SetSHARObjectDimming(float brightness, float saturation);
 bool IsCelShadingObjectEnabled();
 void SetCelShadingObjectEnabled(bool enabled);
 bool IsCelShadingOutlinePass();
@@ -18,6 +19,35 @@ void SetCelShadingOutlinePass(bool enabled);
 #endif
 #include <camera/supercammanager.h>
 #include <contexts/bootupcontext.h>
+
+#ifdef RAD_ANDROID
+static void SetSHARCharacterNightDimming()
+{
+    float brightness = 1.0f;
+    float saturation = 1.0f;
+    GameplayManager* gameplay = GetGameplayManager();
+    if (gameplay != NULL)
+    {
+        switch (gameplay->GetCurrentLevelIndex())
+        {
+            case RenderEnums::L3:
+                brightness = 0.88f;
+                saturation = 0.72f;
+                break;
+            case RenderEnums::L4:
+            case RenderEnums::L5:
+            case RenderEnums::L6:
+            case RenderEnums::L7:
+                brightness = 0.78f;
+                saturation = 0.58f;
+                break;
+            default:
+                break;
+        }
+    }
+    SetSHARObjectDimming(brightness, saturation);
+}
+#endif
 
 // Hack.
 //  [6/27/2002]
@@ -569,6 +599,7 @@ void CharacterRenderable::DisplayModel( tPose* pose )
     if(draw)
     {
 #ifdef RAD_ANDROID
+        SetSHARCharacterNightDimming();
         SetSHARCharacterMaskModelPass(true);
 #endif
         if( mpSwatchShader != NULL )
@@ -602,6 +633,7 @@ void CharacterRenderable::DisplayModel( tPose* pose )
 #endif
 #ifdef RAD_ANDROID
         SetSHARCharacterMaskModelPass(false);
+        SetSHARObjectDimming(1.0f, 1.0f);
 #endif
     }
 }

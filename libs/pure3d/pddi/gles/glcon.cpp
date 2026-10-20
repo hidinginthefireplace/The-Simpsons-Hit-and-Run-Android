@@ -33,6 +33,10 @@ static pglContext* gCelShadingContext = nullptr;
 static bool gSHARCharacterMaskWorldEnabled = false;
 static bool gSHARCharacterMaskModelPass = false;
 static bool gSHARCharacterMaskAlphaWriteRequested = true;
+#ifdef RAD_ANDROID
+static float gSHARObjectBrightness = 1.0f;
+static float gSHARObjectSaturation = 1.0f;
+#endif
 
 static void ApplySHARCharacterMaskAlphaPolicy()
 {
@@ -57,6 +61,21 @@ void SetSHARCharacterMaskModelPass(bool enabled)
     gSHARCharacterMaskModelPass = enabled;
     ApplySHARCharacterMaskAlphaPolicy();
 }
+
+#ifdef RAD_ANDROID
+void SetSHARObjectDimming(float brightness, float saturation)
+{
+    if (brightness < 0.0f) brightness = 0.0f;
+    if (brightness > 1.0f) brightness = 1.0f;
+    if (saturation < 0.0f) saturation = 0.0f;
+    if (saturation > 1.0f) saturation = 1.0f;
+
+    gSHARObjectBrightness = brightness;
+    gSHARObjectSaturation = saturation;
+    if (gCelShadingContext)
+        gCelShadingContext->ApplyCelShadingState();
+}
+#endif
 static bool gCelShadingConfigurationLoaded = false;
 // Fresh installs use the Remastered Settings sharpening default of 40%.
 // User-selected values are loaded from Simpsons_sharpening.txt and remain unchanged on existing installs.
@@ -923,6 +942,8 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "uniform int toonObjectEnabled;\n"
         "uniform int toonOutlinePass;\n"
         "uniform float toonOutlineWidth;\n"
+        "uniform float nightObjectBrightness;\n"
+        "uniform float nightObjectSaturation;\n"
 #endif
 
         "vec3 direction(vec4 p1, vec4 p2) { return normalize(p2.xyz * sign(p1.w) - p1.xyz * sign(p2.w)); }\n"
@@ -959,7 +980,14 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "    if (lit == 0) return vec3(1.0);\n"
 #endif
         "    return dcm.rgb * toonFlatLight;\n"
-        "}\n";
+        "}\n"
+#ifdef RAD_ANDROID
+        "vec3 applySHARObjectDimming(vec3 colour) {\n"
+        "    float luma = dot(colour, vec3(0.299, 0.587, 0.114));\n"
+        "    return mix(vec3(luma), colour, clamp(nightObjectSaturation, 0.0, 1.0)) * clamp(nightObjectBrightness, 0.0, 1.0);\n"
+        "}\n"
+#endif
+        ;
 
     GLuint fragmentShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
         (toonLighting +
@@ -968,7 +996,13 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "        gl_FragColor = vec4(0.0, 0.0, 0.0, cpri.a * dcm.a);\n"
         "        return;\n"
         "    }\n"
+#ifdef RAD_ANDROID
+        "    vec4 finalColour = cpri * vec4(toonLightingColor(), dcm.a);\n"
+        "    finalColour.rgb = applySHARObjectDimming(finalColour.rgb);\n"
+        "    gl_FragColor = finalColour;\n"
+#else
         "    gl_FragColor = cpri * vec4(toonLightingColor(), dcm.a);\n"
+#endif
         "}\n"
     ).c_str());
 
@@ -981,7 +1015,13 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "        gl_FragColor = vec4(0.0, 0.0, 0.0, base.a);\n"
         "        return;\n"
         "    }\n"
+#ifdef RAD_ANDROID
+        "    vec4 finalColour = base * vec4(toonLightingColor(), dcm.a);\n"
+        "    finalColour.rgb = applySHARObjectDimming(finalColour.rgb);\n"
+        "    gl_FragColor = finalColour;\n"
+#else
         "    gl_FragColor = base * vec4(toonLightingColor(), dcm.a);\n"
+#endif
         "}\n"
     ).c_str());
 
@@ -998,6 +1038,9 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "    }\n"
         "    vec4 c = base * vec4(toonLightingColor(), dcm.a);\n"
         "    if (c.a < alpharef) discard;\n"
+#ifdef RAD_ANDROID
+        "    c.rgb = applySHARObjectDimming(c.rgb);\n"
+#endif
         "    gl_FragColor = c;\n"
         "}\n"
     ).c_str());
@@ -1922,7 +1965,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
     {
 #ifdef RAD_ANDROID
         if (currentProgram)
-            currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass);
+            currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation);
 #endif
         return;
     }
@@ -1936,7 +1979,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
     currentProgram->AddRef();
     currentProgram->UseProgram();
 #ifdef RAD_ANDROID
-    currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass);
+    currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation);
 #endif
     currentProgram->SetProjectionMatrix(&projection);
 
@@ -1953,7 +1996,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
 void pglContext::ApplyCelShadingState()
 {
     if (currentProgram)
-        currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass);
+        currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation);
 }
 #endif
 

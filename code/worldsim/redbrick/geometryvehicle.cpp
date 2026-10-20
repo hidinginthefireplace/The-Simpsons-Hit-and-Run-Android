@@ -39,6 +39,7 @@ bool IsCelShadingObjectEnabled();
 void SetCelShadingObjectEnabled(bool enabled);
 bool IsCelShadingOutlinePass();
 void SetCelShadingOutlinePass(bool enabled);
+void SetSHARObjectDimming(float brightness, float saturation);
 #endif
 #include <p3d/utility.hpp>
 #include <typeinfo>
@@ -59,6 +60,35 @@ void SetCelShadingOutlinePass(bool enabled);
 //#define SHADOW_EDITTING
 
 const int TYPICAL_NUMBER_OF_FRAME_CONTROLLERS = 16;
+
+#ifdef RAD_ANDROID
+static void SetSHARVehicleNightDimming()
+{
+    float brightness = 1.0f;
+    float saturation = 1.0f;
+    GameplayManager* gameplay = GetGameplayManager();
+    if (gameplay != NULL)
+    {
+        switch (gameplay->GetCurrentLevelIndex())
+        {
+            case RenderEnums::L3:
+                brightness = 0.88f;
+                saturation = 0.72f;
+                break;
+            case RenderEnums::L4:
+            case RenderEnums::L5:
+            case RenderEnums::L6:
+            case RenderEnums::L7:
+                brightness = 0.78f;
+                saturation = 0.58f;
+                break;
+            default:
+                break;
+        }
+    }
+    SetSHARObjectDimming(brightness, saturation);
+}
+#endif
 
 // this is by artist design... the value is between 0 and 255
 static const int INCAR_ROOF_ALPHA = 100;
@@ -1096,6 +1126,7 @@ BEGIN_PROFILE("GeometryVehicle::CompDraw->Disp")
     if( sbDrawVehicle )
     {
 #ifdef RAD_ANDROID
+        SetSHARVehicleNightDimming();
         if (IsCelShadingEnabled())
         {
             // Render the expanded-mesh black silhouette first, then the normal vehicle.
@@ -1110,6 +1141,7 @@ BEGIN_PROFILE("GeometryVehicle::CompDraw->Disp")
         {
             mCompositeDrawable->Display();
         }
+        SetSHARObjectDimming(1.0f, 1.0f);
 #else
         mCompositeDrawable->Display();
 #endif
