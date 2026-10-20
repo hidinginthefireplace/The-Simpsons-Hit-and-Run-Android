@@ -78,7 +78,7 @@ static SHARMotionBlurSubjectBounds gSHARMotionBlurCharacterSubject = {};
 static SHARMotionBlurSubjectBounds gSHARMotionBlurVehicleSubject = {};
 
 // Keep facial-outline bounds separate from the motion-blur subject bounds.
-static const int SHAR_MAX_CHARACTER_OUTLINE_BOUNDS = 16;
+static const int SHAR_MAX_CHARACTER_OUTLINE_BOUNDS = 8;
 struct SHARCharacterOutlineBounds
 {
     float position[3];
@@ -942,8 +942,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform float characterMaskEnabled;\n"
             "uniform vec3 characterMaskPosition;\n"
             "uniform vec2 characterMaskSize;\n"
-            "uniform vec4 characterOutlineBounds[16];\n"
-            "uniform vec4 characterOutlineDepth[16];\n"
+            "uniform vec4 characterOutlineBounds[8];\n"
+            "uniform vec4 characterOutlineDepth[8];\n"
             "uniform int characterOutlineBoundCount;\n"
             "uniform float vehicleMaskEnabled;\n"
             "uniform vec3 vehicleMaskPosition;\n"
@@ -1012,7 +1012,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "float characterFaceOutlineMask(vec2 uv) {\n"
             "    if (characterOutlineBoundCount <= 0) return 0.0;\n"
             "    float combinedMask = 0.0;\n"
-            "    for (int i = 0; i < 16; ++i) {\n"
+            "    for (int i = 0; i < 8; ++i) {\n"
             "        if (i >= characterOutlineBoundCount) break;\n"
             "        vec4 bounds = characterOutlineBounds[i];\n"
             "        if (bounds.z > 0.0 && bounds.w > 0.0) {\n"
@@ -1128,7 +1128,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "// Temporary diagnostic overlay: show the exact CPU-projected face bounds.\n"
             "vec3 drawFaceBoundsDiagnostics(vec2 uv, vec3 baseColour) {\n"
             "    vec3 result = baseColour;\n"
-            "    for (int i = 0; i < 16; ++i) {\n"
+            "    for (int i = 0; i < 8; ++i) {\n"
             "        if (i >= characterOutlineBoundCount) break;\n"
             "        vec4 bounds = characterOutlineBounds[i];\n"
             "        if (bounds.z > 0.0 && bounds.w > 0.0) {\n"
@@ -1145,6 +1145,25 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "            float verticalLine = (1.0 - smoothstep(1.5, 2.8, abs(pixelOffset.x))) * (1.0 - smoothstep(6.0, 9.0, abs(pixelOffset.y)));\n"
             "            float crossOutline = max(horizontalLine, verticalLine);\n"
             "            float centreDot = 1.0 - smoothstep(2.5, 4.0, length(pixelOffset));\n"
+            "            float diagnosticMask = max(max(blackRing, pinkRing), max(crossOutline, centreDot));\n"
+            "            float diagnosticVisible = 1.0;\n"
+            "            // Hide markers when a clearly nearer surface covers the face center.\n"
+            "            // This check only runs for marker pixels, keeping its cost bounded.\n"
+            "            if (diagnosticMask > 0.001 && depthTextureAvailable > 0.5) {\n"
+            "                float centreDepthValue = texture2D(depthTex, bounds.xy).r;\n"
+            "                if (centreDepthValue < 0.9995) {\n"
+            "                    float centreSceneZ = linearViewDepth(centreDepthValue);\n"
+            "                    float subjectZ = characterOutlineDepth[i].x;\n"
+            "                    float occlusionAllowance = max(0.85, subjectZ * 0.025);\n"
+            "                    if (centreSceneZ > 0.0 && centreSceneZ < subjectZ - occlusionAllowance) diagnosticVisible = 0.0;\n"
+            "                }\n"
+            "            }\n"
+            "            blackRing *= diagnosticVisible;\n"
+            "            pinkRing *= diagnosticVisible;\n"
+            "            crossOutline *= diagnosticVisible;\n"
+            "            centreDot *= diagnosticVisible;\n"
+            "            horizontalLine *= diagnosticVisible;\n"
+            "            verticalLine *= diagnosticVisible;\n"
             "            result = mix(result, vec3(0.01, 0.01, 0.01), crossOutline);\n"
             "            result = mix(result, vec3(0.0, 1.0, 0.35), max(horizontalLine, verticalLine) * 0.92);\n"
             "            result = mix(result, vec3(1.0, 1.0, 1.0), centreDot);\n"
@@ -1199,7 +1218,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    // Face bounds are screen-space bounds; do not require character depth to detect color creases.\n"
             "    characterFaceMask = characterFaceOutlineMask(texcoord);\n"
             "    if (characterFaceMask > 0.001) {\n"
-            "        faceColourDetailEdge = smoothstep(0.020, 0.075, edgeStrength) * characterFaceMask;\n"
+            "        faceColourDetailEdge = smoothstep(0.024, 0.082, edgeStrength) * characterFaceMask * 0.60;\n"
             "    }\n"
             "\n"
             "    // Use depth discontinuities to recover geometric creases that flat toon colours hide.\n"
@@ -1228,7 +1247,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "        float faceDepthSignal = max(relativeDepthCurvature, faceDepthGradient * 0.65);\n"
             "        float faceDepthEdge = smoothstep(0.00065 * distanceThresholdScale, 0.0040 * distanceThresholdScale, faceDepthSignal);\n"
             "        if (characterFaceMask > 0.001) {\n"
-            "            depthOutlineEdge = max(depthEdge * 0.70, faceDepthEdge * 0.90) * characterFaceMask;\n"
+            "            depthOutlineEdge = max(depthEdge * 0.70, faceDepthEdge * 0.90) * characterFaceMask * 0.60;\n"
             "        }\n"
             "    }\n"
             "    // Fade the broad colour mask and geometric-depth mask independently.\n"
@@ -2098,10 +2117,9 @@ static void ApplyCelPostProcess(int width, int height)
                 const float centerU = ndcX * 0.5f + 0.5f;
                 const float centerV = ndcY * 0.5f + 0.5f;
 
-                // Relative to the previous diagnostic build: +20% width and +10% height,
-                // keeping the projected center fixed.
-                const float halfWidth = face.halfWidth * 0.804f;
-                const float halfHeight = face.halfWidth * 0.82f * 1.32f;
+                // Expand around the same projected center: +70% width and double height.
+                const float halfWidth = face.halfWidth * 1.3668f;
+                const float halfHeight = face.halfWidth * 0.82f * 2.64f;
                 const float rightExtent = sqrtf(
                     halfWidth * halfWidth *
                         (currentMotionBlurCamera.right[0] * currentMotionBlurCamera.right[0] +
