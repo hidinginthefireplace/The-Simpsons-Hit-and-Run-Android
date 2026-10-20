@@ -1,4 +1,4 @@
-name: Build Simpsons H&R Character Alpha Mask Diagnostic APK
+name: Build Simpsons H&R Alpha Mask Facial Detail Test APK
 
 on:
   push:
@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out diagnostic source
+      - name: Check out test source
         uses: actions/checkout@v4
 
       - name: Set up Java
@@ -43,7 +43,7 @@ jobs:
           curl -fL --retry 3 -o /tmp/ffmpeg-prefab.tar.xz "https://github.com/leleliu008/ndk-pkg-prefab-aar-maven-repo/releases/download/2023.08.14.00.12/2023.08.14.00.12-com-fpliu-ndk-pkg-prefab-android-21-ffmpeg-6.0.tar.xz"
           tar -xJf /tmp/ffmpeg-prefab.tar.xz --strip-components=1 -C "$HOME/.m2/repository"
 
-      - name: Build diagnostic release APK
+      - name: Build release APK
         working-directory: android-project
         run: |
           chmod +x ./gradlew
@@ -72,9 +72,9 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
           rm -f "$APK"
 
-      - name: Upload diagnostic APK
+      - name: Upload test APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simpsons-HR-Character-Alpha-Mask-Diagnostic
+          name: Simpsons-HR-Alpha-Mask-Facial-Detail-Test
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
