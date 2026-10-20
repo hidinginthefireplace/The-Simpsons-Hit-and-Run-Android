@@ -2137,6 +2137,11 @@ void ApplyCelPostProcessBeforeGui(int width, int height)
 // system at every selected internal render resolution.
 void BeginSHARAndroidFMVOutputRender()
 {
+    // FMV output bypasses the world FBO, so restore normal alpha writes before
+    // drawing directly to the Android Surface.
+    SetSHARCharacterMaskModelPass(false);
+    SetSHARCharacterMaskWorldEnabled(false);
+
     // Direct-output FMV frames must each receive the final global colour grade.
     gSHARPostProcessAppliedBeforeTouchHud = false;
 
