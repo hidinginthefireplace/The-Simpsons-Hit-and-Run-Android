@@ -1032,14 +1032,11 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "                    }\n"
             "                    float subjectZ = characterOutlineDepth[i].x;\n"
             "                    float depthDifference = sceneZ - subjectZ;\n"
-            "                    // The head joint is inside the skull, behind the nose tip.\n"
-            "                    // Allow a wider forward offset, but keep the behind-face rejection tight\n"
-            "                    // so the narrow ellipse is less likely to pull outlines onto scenery.\n"
-            "                    float frontAllowance = max(0.65, subjectZ * 0.018);\n"
-            "                    float backAllowance = max(0.22, subjectZ * 0.007);\n"
-            "                    float frontAgreement = smoothstep(-frontAllowance, -frontAllowance * 0.75, depthDifference);\n"
-            "                    float backAgreement = 1.0 - smoothstep(backAllowance, backAllowance * 1.7, depthDifference);\n"
-            "                    float depthAgreement = frontAgreement * backAgreement;\n"
+            "                    // The head-joint anchor is behind the nose tip, so visible face pixels\n"
+            "                    // can legitimately be much nearer than the anchor. Keep those pixels,\n"
+            "                    // and reject only surfaces sufficiently behind the head to avoid outlining scenery.\n"
+            "                    float backAllowance = max(0.30, subjectZ * 0.008);\n"
+            "                    float depthAgreement = 1.0 - smoothstep(backAllowance, backAllowance * 2.0, depthDifference);\n"
             "                    combinedMask = max(combinedMask, faceMask * depthAgreement);\n"
             "                }\n"
             "            }\n"
@@ -1242,14 +1239,15 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "        float faceDepthGradient = max(max(abs(leftDepth - centreDepth), abs(rightDepth - centreDepth)),\n"
             "            max(abs(upDepth - centreDepth), abs(downDepth - centreDepth))) / max(centreDepth, 1.0);\n"
             "        float faceDepthSignal = max(relativeDepthCurvature, faceDepthGradient * 0.65);\n"
-            "        float faceDepthEdge = smoothstep(0.0012 * distanceThresholdScale, 0.0080 * distanceThresholdScale, faceDepthSignal);\n"
-            "        // This face-only mask excludes background pixels beyond the estimated face depth.\n"
+            "        float faceDepthEdge = smoothstep(0.00065 * distanceThresholdScale, 0.0040 * distanceThresholdScale, faceDepthSignal);\n"
+            "        // This face-only mask permits nearer facial surfaces such as the nose, while rejecting\n"
+            "        // substantially farther surfaces to limit stray outlines on shoulders/background.\n"
             "        characterFaceMask = characterFaceOutlineMask(texcoord);\n"
             "        if (characterFaceMask > 0.001) {\n"
-            "            // Reuse the already sampled neighbouring colour values, but lower the threshold\n"
-            "            // for subtle nose/eye/cheek edges inside the face region only.\n"
-            "            faceColourDetailEdge = smoothstep(0.035, 0.11, edgeStrength) * characterFaceMask;\n"
-            "            depthOutlineEdge = max(depthEdge * 0.70, faceDepthEdge * 0.60) * characterFaceMask;\n"
+            "            // Nose, eyelid and cheek creases can be low-contrast; use a more sensitive\n"
+            "            // face-only colour threshold without lowering the global scene threshold.\n"
+            "            faceColourDetailEdge = smoothstep(0.020, 0.075, edgeStrength) * characterFaceMask;\n"
+            "            depthOutlineEdge = max(depthEdge * 0.70, faceDepthEdge * 0.90) * characterFaceMask;\n"
             "        }\n"
             "    }\n"
             "    // Fade the broad colour mask and geometric-depth mask independently.\n"
@@ -2119,8 +2117,10 @@ static void ApplyCelPostProcess(int width, int height)
                 const float centerU = ndcX * 0.5f + 0.5f;
                 const float centerV = ndcY * 0.5f + 0.5f;
 
-                const float halfWidth = face.halfWidth * 0.67f;
-                const float halfHeight = face.halfWidth * 0.82f * 1.20f;
+                // Relative to the previous diagnostic build: +20% width and +10% height,
+                // keeping the projected center fixed.
+                const float halfWidth = face.halfWidth * 0.804f;
+                const float halfHeight = face.halfWidth * 0.82f * 1.32f;
                 const float rightExtent = sqrtf(
                     halfWidth * halfWidth *
                         (currentMotionBlurCamera.right[0] * currentMotionBlurCamera.right[0] +
