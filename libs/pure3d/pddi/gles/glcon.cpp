@@ -38,10 +38,11 @@ static void ApplySHARCharacterMaskAlphaPolicy()
 {
     GLboolean writeMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
     glGetBooleanv(GL_COLOR_WRITEMASK, writeMask);
-    const GLboolean alphaAllowed =
-        (gSHARCharacterMaskAlphaWriteRequested &&
-         (!gSHARCharacterMaskWorldEnabled || gSHARCharacterMaskModelPass))
-            ? GL_TRUE : GL_FALSE;
+    // The repurposed alpha channel is a mask, so character geometry must
+    // mark it even if a material disables ordinary framebuffer alpha writes.
+    const GLboolean alphaAllowed = gSHARCharacterMaskWorldEnabled
+        ? (gSHARCharacterMaskModelPass ? GL_TRUE : GL_FALSE)
+        : (gSHARCharacterMaskAlphaWriteRequested ? GL_TRUE : GL_FALSE);
     glColorMask(writeMask[0], writeMask[1], writeMask[2], alphaAllowed);
 }
 
@@ -1757,8 +1758,9 @@ void pglContext::SetColourWrite( bool red, bool green, bool blue, bool alpha )
     pddiBaseContext::SetColourWrite(red, green, blue, alpha);
 #ifdef RAD_ANDROID
     gSHARCharacterMaskAlphaWriteRequested = alpha;
-    const bool effectiveAlpha =
-        alpha && (!gSHARCharacterMaskWorldEnabled || gSHARCharacterMaskModelPass);
+    const bool effectiveAlpha = gSHARCharacterMaskWorldEnabled
+        ? gSHARCharacterMaskModelPass
+        : alpha;
     glColorMask(red, green, blue, effectiveAlpha);
 #else
     glColorMask(red, green, blue, alpha);
