@@ -43,6 +43,9 @@ jobs:
           curl -fL --retry 3 -o /tmp/ffmpeg-prefab.tar.xz "https://github.com/leleliu008/ndk-pkg-prefab-aar-maven-repo/releases/download/2023.08.14.00.12/2023.08.14.00.12-com-fpliu-ndk-pkg-prefab-android-21-ffmpeg-6.0.tar.xz"
           tar -xJf /tmp/ffmpeg-prefab.tar.xz --strip-components=1 -C "$HOME/.m2/repository"
 
+      - name: Apply focused player nose contour
+        run: python3 tools/apply_player_nose_contour.py
+
       - name: Build experimental release APK
         working-directory: android-project
         run: |
