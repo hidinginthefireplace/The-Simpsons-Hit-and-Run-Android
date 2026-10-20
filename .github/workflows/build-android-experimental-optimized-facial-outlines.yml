@@ -1,9 +1,9 @@
-name: Build Optimized Facial Outline Test
+name: Build Facial Bounds Diagnostic
 
 on:
   push:
     branches:
-      - experimental-optimized-facial-outlines
+      - diagnostic-facial-outline-bounds
   workflow_dispatch:
 
 jobs:
@@ -66,6 +66,6 @@ jobs:
       - name: Upload diagnostic APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simpsons-HR-Optimized-Facial-Outline-Test
+          name: Simpsons-HR-Facial-Bounds-Diagnostic
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
