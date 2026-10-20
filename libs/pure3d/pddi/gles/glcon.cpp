@@ -26,6 +26,36 @@ static bool gCelShadingEnabled = true;
 static bool gCelShadingObjectEnabled = false;
 static bool gCelShadingOutlinePass = false;
 static pglContext* gCelShadingContext = nullptr;
+
+// The scene texture alpha channel is a per-frame character-coverage mask during
+// Android world rendering. Keep the game's requested alpha-write state and gate
+// only effective GL alpha writes while the world target is active.
+static bool gSHARCharacterMaskWorldEnabled = false;
+static bool gSHARCharacterMaskModelPass = false;
+static bool gSHARCharacterMaskAlphaWriteRequested = true;
+
+static void ApplySHARCharacterMaskAlphaPolicy()
+{
+    GLboolean writeMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
+    glGetBooleanv(GL_COLOR_WRITEMASK, writeMask);
+    const GLboolean alphaAllowed =
+        (gSHARCharacterMaskAlphaWriteRequested &&
+         (!gSHARCharacterMaskWorldEnabled || gSHARCharacterMaskModelPass))
+            ? GL_TRUE : GL_FALSE;
+    glColorMask(writeMask[0], writeMask[1], writeMask[2], alphaAllowed);
+}
+
+void SetSHARCharacterMaskWorldEnabled(bool enabled)
+{
+    gSHARCharacterMaskWorldEnabled = enabled;
+    ApplySHARCharacterMaskAlphaPolicy();
+}
+
+void SetSHARCharacterMaskModelPass(bool enabled)
+{
+    gSHARCharacterMaskModelPass = enabled;
+    ApplySHARCharacterMaskAlphaPolicy();
+}
 static bool gCelShadingConfigurationLoaded = false;
 // Fresh installs use the Remastered Settings sharpening default of 40%.
 // User-selected values are loaded from Simpsons_sharpening.txt and remain unchanged on existing installs.
@@ -1725,7 +1755,14 @@ GLenum compTable[8] = {
 void pglContext::SetColourWrite( bool red, bool green, bool blue, bool alpha )
 {
     pddiBaseContext::SetColourWrite(red, green, blue, alpha);
+#ifdef RAD_ANDROID
+    gSHARCharacterMaskAlphaWriteRequested = alpha;
+    const bool effectiveAlpha =
+        alpha && (!gSHARCharacterMaskWorldEnabled || gSHARCharacterMaskModelPass);
+    glColorMask(red, green, blue, effectiveAlpha);
+#else
     glColorMask(red, green, blue, alpha);
+#endif
 }
 
 void pglContext::EnableZBuffer(bool enable)
