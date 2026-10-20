@@ -4975,35 +4975,55 @@ void Character::Display(void)
     p3d::stack->Translate(rootPos);
 
 #ifdef RAD_ANDROID
-    // Use the animated head joint when the character skeleton exposes one. The
-    // old world-height estimate remains as a fallback for unusual skeletons.
-    rmt::Vector facePosition(
-        rootPos.x,
-        rootPos.y + mYAdjust + 1.48f * mScale,
-        rootPos.z);
-    int faceJointIndex = pose->FindJointIndex("head");
-    if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("Head");
-    if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("HEAD");
-    if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("Bip01 Head");
-    if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("Bip01_Head");
-    if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("head_joint");
-    if (faceJointIndex >= 0)
+    Avatar* motionBlurPlayerAvatar = GetAvatarManager()->GetAvatarForPlayer(0);
+    Character* outlinePlayerCharacter = motionBlurPlayerAvatar != NULL
+        ? motionBlurPlayerAvatar->GetCharacter() : NULL;
+
+    // Reject distant characters before doing any head-joint lookups or registering
+    // a post-process mask. This limits face effects to the player and nearby NPCs.
+    bool registerFaceOutline = outlinePlayerCharacter != NULL;
+    if (registerFaceOutline && outlinePlayerCharacter != this)
     {
-        // Character::Display has already made joint transforms root-relative and
-        // applied mScale above, so add the animated head position back to rootPos.
-        const rmt::Vector headOffset =
-            pose->GetJoint(faceJointIndex)->worldMatrix.Row(3);
-        facePosition.x = rootPos.x + headOffset.x;
-        facePosition.y = rootPos.y + mYAdjust + headOffset.y;
-        facePosition.z = rootPos.z + headOffset.z;
+        rmt::Vector playerPosition;
+        outlinePlayerCharacter->GetPosition(playerPosition);
+        const float dx = rootPos.x - playerPosition.x;
+        const float dy = rootPos.y - playerPosition.y;
+        const float dz = rootPos.z - playerPosition.z;
+        const float distanceSquared = dx * dx + dy * dy + dz * dz;
+        registerFaceOutline = distanceSquared <= 400.0f; // 20 game-world units.
     }
 
-    // Facial outlines use their own list; motion-blur subject bounds below are
-    // intentionally unchanged and remain player-only.
-    RegisterSHARCharacterOutlineBounds(
-        facePosition.x, facePosition.y, facePosition.z, 0.20f * mScale);
+    if (registerFaceOutline)
+    {
+        // Use the animated head joint when the character skeleton exposes one.
+        // The old world-height estimate remains as a fallback for unusual skeletons.
+        rmt::Vector facePosition(
+            rootPos.x,
+            rootPos.y + mYAdjust + 1.48f * mScale,
+            rootPos.z);
+        int faceJointIndex = pose->FindJointIndex("head");
+        if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("Head");
+        if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("HEAD");
+        if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("Bip01 Head");
+        if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("Bip01_Head");
+        if (faceJointIndex < 0) faceJointIndex = pose->FindJointIndex("head_joint");
+        if (faceJointIndex >= 0)
+        {
+            // Character::Display has already made joint transforms root-relative and
+            // applied mScale above, so add the animated head position back to rootPos.
+            const rmt::Vector headOffset =
+                pose->GetJoint(faceJointIndex)->worldMatrix.Row(3);
+            facePosition.x = rootPos.x + headOffset.x;
+            facePosition.y = rootPos.y + mYAdjust + headOffset.y;
+            facePosition.z = rootPos.z + headOffset.z;
+        }
 
-    Avatar* motionBlurPlayerAvatar = GetAvatarManager()->GetAvatarForPlayer(0);
+        // The facial list is independent of motion-blur bounds.
+        RegisterSHARCharacterOutlineBounds(
+            facePosition.x, facePosition.y, facePosition.z, 0.20f * mScale);
+    }
+
+    // Motion-blur registration and its bounds remain player-only and unchanged.
     if (motionBlurPlayerAvatar != NULL && motionBlurPlayerAvatar->GetCharacter() == this)
     {
         // Keep the player biped sharp while the surrounding scene receives camera blur.
