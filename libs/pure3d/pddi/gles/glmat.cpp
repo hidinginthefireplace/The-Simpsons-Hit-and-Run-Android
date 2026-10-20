@@ -280,6 +280,21 @@ void pglMat::SetDevPass(unsigned pass)
         glBlendFunc(alphaBlendTable[texEnv[i].alphaBlendMode][1],alphaBlendTable[texEnv[i].alphaBlendMode][2]);
     }
 
+#ifdef RAD_ANDROID
+    // Diagnostic experiment for cel-shading depth artifacts: blended polygons
+    // still test against the scene depth, but do not write their transparent
+    // silhouettes into the depth texture used by the screen-space outline pass.
+    // Restore the PDDI-requested depth-write state for non-blended materials.
+    if (IsCelShadingEnabled() && texEnv[i].alphaBlendMode != PDDI_BLEND_NONE)
+    {
+        glDepthMask(GL_FALSE);
+    }
+    else
+    {
+        glDepthMask(context->GetZWrite() ? GL_TRUE : GL_FALSE);
+    }
+#endif
+
     if( texEnv[i].twoSided || context->GetCullMode() == PDDI_CULL_NONE )
     {
         glDisable(GL_CULL_FACE);
