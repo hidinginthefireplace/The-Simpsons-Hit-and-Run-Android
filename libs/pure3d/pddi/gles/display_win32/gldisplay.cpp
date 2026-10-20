@@ -1032,8 +1032,11 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "                    }\n"
             "                    float subjectZ = characterOutlineDepth[i].x;\n"
             "                    float depthDifference = sceneZ - subjectZ;\n"
-            "                    float frontAllowance = max(0.30, subjectZ * 0.010);\n"
-            "                    float backAllowance = max(0.16, subjectZ * 0.006);\n"
+            "                    // The head joint is inside the skull, behind the nose tip.\n"
+            "                    // Allow a wider forward offset, but keep the behind-face rejection tight\n"
+            "                    // so the narrow ellipse is less likely to pull outlines onto scenery.\n"
+            "                    float frontAllowance = max(0.65, subjectZ * 0.018);\n"
+            "                    float backAllowance = max(0.22, subjectZ * 0.007);\n"
             "                    float frontAgreement = smoothstep(-frontAllowance, -frontAllowance * 0.75, depthDifference);\n"
             "                    float backAgreement = 1.0 - smoothstep(backAllowance, backAllowance * 1.7, depthDifference);\n"
             "                    float depthAgreement = frontAgreement * backAgreement;\n"
@@ -1187,6 +1190,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "                             max(abs(centreLuma - upLuma), abs(centreLuma - downLuma)));\n"
             "    float edge = smoothstep(0.10, 0.22, edgeStrength);\n"
             "    float depthOutlineEdge = 0.0;\n"
+            "    float faceColourDetailEdge = 0.0;\n"
+            "    float characterFaceMask = 0.0;\n"
             "    float fineDetailEdge = 0.0;\n"
             "    // Recover tiny colour edges only above 1080p, independently of the broad outline sampling scale.\n"
             "    if (fineDetailEnabled > 0.5) {\n"
@@ -1232,9 +1237,20 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "        float resolutionRatio = clamp(outlineTexelSize.y / max(texelSize.y, 0.000001), 0.25, 1.0);\n"
             "        float distanceThresholdScale = mix(1.0, 2.0 - resolutionRatio, distanceFade);\n"
             "        float depthEdge = smoothstep(0.0025 * distanceThresholdScale, 0.018 * distanceThresholdScale, relativeDepthCurvature);\n"
-            "        // Facial depth outlines use dedicated per-character bounds, not the motion-blur subject mask.\n"
-            "        float characterFaceMask = characterFaceOutlineMask(texcoord);\n"
-            "        depthOutlineEdge = depthEdge * 0.70 * characterFaceMask;\n"
+            "        // Face features need finer thresholds than the global outline, which is intentionally\n"
+            "        // conservative to avoid reviving lines on indoor walls and floors.\n"
+            "        float faceDepthGradient = max(max(abs(leftDepth - centreDepth), abs(rightDepth - centreDepth)),\n"
+            "            max(abs(upDepth - centreDepth), abs(downDepth - centreDepth))) / max(centreDepth, 1.0);\n"
+            "        float faceDepthSignal = max(relativeDepthCurvature, faceDepthGradient * 0.65);\n"
+            "        float faceDepthEdge = smoothstep(0.0012 * distanceThresholdScale, 0.0080 * distanceThresholdScale, faceDepthSignal);\n"
+            "        // This face-only mask excludes background pixels beyond the estimated face depth.\n"
+            "        characterFaceMask = characterFaceOutlineMask(texcoord);\n"
+            "        if (characterFaceMask > 0.001) {\n"
+            "            // Reuse the already sampled neighbouring colour values, but lower the threshold\n"
+            "            // for subtle nose/eye/cheek edges inside the face region only.\n"
+            "            faceColourDetailEdge = smoothstep(0.035, 0.11, edgeStrength) * characterFaceMask;\n"
+            "            depthOutlineEdge = max(depthEdge * 0.70, faceDepthEdge * 0.60) * characterFaceMask;\n"
+            "        }\n"
             "    }\n"
             "    // Fade the broad colour mask and geometric-depth mask independently.\n"
             "    // Leave the fine-detail mask at its existing distance tuning to protect character contours.\n"
@@ -1243,8 +1259,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "        fineDetailEdge *= mix(1.0, 0.30, distanceFade);\n"
             "        // Keep some facial crease detail at distance; this depth mask is now restricted to character faces.\n"
             "        depthOutlineEdge *= mix(1.0, 0.45, distanceFade);\n"
+            "        faceColourDetailEdge *= mix(1.0, 0.30, distanceFade);\n"
             "    }\n"
             "    edge = max(edge, depthOutlineEdge);\n"
+            "    edge = max(edge, faceColourDetailEdge);\n"
             "    // Combine independent masks instead of maxing the fine signal into a broad edge.\n"
             "    // This lets narrow eye contours contribute even if the wider sample detects only a weak edge.\n"
             "    edge = 1.0 - (1.0 - edge) * (1.0 - fineDetailEdge * 0.80);\n"
@@ -2101,8 +2119,8 @@ static void ApplyCelPostProcess(int width, int height)
                 const float centerU = ndcX * 0.5f + 0.5f;
                 const float centerV = ndcY * 0.5f + 0.5f;
 
-                const float halfWidth = face.halfWidth;
-                const float halfHeight = face.halfWidth * 0.82f;
+                const float halfWidth = face.halfWidth * 0.67f;
+                const float halfHeight = face.halfWidth * 0.82f * 1.20f;
                 const float rightExtent = sqrtf(
                     halfWidth * halfWidth *
                         (currentMotionBlurCamera.right[0] * currentMotionBlurCamera.right[0] +
