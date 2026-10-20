@@ -60,6 +60,15 @@ nose_lines = [
     "        }",
     "    }",
 ]
+# Avoid projection maths and eight texture samples on ordinary pixels. Only candidate
+# colour-edge pixels reach the compact nose region; the eye contour path stays unchanged.
+nose_lines = [nose_lines[0], "    if (edgeStrength > 0.004) {"] + [
+    "    " + line for line in nose_lines[1:]
+] + ["    }"]
+nose_lines = [
+    line.replace(" * noseArea * 0.60;", " * noseArea * 0.72;")
+    for line in nose_lines
+]
 nose_block = "\n".join(f'            "{line}\\n"' for line in nose_lines) + "\n"
 fine_anchor = '            "    // Recover tiny colour edges only above 1080p, independently of the broad outline sampling scale.\\n"'
 source = replace_once(source, fine_anchor, nose_block + fine_anchor, "fine-detail insertion")
