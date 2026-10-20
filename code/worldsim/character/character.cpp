@@ -44,6 +44,7 @@
 #include <mission/gameplaymanager.h>
 #ifdef RAD_ANDROID
 void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, float z, float halfWidth, float halfHeight, float speedKmh);
+void RegisterSHARCharacterOutlineBounds(float x, float y, float z, float faceHalfWidth);
 #endif
 
 #include <meta/locator.h>
@@ -4977,6 +4978,9 @@ void Character::Display(void)
     Avatar* motionBlurPlayerAvatar = GetAvatarManager()->GetAvatarForPlayer(0);
     if (motionBlurPlayerAvatar != NULL && motionBlurPlayerAvatar->GetCharacter() == this)
     {
+        // Match the original facial-bound size and center; register only the main player.
+        RegisterSHARCharacterOutlineBounds(rootPos.x, rootPos.y + mYAdjust + 1.48f * mScale, rootPos.z, 0.20f * mScale);
+
         // Keep the player biped sharp while the surrounding scene receives camera blur.
         RegisterSHARMotionBlurSubjectBounds(0, rootPos.x, rootPos.y + 0.95f, rootPos.z, 0.65f, 1.15f, 0.0f);
     }

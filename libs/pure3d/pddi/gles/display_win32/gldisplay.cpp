@@ -77,6 +77,16 @@ struct SHARMotionBlurSubjectBounds
 static SHARMotionBlurSubjectBounds gSHARMotionBlurCharacterSubject = {};
 static SHARMotionBlurSubjectBounds gSHARMotionBlurVehicleSubject = {};
 
+// One face bound is enough because only the player character registers it.
+static const int SHAR_MAX_CHARACTER_OUTLINE_BOUNDS = 1;
+struct SHARCharacterOutlineBounds
+{
+    float position[3];
+    float halfWidth;
+};
+static SHARCharacterOutlineBounds gSHARCharacterOutlineBounds[SHAR_MAX_CHARACTER_OUTLINE_BOUNDS] = {};
+static int gSHARCharacterOutlineBoundsCount = 0;
+
 static bool CaptureSHARMotionBlurCamera(SHARMotionBlurCameraState* state)
 {
     if (state == NULL)
@@ -239,6 +249,7 @@ GLint gCelPostPreviousNearPlaneLocation = -1;
 GLint gCelPostCharacterMaskEnabledLocation = -1;
 GLint gCelPostCharacterMaskPositionLocation = -1;
 GLint gCelPostCharacterMaskSizeLocation = -1;
+GLint gCelPostCharacterOutlineBoundsLocation = -1;
 GLint gCelPostVehicleMaskEnabledLocation = -1;
 GLint gCelPostVehicleMaskPositionLocation = -1;
 GLint gCelPostVehicleMaskSizeLocation = -1;
@@ -925,6 +936,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform float characterMaskEnabled;\n"
             "uniform vec3 characterMaskPosition;\n"
             "uniform vec2 characterMaskSize;\n"
+            "uniform vec4 characterOutlineBounds[1];\n"
             "uniform float vehicleMaskEnabled;\n"
             "uniform vec3 vehicleMaskPosition;\n"
             "uniform vec2 vehicleMaskSize;\n"
@@ -989,6 +1001,35 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float ellipseDistance = length((uv - subjectUv) / subjectRadius);\n"
             "    return 1.0 - smoothstep(0.90, 1.30, ellipseDistance);\n"
             "}\n"
+            "float rawCharacterFaceOutlineMask(vec2 uv, vec3 subjectPosition, vec2 halfSize) {\n"
+            "    vec3 fromCamera = subjectPosition - currentCameraPosition;\n"
+            "    float subjectZ = dot(fromCamera, currentCameraForward);\n"
+            "    if (subjectZ <= currentNearPlane) return 0.0;\n"
+            "    vec2 subjectNdc = vec2(dot(fromCamera, currentCameraRight) / (subjectZ * currentTanHalfFovX), dot(fromCamera, currentCameraUp) / (subjectZ * currentTanHalfFovY));\n"
+            "    vec2 subjectUv = subjectNdc * 0.5 + 0.5;\n"
+            "    float halfWidthInCameraRight = sqrt(halfSize.x * halfSize.x * (currentCameraRight.x * currentCameraRight.x + currentCameraRight.z * currentCameraRight.z) + halfSize.y * halfSize.y * currentCameraRight.y * currentCameraRight.y);\n"
+            "    float halfHeightInCameraUp = sqrt(halfSize.x * halfSize.x * (currentCameraUp.x * currentCameraUp.x + currentCameraUp.z * currentCameraUp.z) + halfSize.y * halfSize.y * currentCameraUp.y * currentCameraUp.y);\n"
+            "    vec2 subjectRadius = vec2(halfWidthInCameraRight / (subjectZ * currentTanHalfFovX), halfHeightInCameraUp / (subjectZ * currentTanHalfFovY)) * 0.5;\n"
+            "    subjectRadius = max(subjectRadius, texelSize * 1.5);\n"
+            "    float ellipseDistance = length((uv - subjectUv) / subjectRadius);\n"
+            "    return 1.0 - smoothstep(0.82, 1.12, ellipseDistance);\n"
+            "}\n"
+            "\n"
+            "float characterFaceOutlineMask(vec2 uv, float sceneZ, float depthValue) {\n"
+            "    vec4 bounds = characterOutlineBounds[0];\n"
+            "    if (bounds.w <= 0.0 || depthValue >= 0.9995 || sceneZ <= 0.0) return 0.0;\n"
+            "    float subjectZ = dot(bounds.xyz - currentCameraPosition, currentCameraForward);\n"
+            "    if (subjectZ <= currentNearPlane) return 0.0;\n"
+            "    float faceMask = rawCharacterFaceOutlineMask(uv, bounds.xyz, vec2(bounds.w, bounds.w * 0.82));\n"
+            "    if (faceMask <= 0.001) return 0.0;\n"
+            "    float depthDifference = sceneZ - subjectZ;\n"
+            "    float frontAllowance = max(0.30, subjectZ * 0.010);\n"
+            "    float backAllowance = max(0.16, subjectZ * 0.006);\n"
+            "    float frontAgreement = smoothstep(-frontAllowance, -frontAllowance * 0.75, depthDifference);\n"
+            "    float backAgreement = 1.0 - smoothstep(backAllowance, backAllowance * 1.7, depthDifference);\n"
+            "    return faceMask * frontAgreement * backAgreement;\n"
+            "}\n"
+            "\n"
             "float vehicleRoadTrailMask(vec2 uv) {\n"
             "    if (vehicleMaskEnabled < 0.5 || vehicleMotionIntensity < 0.01) return 0.0;\n"
             "    vec2 vehicleSize = vehicleMaskSize * vec2(1.20, 1.15);\n"
@@ -1131,7 +1172,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    // Use depth discontinuities to recover geometric creases that flat toon colours hide.\n"
             "    // Only mark the nearer side of an edge to reduce double-thick outlines.\n"
             "    if (depthEdgeDetectionAvailable > 0.5 && depthTextureAvailable > 0.5) {\n"
-            "        float centreDepth = linearViewDepth(texture2D(depthTex, texcoord).r);\n"
+            "        float centreDepthValue = texture2D(depthTex, texcoord).r;\n"
+            "        float centreDepth = linearViewDepth(centreDepthValue);\n"
             "        // Depth textures use nearest-neighbour sampling. Always sample whole render pixels here;\n"
             "        // the resolution-scaled outlineTexelSize is intentionally reserved for colour edges.\n"
             "        vec2 depthTexelOffset = texelSize;\n"
@@ -1148,7 +1190,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "        float resolutionRatio = clamp(outlineTexelSize.y / max(texelSize.y, 0.000001), 0.25, 1.0);\n"
             "        float distanceThresholdScale = mix(1.0, 2.0 - resolutionRatio, distanceFade);\n"
             "        float depthEdge = smoothstep(0.0025 * distanceThresholdScale, 0.018 * distanceThresholdScale, relativeDepthCurvature);\n"
-            "        depthOutlineEdge = depthEdge * 0.55;\n"
+            "        depthOutlineEdge = depthEdge * 0.55 * characterFaceOutlineMask(texcoord, centreDepth, centreDepthValue);\n"
             "    }\n"
             "    // Fade the broad colour mask and geometric-depth mask independently.\n"
             "    // Leave the fine-detail mask at its existing distance tuning to protect character contours.\n"
@@ -1272,6 +1314,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostCharacterMaskEnabledLocation = glGetUniformLocation(gCelPostProgram, "characterMaskEnabled");
         gCelPostCharacterMaskPositionLocation = glGetUniformLocation(gCelPostProgram, "characterMaskPosition");
         gCelPostCharacterMaskSizeLocation = glGetUniformLocation(gCelPostProgram, "characterMaskSize");
+        gCelPostCharacterOutlineBoundsLocation = glGetUniformLocation(gCelPostProgram, "characterOutlineBounds[0]");
         gCelPostVehicleMaskEnabledLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskEnabled");
         gCelPostVehicleMaskPositionLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskPosition");
         gCelPostVehicleMaskSizeLocation = glGetUniformLocation(gCelPostProgram, "vehicleMaskSize");
@@ -1944,6 +1987,18 @@ static void ApplyCelPostProcess(int width, int height)
         glUniform3f(gCelPostCharacterMaskPositionLocation, gSHARMotionBlurCharacterSubject.position[0], gSHARMotionBlurCharacterSubject.position[1], gSHARMotionBlurCharacterSubject.position[2]);
     if (gCelPostCharacterMaskSizeLocation >= 0 && gSHARMotionBlurCharacterSubject.valid)
         glUniform2f(gCelPostCharacterMaskSizeLocation, gSHARMotionBlurCharacterSubject.halfWidth, gSHARMotionBlurCharacterSubject.halfHeight);
+    if (gCelPostCharacterOutlineBoundsLocation >= 0)
+    {
+        GLfloat outlineBoundsUniforms[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        if (gSHARCharacterOutlineBoundsCount > 0)
+        {
+            outlineBoundsUniforms[0] = gSHARCharacterOutlineBounds[0].position[0];
+            outlineBoundsUniforms[1] = gSHARCharacterOutlineBounds[0].position[1];
+            outlineBoundsUniforms[2] = gSHARCharacterOutlineBounds[0].position[2];
+            outlineBoundsUniforms[3] = gSHARCharacterOutlineBounds[0].halfWidth;
+        }
+        glUniform4fv(gCelPostCharacterOutlineBoundsLocation, 1, outlineBoundsUniforms);
+    }
     if (gCelPostVehicleMaskEnabledLocation >= 0)
         glUniform1f(gCelPostVehicleMaskEnabledLocation, gSHARMotionBlurVehicleSubject.valid ? 1.0f : 0.0f);
     if (gCelPostVehicleMaskPositionLocation >= 0 && gSHARMotionBlurVehicleSubject.valid)
@@ -2018,6 +2073,18 @@ static void ApplyCelPostProcess(int width, int height)
 static void ApplyFrameSharpening(int width, int height);
 static void ApplyCRTFilter(int width, int height, bool saturationOnly);
 
+void RegisterSHARCharacterOutlineBounds(float x, float y, float z, float faceHalfWidth)
+{
+    if (gSHARCharacterOutlineBoundsCount >= SHAR_MAX_CHARACTER_OUTLINE_BOUNDS)
+        return;
+
+    SHARCharacterOutlineBounds& bounds = gSHARCharacterOutlineBounds[gSHARCharacterOutlineBoundsCount++];
+    bounds.position[0] = x;
+    bounds.position[1] = y;
+    bounds.position[2] = z;
+    bounds.halfWidth = faceHalfWidth < 0.08f ? 0.08f : faceHalfWidth;
+}
+
 void RegisterSHARMotionBlurSubjectBounds(int subjectType, float x, float y, float z, float halfWidth, float halfHeight, float speedKmh)
 {
     SHARMotionBlurSubjectBounds* subject = NULL;
@@ -2050,6 +2117,7 @@ bool BeginCelPostProcessFrame(int width, int height)
 {
     gSHARMotionBlurCharacterSubject.valid = false;
     gSHARMotionBlurVehicleSubject.valid = false;
+    gSHARCharacterOutlineBoundsCount = 0;
     gSHARFrameWidth = width;
     gSHARFrameHeight = height;
     gCelWorldInFbo = false;
