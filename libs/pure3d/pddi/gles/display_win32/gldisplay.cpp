@@ -1149,7 +1149,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "        // At lower resolutions, make distant depth edges harder to trigger; keep near thresholds unchanged.\n"
             "        float resolutionRatio = clamp(outlineTexelSize.y / max(texelSize.y, 0.000001), 0.25, 1.0);\n"
             "        float distanceThresholdScale = mix(1.0, 2.0 - resolutionRatio, distanceFade);\n"
-            "        float depthEdge = smoothstep(0.0025 * distanceThresholdScale, 0.018 * distanceThresholdScale, relativeDepthCurvature);\n"
+            "        float characterMask = smoothstep(0.0, 0.5, scene.a);\n"
+            "        float characterDepthEdge = smoothstep(0.0025 * distanceThresholdScale, 0.018 * distanceThresholdScale, relativeDepthCurvature);\n"
+            "        float sceneryDepthEdge = smoothstep(0.012 * distanceThresholdScale, 0.060 * distanceThresholdScale, relativeDepthCurvature);\n"
+            "        float depthEdge = mix(sceneryDepthEdge, characterDepthEdge, characterMask);\n"
             "        depthOutlineEdge = depthEdge * 0.55;\n"
             "    }\n"
             "    // Fade the broad colour mask and geometric-depth mask independently.\n"
@@ -1202,8 +1205,6 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "\n"
             "    finalColour = toonColour;\n"
             "    }\n"
-            "    float characterMask = smoothstep(0.0, 0.5, scene.a);\n"
-            "    finalColour = mix(finalColour, vec3(1.0, 0.0, 0.0), characterMask * 0.82);\n"
             "    gl_FragColor = vec4(clamp(finalColour, 0.0, 1.0), 1.0);\n"
             "}\n";
 
@@ -1521,12 +1522,7 @@ static bool EnsureCelFallbackResolveResources()
         "precision mediump float;\n"
         "uniform sampler2D sceneTex;\n"
         "varying vec2 texcoord;\n"
-        "void main() {\n"
-        "    vec4 scene = texture2D(sceneTex, texcoord);\n"
-        "    float characterMask = smoothstep(0.0, 0.5, scene.a);\n"
-        "    vec3 diagnosticColour = mix(scene.rgb, vec3(1.0, 0.0, 0.0), characterMask * 0.82);\n"
-        "    gl_FragColor = vec4(diagnosticColour, 1.0);\n"
-        "}\n";
+        "void main() { gl_FragColor = vec4(texture2D(sceneTex, texcoord).rgb, 1.0); }\n";
 
     GLuint vertexShader = CompileCelPostShader(GL_VERTEX_SHADER, vertexSource);
     GLuint fragmentShader = CompileCelPostShader(GL_FRAGMENT_SHADER, fragmentSource);
