@@ -1188,6 +1188,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "\n"
             "    // Retain the existing full-scene toon edge darkening.\n"
             "    toonColour = mix(toonColour, toonColour * 0.35, edge);\n"
+            "    // DIAGNOSTIC ONLY: tint depth-derived outline responses red for identification.\n"
+            "    toonColour = mix(toonColour, vec3(1.0, 0.0, 0.0), clamp(depthOutlineEdge * 2.0, 0.0, 1.0));\n"
             "\n"
             "\n"
             "    // Add the blurred bright-pass texture produced by the multi-pass bloom pipeline.\n"
