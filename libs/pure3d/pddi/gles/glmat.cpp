@@ -281,12 +281,25 @@ void pglMat::SetDevPass(unsigned pass)
     }
 
 #ifdef RAD_ANDROID
-    // Diagnostic experiment for cel-shading depth artifacts: blended polygons
-    // still test against the scene depth, but do not write their transparent
-    // silhouettes into the depth texture used by the screen-space outline pass.
-    // Restore the PDDI-requested depth-write state for non-blended materials.
-    if (IsCelShadingEnabled() && texEnv[i].alphaBlendMode != PDDI_BLEND_NONE)
+    // Keep the transparent-depth workaround away from cel-shaded characters
+    // and vehicles: their material depth writes are required for correct
+    // facial details and front-to-back occlusion.
+    // The expanded-mesh outline pass owns its depth-write state and must not
+    // be overridden here.
+    const bool celShadingOutlineObjectPass =
+        IsCelShadingEnabled() && IsCelShadingObjectEnabled() &&
+        IsCelShadingOutlinePass();
+
+    if (celShadingOutlineObjectPass)
     {
+        // Intentionally leave the GL depth-write state untouched.
+    }
+    else if (IsCelShadingEnabled() && !IsCelShadingObjectEnabled() &&
+             texEnv[i].alphaBlendMode != PDDI_BLEND_NONE)
+    {
+        // For non-outlined, blended scene materials, retain depth testing but
+        // prevent their transparent silhouettes from feeding the depth-edge
+        // detector used by the post-process outlines.
         glDepthMask(GL_FALSE);
     }
     else
