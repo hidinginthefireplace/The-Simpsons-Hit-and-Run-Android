@@ -25,6 +25,8 @@
 
 bool IsCelShadingEnabled();
 bool IsMotionBlurEnabled();
+void SetSHARCharacterMaskWorldEnabled(bool enabled);
+void SetSHARCharacterMaskModelPass(bool enabled);
 bool GetSHARMotionBlurCameraData(float* output);
 bool IsFrameSharpeningEnabled();
 float GetFrameSharpenStrength();
@@ -1200,7 +1202,9 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "\n"
             "    finalColour = toonColour;\n"
             "    }\n"
-            "    gl_FragColor = vec4(clamp(finalColour, 0.0, 1.0), scene.a);\n"
+            "    float characterMask = smoothstep(0.0, 0.5, scene.a);\n"
+            "    finalColour = mix(finalColour, vec3(1.0, 0.0, 0.0), characterMask * 0.82);\n"
+            "    gl_FragColor = vec4(clamp(finalColour, 0.0, 1.0), 1.0);\n"
             "}\n";
 
         GLuint vs = CompileCelPostShader(GL_VERTEX_SHADER, vertexSource);
@@ -1517,7 +1521,12 @@ static bool EnsureCelFallbackResolveResources()
         "precision mediump float;\n"
         "uniform sampler2D sceneTex;\n"
         "varying vec2 texcoord;\n"
-        "void main() { gl_FragColor = texture2D(sceneTex, texcoord); }\n";
+        "void main() {\n"
+        "    vec4 scene = texture2D(sceneTex, texcoord);\n"
+        "    float characterMask = smoothstep(0.0, 0.5, scene.a);\n"
+        "    vec3 diagnosticColour = mix(scene.rgb, vec3(1.0, 0.0, 0.0), characterMask * 0.82);\n"
+        "    gl_FragColor = vec4(diagnosticColour, 1.0);\n"
+        "}\n";
 
     GLuint vertexShader = CompileCelPostShader(GL_VERTEX_SHADER, vertexSource);
     GLuint fragmentShader = CompileCelPostShader(GL_FRAGMENT_SHADER, fragmentSource);
@@ -1730,6 +1739,11 @@ static void ResetAndroidPostProcess()
 
 static void ApplyCelPostProcess(int width, int height)
 {
+    // World geometry is finished. Re-enable ordinary alpha writes before the
+    // fullscreen post-process and GUI/output rendering passes.
+    SetSHARCharacterMaskModelPass(false);
+    SetSHARCharacterMaskWorldEnabled(false);
+
     const float motionBlurTimeScale = GetSHARMotionBlurTimeScale();
     SHARMotionBlurCameraState currentMotionBlurCamera = {};
     const bool haveCurrentMotionBlurCamera = CaptureSHARMotionBlurCamera(&currentMotionBlurCamera);
@@ -2054,6 +2068,8 @@ bool BeginCelPostProcessFrame(int width, int height)
     gSHARFrameHeight = height;
     gCelWorldInFbo = false;
     gSHARPostProcessAppliedBeforeTouchHud = false;
+    SetSHARCharacterMaskModelPass(false);
+    SetSHARCharacterMaskWorldEnabled(false);
 
     if (!BindCelRenderTarget(width, height))
     {
@@ -2061,6 +2077,27 @@ bool BeginCelPostProcessFrame(int width, int height)
         return false;
     }
 
+    // Clear alpha exactly once at the start of each world frame. Scissor and
+    // RGB writes are disabled so the existing colour image is left untouched.
+    GLboolean previousColourMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
+    GLboolean previousScissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
+    GLfloat previousClearColour[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    glGetBooleanv(GL_COLOR_WRITEMASK, previousColourMask);
+    glGetFloatv(GL_COLOR_CLEAR_VALUE, previousClearColour);
+    glDisable(GL_SCISSOR_TEST);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glClearColor(previousClearColour[0], previousClearColour[1],
+                 previousClearColour[2], previousClearColour[3]);
+    glColorMask(previousColourMask[0], previousColourMask[1],
+                previousColourMask[2], previousColourMask[3]);
+    if (previousScissorEnabled)
+        glEnable(GL_SCISSOR_TEST);
+
+    // From this point until composition, only CharacterRenderable model draws
+    // may write scene alpha. Blob and static shadows remain unmarked.
+    SetSHARCharacterMaskWorldEnabled(true);
     gCelWorldInFbo = true;
     return true;
 }
