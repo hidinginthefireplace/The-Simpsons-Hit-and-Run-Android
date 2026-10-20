@@ -10,6 +10,7 @@
 #include <pddi/pddi.hpp>
 #ifdef RAD_ANDROID
 bool IsCelShadingEnabled();
+void SetSHARCharacterMaskModelPass(bool enabled);
 bool IsCelShadingObjectEnabled();
 void SetCelShadingObjectEnabled(bool enabled);
 bool IsCelShadingOutlinePass();
@@ -567,6 +568,9 @@ void CharacterRenderable::DisplayModel( tPose* pose )
     tDrawablePose* draw = GetDrawable();
     if(draw)
     {
+#ifdef RAD_ANDROID
+        SetSHARCharacterMaskModelPass(true);
+#endif
         if( mpSwatchShader != NULL )
         {
             if( mpSwatchTexture != NULL )
@@ -595,6 +599,9 @@ void CharacterRenderable::DisplayModel( tPose* pose )
         }
 #else
         draw->Display( pose );
+#endif
+#ifdef RAD_ANDROID
+        SetSHARCharacterMaskModelPass(false);
 #endif
     }
 }
