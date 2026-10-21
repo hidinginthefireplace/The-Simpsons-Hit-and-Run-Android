@@ -28,6 +28,7 @@ bool IsMotionBlurEnabled();
 void SetSHARCharacterMaskWorldEnabled(bool enabled);
 void SetSHARCharacterMaskModelPass(bool enabled);
 bool GetSHARMotionBlurCameraData(float* output);
+bool IsSHARWorldCloudShadowLevelAllowed();
 bool IsFrameSharpeningEnabled();
 float GetFrameSharpenStrength();
 
@@ -987,11 +988,11 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    vec2 ndc = uv * 2.0 - 1.0;\n"
             "    vec3 viewPosition = vec3(ndc.x * viewZ * currentTanHalfFovX, ndc.y * viewZ * currentTanHalfFovY, viewZ);\n"
             "    vec3 worldPosition = currentCameraPosition + currentCameraRight * viewPosition.x + currentCameraUp * viewPosition.y + currentCameraForward * viewPosition.z;\n"
-            "    vec2 cloudCoordinates = worldPosition.xz * 0.018 + cloudShadowTime * vec2(0.0040, -0.0027);\n"
+            "    vec2 cloudCoordinates = worldPosition.xz * 0.012 + cloudShadowTime * vec2(0.0050, -0.0037);\n"
             "    float cloudDensity = cloudNoise(cloudCoordinates);\n"
-            "    float shadowCoverage = smoothstep(0.47, 0.66, cloudDensity);\n"
-            "    // Keep the first prototype subtle: cloud-covered regions lose at most 16% brightness.\n"
-            "    return baseColour * (1.0 - shadowCoverage * 0.16);\n"
+            "    float shadowCoverage = smoothstep(0.42, 0.60, cloudDensity);\n"
+            "    // More visible for this test build: cloud-covered regions lose at most 28% brightness.\n"
+            "    return baseColour * (1.0 - shadowCoverage * 0.28);\n"
             "}\n"
             "\n"
             "float randomNoise(vec2 p) {\n"
@@ -1812,10 +1813,31 @@ static void ApplyCelPostProcess(int width, int height)
 
     const bool celEffectsEnabled = IsCelShadingEnabled();
     const bool motionBlurRequested = IsMotionBlurEnabled();
-    // Deliberately enabled only in this isolated experimental branch. Requires
-    // the depth texture and camera data; never affect an iris transition.
+    // Experimental Option B: strictly limit cloud shadows to Level 1/Level 2 exterior gameplay.
+    // Requires the depth texture and camera data, and remains disabled during iris transitions.
+    const bool cloudShadowLevelAllowed = IsSHARWorldCloudShadowLevelAllowed();
     const bool cloudShadowsActive =
-        gCelDepthTextureActive && haveCurrentMotionBlurCamera && !gSHARIrisTransitionActive;
+        cloudShadowLevelAllowed && gCelDepthTextureActive &&
+        haveCurrentMotionBlurCamera && !gSHARIrisTransitionActive;
+    // Report only state transitions so the test can distinguish an unavailable depth/camera path
+    // from an effect that is active but visually too subtle, without per-frame log spam.
+    static int lastCloudShadowState = -1;
+    const int cloudShadowState =
+        (cloudShadowLevelAllowed ? 1 : 0) |
+        (gCelDepthTextureActive ? 2 : 0) |
+        (haveCurrentMotionBlurCamera ? 4 : 0) |
+        (gSHARIrisTransitionActive ? 8 : 0) |
+        (cloudShadowsActive ? 16 : 0);
+    if (cloudShadowState != lastCloudShadowState)
+    {
+        SDL_Log("SHAR cloud-shadow test state: allowedLevel=%d depthTexture=%d camera=%d irisTransition=%d active=%d",
+            cloudShadowLevelAllowed ? 1 : 0,
+            gCelDepthTextureActive ? 1 : 0,
+            haveCurrentMotionBlurCamera ? 1 : 0,
+            gSHARIrisTransitionActive ? 1 : 0,
+            cloudShadowsActive ? 1 : 0);
+        lastCloudShadowState = cloudShadowState;
+    }
 
     if (!gCelWorldInFbo)
     {
