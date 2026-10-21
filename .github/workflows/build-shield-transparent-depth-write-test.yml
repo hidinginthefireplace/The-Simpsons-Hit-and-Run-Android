@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - android11-shield-transparent-depth-write-test
-  pull_request:
-    branches:
-      - android11-shield-transparent-depth-write-test
   workflow_dispatch:
 
 permissions:
@@ -76,4 +73,3 @@ jobs:
           name: Simpsons-HR-Transparent-Depth-Write-Test
           path: android-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
-# Rebuild the diagnostic APK for the iris scene-handoff state fix.
