@@ -295,11 +295,13 @@ void pglMat::SetDevPass(unsigned pass)
         // Intentionally leave the GL depth-write state untouched.
     }
     else if (IsCelShadingEnabled() && !IsCelShadingObjectEnabled() &&
-             texEnv[i].alphaBlendMode != PDDI_BLEND_NONE)
+             texEnv[i].alphaBlendMode != PDDI_BLEND_NONE && !texEnv[i].alphaTest)
     {
-        // For non-outlined, blended scene materials, retain depth testing but
-        // prevent their transparent silhouettes from feeding the depth-edge
-        // detector used by the post-process outlines.
+        // Only suppress depth writes for genuinely blended materials.
+        // Alpha-tested cutouts (including foliage and other masked geometry)
+        // must keep writing depth for correct occlusion and stable silhouettes.
+        // Transparent silhouettes from blended materials should not feed the
+        // depth-edge detector used by the post-process outlines.
         glDepthMask(GL_FALSE);
     }
     else
