@@ -3434,3 +3434,4 @@ void pglDisplay::EndContext(void)
     PDDIASSERT(!error);
 }
 
+// Temporary CI trigger marker for the iris transition handoff diagnostic.
