@@ -30,6 +30,12 @@
 
 #include <raddebug.hpp> // Foundation
 
+#ifdef RAD_ANDROID
+// Temporarily suppress screen-space depth outlines during the iris animation.
+// Implemented by the Android PDDI display backend.
+void SetSHARIrisTransitionActive(bool active);
+#endif
+
 //===========================================================================
 // Global Data, Local Data, Local Classes
 //===========================================================================
@@ -112,6 +118,9 @@ CGuiScreenIrisWipe::CGuiScreenIrisWipe
 //===========================================================================
 CGuiScreenIrisWipe::~CGuiScreenIrisWipe()
 {
+#ifdef RAD_ANDROID
+    SetSHARIrisTransitionActive(false);
+#endif
 }
 
 //===========================================================================
@@ -186,6 +195,9 @@ void CGuiScreenIrisWipe::HandleMessage
                 if( m_isIrisActive && m_pMultiController->LastFrameReached() )
                 {
                     m_isIrisActive = false;
+#ifdef RAD_ANDROID
+                    SetSHARIrisTransitionActive(false);
+#endif
 
                     m_numTransitionsPending--;
                     rAssert( m_numTransitionsPending == 0 );
@@ -211,6 +223,9 @@ void CGuiScreenIrisWipe::HandleMessage
                 if( m_isIrisActive && m_pMultiController->LastFrameReached() )
                 {
                     m_isIrisActive = false;
+#ifdef RAD_ANDROID
+                    SetSHARIrisTransitionActive(false);
+#endif
 
                     m_numTransitionsPending--;
                     rAssert( m_numTransitionsPending == 0 );
@@ -264,6 +279,9 @@ void CGuiScreenIrisWipe::InitIntro()
     if( !m_isIrisActive )
     {
         m_isIrisActive = true;
+#ifdef RAD_ANDROID
+        SetSHARIrisTransitionActive(true);
+#endif
 
         g_IsIrisClosed = true;
         m_pIris->SetVisible( true );
@@ -329,6 +347,9 @@ void CGuiScreenIrisWipe::InitOutro()
         if( !m_isIrisActive )
         {
             m_isIrisActive = true;
+#ifdef RAD_ANDROID
+            SetSHARIrisTransitionActive(true);
+#endif
 
             rAssertMsg( m_numTransitionsPending == 0, "Bad news if you hit this assert! Please go tell Tony." );
             m_numTransitionsPending++;
