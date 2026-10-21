@@ -12,9 +12,6 @@
 #include <microprofile.h>
 #include <SDL.h>
 
-#ifdef RAD_ANDROID
-bool IsSHARIrisTransitionActive();
-#endif
 
 pddiShadeColourTable pglMat::colourTable[] = 
 {
@@ -299,8 +296,7 @@ void pglMat::SetDevPass(unsigned pass)
         // Intentionally leave the GL depth-write state untouched.
     }
     else if (IsCelShadingEnabled() && !IsCelShadingObjectEnabled() &&
-             texEnv[i].alphaBlendMode != PDDI_BLEND_NONE && !texEnv[i].alphaTest &&
-             !IsSHARIrisTransitionActive())
+             texEnv[i].alphaBlendMode != PDDI_BLEND_NONE && !texEnv[i].alphaTest)
     {
         // Only suppress depth writes for genuinely blended materials.
         // Alpha-tested cutouts (including foliage and other masked geometry)

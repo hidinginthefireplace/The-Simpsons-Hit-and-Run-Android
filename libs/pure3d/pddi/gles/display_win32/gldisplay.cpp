@@ -43,12 +43,6 @@ void SetSHARIrisTransitionActive(bool active)
     gSHARIrisTransitionActive = active;
 }
 
-// Exposed to the material backend so the diagnostic workaround can preserve
-// the iris model's original depth-write behavior while the wipe is animating.
-bool IsSHARIrisTransitionActive()
-{
-    return gSHARIrisTransitionActive;
-}
 // The GUI lives in libmain.so and the renderer is built as libpddi.a. Keep
 // this setter at global scope so the main library can link to it.
 void SetSHARAndroidTargetFPS(int targetFPS)
@@ -2530,8 +2524,16 @@ void ApplySHARPostProcessingBeforeTouchHud()
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, outputWidth, outputHeight);
-    ApplyFrameSharpening(outputWidth, outputHeight);
-    ApplyCRTFilter(outputWidth, outputHeight, false);
+
+    // Diagnostic isolation: the iris wipe already bypasses world post-processing.
+    // Also bypass the later full-frame sharpening and CRT/saturation composition
+    // while the transition is active, to determine whether output filters create
+    // the remaining vertical strips. Resume normal filtering immediately after.
+    if (!gSHARIrisTransitionActive)
+    {
+        ApplyFrameSharpening(outputWidth, outputHeight);
+        ApplyCRTFilter(outputWidth, outputHeight, false);
+    }
     gSHARPostProcessAppliedBeforeTouchHud = true;
 }
 #endif
@@ -3221,7 +3223,8 @@ void pglDisplay::SwapBuffers(void)
     // menus, videos and touch controls. This shares the CRT pass texture.
     int outputWidth = 0;
     int outputHeight = 0;
-    if (QueryDefaultFramebufferSize(&outputWidth, &outputHeight) &&
+    if (!gSHARIrisTransitionActive &&
+        QueryDefaultFramebufferSize(&outputWidth, &outputHeight) &&
         outputWidth > 0 && outputHeight > 0)
     {
         ApplyCRTFilter(outputWidth, outputHeight, true);
