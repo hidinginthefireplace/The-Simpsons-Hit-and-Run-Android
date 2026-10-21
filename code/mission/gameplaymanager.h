@@ -186,6 +186,8 @@ public:
     virtual void CleanMissionData() = 0;
 
     RenderEnums::LevelEnum GetCurrentLevelIndex();
+    // Unlike GetCurrentLevelIndex(), this preserves the raw B00-B07 mini-game IDs.
+    RenderEnums::LevelEnum GetCurrentRawLevelIndex() const;
     RenderEnums::MissionEnum GetCurrentMissionForDemo();
 
     virtual bool IsSundayDrive();
@@ -677,6 +679,11 @@ inline RenderEnums::LevelEnum GameplayManager::GetCurrentLevelIndex()
     }
 
     return( mLevelData.level); 
+}
+
+inline RenderEnums::LevelEnum GameplayManager::GetCurrentRawLevelIndex() const
+{
+    return mLevelData.level;
 }
 
 //=============================================================================
