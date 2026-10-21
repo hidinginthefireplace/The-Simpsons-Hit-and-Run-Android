@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - android11-shield-transparent-depth-write-test
+  pull_request:
+    branches:
+      - android11-shield-transparent-depth-write-test
   workflow_dispatch:
 
 permissions:
