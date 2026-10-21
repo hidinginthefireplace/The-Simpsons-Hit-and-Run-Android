@@ -35,7 +35,8 @@ float GetFrameSharpenStrength();
 void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature, float* glowStrength, float* cornerDarkening, float* overscan, float* brightness, float* contrast);
 
 static int gSHARAndroidTargetFPS = 60;
-// Temporarily suppress depth-based outlines while the GUI iris transition plays.
+// Tracks the complete iris transition, including the black-screen scene handoff
+// between the closing and opening halves.
 static bool gSHARIrisTransitionActive = false;
 
 void SetSHARIrisTransitionActive(bool active)

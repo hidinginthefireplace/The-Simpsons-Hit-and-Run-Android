@@ -195,10 +195,11 @@ void CGuiScreenIrisWipe::HandleMessage
                 if( m_isIrisActive && m_pMultiController->LastFrameReached() )
                 {
                     m_isIrisActive = false;
-#ifdef RAD_ANDROID
-                    SetSHARIrisTransitionActive(false);
-#endif
 
+                    // Keep the Android transition state enabled after the iris
+                    // closes. The black-screen interval includes the interior/
+                    // exterior scene switch; clear it only after the iris opens
+                    // or if the opening is intentionally skipped.
                     m_numTransitionsPending--;
                     rAssert( m_numTransitionsPending == 0 );
 
@@ -340,6 +341,11 @@ void CGuiScreenIrisWipe::InitOutro()
     if( g_doNotOpenOnNextOutro )
     {
         g_doNotOpenOnNextOutro = false;
+#ifdef RAD_ANDROID
+        // This flow deliberately keeps the iris closed instead of opening it.
+        // Do not leave the transition-specific depth clear active indefinitely.
+        SetSHARIrisTransitionActive(false);
+#endif
     }
     else
     {
