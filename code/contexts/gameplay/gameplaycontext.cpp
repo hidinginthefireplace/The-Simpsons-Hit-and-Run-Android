@@ -118,12 +118,14 @@ bool IsSHARWorldCloudShadowLevelAllowed()
 
     GameplayManager* gameplayManager = GetGameplayManager();
     InteriorManager* interiorManager = GetInteriorManager();
-    if (gameplayManager == NULL || interiorManager == NULL || interiorManager->IsInside())
+    if (gameplayManager == NULL || interiorManager == NULL || interiorManager->IsInside() ||
+        gameplayManager->GetGameType() != GameplayManager::GT_NORMAL)
     {
         return false;
     }
 
-    const RenderEnums::LevelEnum level = gameplayManager->GetCurrentLevelIndex();
+    // Use the raw loaded level. GetCurrentLevelIndex() aliases B00/B01 etc. to L1/L2.
+    const RenderEnums::LevelEnum level = gameplayManager->GetCurrentRawLevelIndex();
     return level == RenderEnums::L1 || level == RenderEnums::L2;
 }
 #endif
