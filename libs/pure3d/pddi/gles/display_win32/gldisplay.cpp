@@ -35,6 +35,13 @@ float GetFrameSharpenStrength();
 void GetCRTFilterConfiguration(bool* enabled, float* scanlineStrength, float* curvature, float* glowStrength, float* cornerDarkening, float* overscan, float* brightness, float* contrast);
 
 static int gSHARAndroidTargetFPS = 60;
+// Temporarily suppress depth-based outlines while the GUI iris transition plays.
+static bool gSHARIrisTransitionActive = false;
+
+void SetSHARIrisTransitionActive(bool active)
+{
+    gSHARIrisTransitionActive = active;
+}
 // The GUI lives in libmain.so and the renderer is built as libpddi.a. Keep
 // this setter at global scope so the main library can link to it.
 void SetSHARAndroidTargetFPS(int targetFPS)
@@ -1923,7 +1930,8 @@ static void ApplyCelPostProcess(int width, int height)
         glUniform1f(gCelPostDepthAvailableLocation, gCelDepthTextureActive ? 1.0f : 0.0f);
     if (gCelPostDepthEdgeDetectionAvailableLocation >= 0)
         glUniform1f(gCelPostDepthEdgeDetectionAvailableLocation,
-            (gCelDepthTextureActive && haveCurrentMotionBlurCamera &&
+            (!gSHARIrisTransitionActive && gCelDepthTextureActive &&
+             haveCurrentMotionBlurCamera &&
              currentMotionBlurCamera.nearPlane > 0.0f &&
              currentMotionBlurCamera.farPlane > currentMotionBlurCamera.nearPlane) ? 1.0f : 0.0f);
 
