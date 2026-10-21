@@ -1775,6 +1775,17 @@ static void ApplyCelPostProcess(int width, int height)
         return;
     }
 
+    // Diagnostic isolation: while the iris wipe is animating, resolve the
+    // world colour directly instead of running the complete cel/depth/bloom/
+    // motion-blur composition. If the vertical strips remain, their source is
+    // likely in the iris GUI geometry/material or the later output passes.
+    if (gSHARIrisTransitionActive)
+    {
+        ResolveSceneToScreen(width, height);
+        CommitSHARMotionBlurCameraHistory(currentMotionBlurCamera, false, width, height);
+        return;
+    }
+
     const bool motionBlurCameraValid =
         motionBlurRequested && gCelDepthTextureActive && haveCurrentMotionBlurCamera &&
         IsSHARMotionBlurHistoryUsable(currentMotionBlurCamera, width, height);
