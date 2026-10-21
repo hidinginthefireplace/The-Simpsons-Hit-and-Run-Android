@@ -1776,17 +1776,6 @@ static void ApplyCelPostProcess(int width, int height)
         return;
     }
 
-    // Diagnostic isolation: while the iris wipe is animating, resolve the
-    // world colour directly instead of running the complete cel/depth/bloom/
-    // motion-blur composition. If the vertical strips remain, their source is
-    // likely in the iris GUI geometry/material or the later output passes.
-    if (gSHARIrisTransitionActive)
-    {
-        ResolveSceneToScreen(width, height);
-        CommitSHARMotionBlurCameraHistory(currentMotionBlurCamera, false, width, height);
-        return;
-    }
-
     const bool motionBlurCameraValid =
         motionBlurRequested && gCelDepthTextureActive && haveCurrentMotionBlurCamera &&
         IsSHARMotionBlurHistoryUsable(currentMotionBlurCamera, width, height);
@@ -1942,7 +1931,7 @@ static void ApplyCelPostProcess(int width, int height)
         glUniform1f(gCelPostDepthAvailableLocation, gCelDepthTextureActive ? 1.0f : 0.0f);
     if (gCelPostDepthEdgeDetectionAvailableLocation >= 0)
         glUniform1f(gCelPostDepthEdgeDetectionAvailableLocation,
-            (!gSHARIrisTransitionActive && gCelDepthTextureActive &&
+            (gCelDepthTextureActive &&
              haveCurrentMotionBlurCamera &&
              currentMotionBlurCamera.nearPlane > 0.0f &&
              currentMotionBlurCamera.farPlane > currentMotionBlurCamera.nearPlane) ? 1.0f : 0.0f);
@@ -2149,6 +2138,29 @@ void ApplyCelPostProcessBeforeGui(int width, int height)
         *gSHARActiveDisplayHeightForGui = outputHeight;
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, outputWidth, outputHeight);
+
+        // The iris is a 3D GUI object and uses the default framebuffer's depth
+        // test. The world is rendered into a separate FBO, so stale/default-FB
+        // depth can incorrectly reject parts of the iris and produce thin strips.
+        // Clear only during the iris wipe and preserve the caller's GL state.
+        if (gSHARIrisTransitionActive)
+        {
+            GLboolean oldDepthMask = GL_TRUE;
+            const GLboolean oldScissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
+            GLfloat oldDepthClearValue = 1.0f;
+            glGetBooleanv(GL_DEPTH_WRITEMASK, &oldDepthMask);
+            glGetFloatv(GL_DEPTH_CLEAR_VALUE, &oldDepthClearValue);
+
+            glDisable(GL_SCISSOR_TEST);
+            glDepthMask(GL_TRUE);
+            glClearDepthf(1.0f);
+            glClear(GL_DEPTH_BUFFER_BIT);
+
+            glClearDepthf(oldDepthClearValue);
+            glDepthMask(oldDepthMask);
+            if (oldScissorEnabled)
+                glEnable(GL_SCISSOR_TEST);
+        }
     }
 #endif
 }
@@ -2525,15 +2537,8 @@ void ApplySHARPostProcessingBeforeTouchHud()
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, outputWidth, outputHeight);
 
-    // Diagnostic isolation: the iris wipe already bypasses world post-processing.
-    // Also bypass the later full-frame sharpening and CRT/saturation composition
-    // while the transition is active, to determine whether output filters create
-    // the remaining vertical strips. Resume normal filtering immediately after.
-    if (!gSHARIrisTransitionActive)
-    {
-        ApplyFrameSharpening(outputWidth, outputHeight);
-        ApplyCRTFilter(outputWidth, outputHeight, false);
-    }
+    ApplyFrameSharpening(outputWidth, outputHeight);
+    ApplyCRTFilter(outputWidth, outputHeight, false);
     gSHARPostProcessAppliedBeforeTouchHud = true;
 }
 #endif
@@ -3223,8 +3228,7 @@ void pglDisplay::SwapBuffers(void)
     // menus, videos and touch controls. This shares the CRT pass texture.
     int outputWidth = 0;
     int outputHeight = 0;
-    if (!gSHARIrisTransitionActive &&
-        QueryDefaultFramebufferSize(&outputWidth, &outputHeight) &&
+    if (QueryDefaultFramebufferSize(&outputWidth, &outputHeight) &&
         outputWidth > 0 && outputHeight > 0)
     {
         ApplyCRTFilter(outputWidth, outputHeight, true);
