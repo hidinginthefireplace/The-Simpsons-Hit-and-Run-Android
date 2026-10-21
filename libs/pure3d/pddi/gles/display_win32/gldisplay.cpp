@@ -42,6 +42,13 @@ void SetSHARIrisTransitionActive(bool active)
 {
     gSHARIrisTransitionActive = active;
 }
+
+// Exposed to the material backend so the diagnostic workaround can preserve
+// the iris model's original depth-write behavior while the wipe is animating.
+bool IsSHARIrisTransitionActive()
+{
+    return gSHARIrisTransitionActive;
+}
 // The GUI lives in libmain.so and the renderer is built as libpddi.a. Keep
 // this setter at global scope so the main library can link to it.
 void SetSHARAndroidTargetFPS(int targetFPS)
