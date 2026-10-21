@@ -65,6 +65,7 @@
 
 #include <render/RenderManager/RenderManager.h>
 #include <render/RenderManager/RenderLayer.h>
+#include <render/Enums/RenderEnums.h>
 
 #include <worldsim/character/footprint/footprintmanager.h>
 #include <worldsim/worldphysicsmanager.h>
@@ -103,6 +104,29 @@
 
 // Static pointer to instance of singleton.
 GameplayContext* GameplayContext::spInstance = NULL;
+
+#if defined(RAD_ANDROID)
+// Called by the GLES renderer so experimental cloud shadows never bleed into
+// interiors, other levels, menus, or non-gameplay presentation contexts.
+bool IsSHARWorldCloudShadowLevelAllowed()
+{
+    GameFlow* gameFlow = GetGameFlow();
+    if (gameFlow == NULL || gameFlow->GetCurrentContext() != CONTEXT_GAMEPLAY)
+    {
+        return false;
+    }
+
+    GameplayManager* gameplayManager = GetGameplayManager();
+    InteriorManager* interiorManager = GetInteriorManager();
+    if (gameplayManager == NULL || interiorManager == NULL || interiorManager->IsInside())
+    {
+        return false;
+    }
+
+    const RenderEnums::LevelEnum level = gameplayManager->GetCurrentLevelIndex();
+    return level == RenderEnums::L1 || level == RenderEnums::L2;
+}
+#endif
 
 //******************************************************************************
 //
