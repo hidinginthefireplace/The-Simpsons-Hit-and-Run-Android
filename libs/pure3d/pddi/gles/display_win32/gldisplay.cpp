@@ -228,6 +228,9 @@ GLint gCelPostBloomStrengthLocation = -1;
 GLint gCelPostDepthLocation = -1;
 GLint gCelPostDepthAvailableLocation = -1;
 GLint gCelPostDepthEdgeDetectionAvailableLocation = -1;
+// Experimental Option B: depth-aware, world-anchored moving cloud shadows.
+GLint gCelPostCloudShadowEnabledLocation = -1;
+GLint gCelPostCloudShadowTimeLocation = -1;
 GLint gCelPostCelEffectsLocation = -1;
 GLint gCelPostMotionBlurEnabledLocation = -1;
 GLint gCelPostMotionBlurValidLocation = -1;
@@ -911,6 +914,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform sampler2D depthTex;\n"
             "uniform float depthTextureAvailable;\n"
             "uniform float depthEdgeDetectionAvailable;\n"
+            "uniform float cloudShadowEnabled;\n"
+            "uniform float cloudShadowTime;\n"
             "uniform vec2 texelSize;\n"
             "uniform vec2 outlineTexelSize;\n"
             "uniform float fineDetailEnabled;\n"
@@ -953,6 +958,42 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float denominator = farPlane - depth * (farPlane - nearPlane);\n"
             "    if (nearPlane <= 0.0 || farPlane <= nearPlane || denominator <= 0.00001) return 0.0;\n"
             "    return (nearPlane * farPlane) / denominator;\n"
+            "}\n"
+            "\n"
+            "// Cheap interpolated value noise; coordinates are reconstructed in world space,\n"
+            "// so the shadows move over the level instead of sliding with the camera.\n"
+            "float cloudHash(vec2 p) {\n"
+            "    vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));\n"
+            "    p3 += dot(p3, p3.yxz + 33.33);\n"
+            "    return fract((p3.x + p3.y) * p3.z);\n"
+            "}\n"
+            "float cloudNoise(vec2 p) {\n"
+            "    vec2 cell = floor(p);\n"
+            "    vec2 local = fract(p);\n"
+            "    local = local * local * (3.0 - 2.0 * local);\n"
+            "    float a = cloudHash(cell);\n"
+            "    float b = cloudHash(cell + vec2(1.0, 0.0));\n"
+            "    float c = cloudHash(cell + vec2(0.0, 1.0));\n"
+            "    float d = cloudHash(cell + vec2(1.0, 1.0));\n"
+            "    return mix(mix(a, b, local.x), mix(c, d, local.x), local.y);\n"
+            "}\n"
+            "vec3 applyWorldCloudShadow(vec2 uv, vec3 baseColour) {\n"
+            "    if (cloudShadowEnabled < 0.5 || depthTextureAvailable < 0.5) return baseColour;\n"
+            "    float depthValue = texture2D(depthTex, uv).r;\n"
+            "    if (depthValue >= 0.9995 || currentNearPlane <= 0.0 || currentFarPlane <= currentNearPlane) return baseColour;\n"
+            "    float depthNdc = depthValue * 2.0 - 1.0;\n"
+            "    float depthDenominator = currentFarPlane + currentNearPlane - depthNdc * (currentFarPlane - currentNearPlane);\n"
+            "    float viewZ = (2.0 * currentNearPlane * currentFarPlane) / max(depthDenominator, 0.0001);\n"
+            "    vec2 ndc = uv * 2.0 - 1.0;\n"
+            "    vec3 viewPosition = vec3(ndc.x * viewZ * currentTanHalfFovX, ndc.y * viewZ * currentTanHalfFovY, viewZ);\n"
+            "    vec3 worldPosition = currentCameraPosition + currentCameraRight * viewPosition.x + currentCameraUp * viewPosition.y + currentCameraForward * viewPosition.z;\n"
+            "    vec2 cloudCoordinates = worldPosition.xz * 0.018 + cloudShadowTime * vec2(0.0040, -0.0027);\n"
+            "    float broadClouds = cloudNoise(cloudCoordinates);\n"
+            "    float fineClouds = cloudNoise(cloudCoordinates * 2.05 + vec2(17.3, -9.1));\n"
+            "    float cloudDensity = broadClouds * 0.72 + fineClouds * 0.28;\n"
+            "    float shadowCoverage = smoothstep(0.47, 0.66, cloudDensity);\n"
+            "    // Keep the first prototype subtle: cloud-covered regions lose at most 16% brightness.\n"
+            "    return baseColour * (1.0 - shadowCoverage * 0.16);\n"
             "}\n"
             "\n"
             "float randomNoise(vec2 p) {\n"
@@ -1222,6 +1263,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "\n"
             "    finalColour = toonColour;\n"
             "    }\n"
+            "    // This world pass runs before GUI/touch rendering; skip the effect during iris transitions.\n"
+            "    if (cloudShadowEnabled > 0.5) finalColour = applyWorldCloudShadow(texcoord, finalColour);\n"
             "    gl_FragColor = vec4(clamp(finalColour, 0.0, 1.0), 1.0);\n"
             "}\n";
 
@@ -1272,6 +1315,8 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostDepthLocation = glGetUniformLocation(gCelPostProgram, "depthTex");
         gCelPostDepthAvailableLocation = glGetUniformLocation(gCelPostProgram, "depthTextureAvailable");
         gCelPostDepthEdgeDetectionAvailableLocation = glGetUniformLocation(gCelPostProgram, "depthEdgeDetectionAvailable");
+        gCelPostCloudShadowEnabledLocation = glGetUniformLocation(gCelPostProgram, "cloudShadowEnabled");
+        gCelPostCloudShadowTimeLocation = glGetUniformLocation(gCelPostProgram, "cloudShadowTime");
         gCelPostCelEffectsLocation = glGetUniformLocation(gCelPostProgram, "celEffectsEnabled");
         gCelPostMotionBlurEnabledLocation = glGetUniformLocation(gCelPostProgram, "motionBlurEnabled");
         gCelPostMotionBlurValidLocation = glGetUniformLocation(gCelPostProgram, "motionBlurCameraValid");
@@ -1769,6 +1814,10 @@ static void ApplyCelPostProcess(int width, int height)
 
     const bool celEffectsEnabled = IsCelShadingEnabled();
     const bool motionBlurRequested = IsMotionBlurEnabled();
+    // Deliberately enabled only in this isolated experimental branch. Requires
+    // the depth texture and camera data; never affect an iris transition.
+    const bool cloudShadowsActive =
+        gCelDepthTextureActive && haveCurrentMotionBlurCamera && !gSHARIrisTransitionActive;
 
     if (!gCelWorldInFbo)
     {
@@ -1781,7 +1830,7 @@ static void ApplyCelPostProcess(int width, int height)
         motionBlurRequested && gCelDepthTextureActive && haveCurrentMotionBlurCamera &&
         IsSHARMotionBlurHistoryUsable(currentMotionBlurCamera, width, height);
 
-    if (!celEffectsEnabled && !motionBlurRequested)
+    if (!celEffectsEnabled && !motionBlurRequested && !cloudShadowsActive)
     {
         ResolveSceneToScreen(width, height);
         CommitSHARMotionBlurCameraHistory(currentMotionBlurCamera, haveCurrentMotionBlurCamera, width, height);
@@ -1936,6 +1985,15 @@ static void ApplyCelPostProcess(int width, int height)
              haveCurrentMotionBlurCamera &&
              currentMotionBlurCamera.nearPlane > 0.0f &&
              currentMotionBlurCamera.farPlane > currentMotionBlurCamera.nearPlane) ? 1.0f : 0.0f);
+    if (gCelPostCloudShadowEnabledLocation >= 0)
+        glUniform1f(gCelPostCloudShadowEnabledLocation, cloudShadowsActive ? 1.0f : 0.0f);
+    if (gCelPostCloudShadowTimeLocation >= 0)
+    {
+        static Uint32 cloudShadowStartTicks = SDL_GetTicks();
+        const Uint32 cloudShadowElapsedTicks = SDL_GetTicks() - cloudShadowStartTicks;
+        glUniform1f(gCelPostCloudShadowTimeLocation,
+            (float)cloudShadowElapsedTicks * 0.001f);
+    }
 
     if (gCelPostCelEffectsLocation >= 0)
         glUniform1f(gCelPostCelEffectsLocation, celEffectsEnabled ? 1.0f : 0.0f);
