@@ -17,16 +17,15 @@
 
 using namespace RadicalMathLibrary;
 
-// Level 1's PTRN_animsigns asset gives both gas03 and gas04 translation
-// tracks that travel across a large part of the map. Keep these sign joints
-// at their authored rest-pose positions, but preserve their rotation animation.
-static bool IsL1GasSignTranslationTrack(const tAnimation* animation, const tPose::Joint* joint)
+// The Level 1 gas03 sign has animated translation and rotation tracks that
+// move it away from its authored location. Freeze only this joint for this
+// animation; leave gas04 and all other sign animation tracks untouched.
+static bool IsL1Gas03SignJoint(const tAnimation* animation, const tPose::Joint* joint)
 {
     return animation != NULL &&
            joint != NULL &&
            animation->GetUID() == tEntity::MakeUID("PTRN_animsigns") &&
-           (joint->uid == tEntity::MakeUID("gas03") ||
-            joint->uid == tEntity::MakeUID("gas04"));
+           joint->uid == tEntity::MakeUID("gas03");
 }
 
 //*********************************************************
@@ -95,14 +94,16 @@ void tPoseAnimationController::UpdateNoBlending()
             rotation = animGroup->GetRotationChannel(Pure3DAnimationChannels::Pose::ROTATION_ROT);
         }
 
-        if (IsL1GasSignTranslationTrack(anim, joint))
-        {
-            // The rotation channel remains active; only the map-spanning
-            // translation keys are ignored for these sign joints.
-            translation = NULL;
-        }
-
         tSkeleton::Joint* skeletonJoint = pose->GetSkeleton()->GetJoint(i);
+
+        if (IsL1Gas03SignJoint(anim, joint))
+        {
+            // Use the complete authored rest transform. Keeping the animated
+            // rotation was insufficient because this joint's rotation track
+            // is animated as well.
+            joint->objectMatrix = skeletonJoint->restPose;
+            continue;
+        }
         if(skeletonJoint->preserveBoneLengths)
         {
             // Stuff the bonelengths into the pose
@@ -167,12 +168,11 @@ void tPoseAnimationController::UpdateWithBlending()
         // to allow for shared animations across different Hierarchies.
         tSkeleton::Joint* skeletonJoint = pose->GetSkeleton()->GetJoint(i);
 
-        // During a blend, make the same exception if PTRN_animsigns is active for either sign
-        // of the active tracks. The rotation pass below still runs normally.
+        // Keep the gas03 translation at rest whenever its animation is active.
         bool keepGasSignAtRest = false;
         for (int activeIndex = 0; activeIndex < nAnim; ++activeIndex)
         {
-            if (IsL1GasSignTranslationTrack(playInfo[activeIndex].GetAnimation(), joint))
+            if (IsL1Gas03SignJoint(playInfo[activeIndex].GetAnimation(), joint))
             {
                 keepGasSignAtRest = true;
                 break;
@@ -247,6 +247,24 @@ void tPoseAnimationController::UpdateWithBlending()
     {
         tPose::Joint* joint = pose->GetJoint(i);
         P3DASSERT(joint);
+
+        tSkeleton::Joint* skeletonJoint = pose->GetSkeleton()->GetJoint(i);
+        bool freezeGas03Rotation = false;
+        for (int activeIndex = 0; activeIndex < nAnim; ++activeIndex)
+        {
+            if (IsL1Gas03SignJoint(playInfo[activeIndex].GetAnimation(), joint))
+            {
+                freezeGas03Rotation = true;
+                break;
+            }
+        }
+        if (freezeGas03Rotation)
+        {
+            // Override the translation-pass result with the complete rest pose
+            // and bypass animated rotation for the same joint.
+            joint->objectMatrix = skeletonJoint->restPose;
+            continue;
+        }
 
         Quaternion qBlend(0.0f, 0.0f, 0.0f, 1.0f);
 
