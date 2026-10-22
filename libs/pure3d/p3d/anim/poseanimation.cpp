@@ -98,9 +98,10 @@ void tPoseAnimationController::UpdateNoBlending()
 
         if (IsL1Gas04SignJoint(anim, joint))
         {
-            // Ignore only the translation curve. Continue through the usual
-            // pose update so the sign's intended rotation is retained.
-            translation = NULL;
+            // Freeze the complete transform for the faulty sign only. This
+            // also prevents its animated rotation from moving it off the pole.
+            joint->objectMatrix = skeletonJoint->restPose;
+            continue;
         }
 
         if(skeletonJoint->preserveBoneLengths)
@@ -167,21 +168,21 @@ void tPoseAnimationController::UpdateWithBlending()
         // to allow for shared animations across different Hierarchies.
         tSkeleton::Joint* skeletonJoint = pose->GetSkeleton()->GetJoint(i);
 
-        // During blending, keep gas04's translation at rest if its
-        // PTRN_animsigns track is active. The separate rotation pass remains
-        // unchanged, so its normal rotation animation still runs.
-        bool keepGas04TranslationAtRest = false;
+        // During blending, initialize gas04 to its full rest transform
+        // whenever PTRN_animsigns is active. The rotation pass below also
+        // skips this joint so neither part of its transform can be animated.
+        bool freezeGas04Transform = false;
         for (int activeIndex = 0; activeIndex < nAnim; ++activeIndex)
         {
             if (IsL1Gas04SignJoint(playInfo[activeIndex].GetAnimation(), joint))
             {
-                keepGas04TranslationAtRest = true;
+                freezeGas04Transform = true;
                 break;
             }
         }
-        if (keepGas04TranslationAtRest)
+        if (freezeGas04Transform)
         {
-            joint->objectMatrix.Row(3) = skeletonJoint->restPose.Row(3);
+            joint->objectMatrix = skeletonJoint->restPose;
             continue;
         }
 
@@ -248,6 +249,22 @@ void tPoseAnimationController::UpdateWithBlending()
     {
         tPose::Joint* joint = pose->GetJoint(i);
         P3DASSERT(joint);
+
+        bool freezeGas04Rotation = false;
+        for (int activeIndex = 0; activeIndex < nAnim; ++activeIndex)
+        {
+            if (IsL1Gas04SignJoint(playInfo[activeIndex].GetAnimation(), joint))
+            {
+                freezeGas04Rotation = true;
+                break;
+            }
+        }
+        if (freezeGas04Rotation)
+        {
+            // The translation pass already set the full rest transform.
+            // Leave it untouched so the sign remains at its authored pose.
+            continue;
+        }
 
         Quaternion qBlend(0.0f, 0.0f, 0.0f, 1.0f);
 
