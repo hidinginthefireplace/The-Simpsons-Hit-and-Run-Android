@@ -2057,7 +2057,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
     currentProgram->AddRef();
     currentProgram->UseProgram();
 #ifdef RAD_ANDROID
-    currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation);
+    currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation, IsSHARRimLightingEnabled());
 #endif
     currentProgram->SetProjectionMatrix(&projection);
 
@@ -2074,7 +2074,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
 void pglContext::ApplyCelShadingState()
 {
     if (currentProgram)
-        currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation);
+        currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation, IsSHARRimLightingEnabled());
 }
 #endif
 
