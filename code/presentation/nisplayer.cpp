@@ -22,7 +22,7 @@
 //========================================
 #include <presentation/nisplayer.h>
 #ifdef RAD_ANDROID
-#include <pddi/gles/glcon.hpp>
+void SetSHARGagCharacterCelPassActive(bool enabled);
 #endif
 #include <loading/filehandlerenum.h>
 #include <loading/loadingmanager.h>

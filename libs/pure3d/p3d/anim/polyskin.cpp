@@ -20,7 +20,11 @@
 #include <pddi/pddiext.hpp>
 #include <p3d/anim/instancedgeometry.hpp>
 #ifdef RAD_ANDROID
-#include <pddi/gles/glcon.hpp>
+bool IsCelShadingEnabled();
+bool IsSHARGagCharacterCelPassActive();
+void SetSHARCharacterMaskModelPass(bool enabled);
+void SetCelShadingObjectEnabled(bool enabled);
+void SetCelShadingOutlinePass(bool enabled);
 #endif
 
 #include <string.h>
