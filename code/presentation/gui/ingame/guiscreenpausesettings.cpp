@@ -65,6 +65,10 @@ bool IsFrameSharpeningEnabled();
 void SetFrameSharpeningEnabled(bool enabled);
 bool IsMotionBlurEnabled();
 void SetMotionBlurEnabled(bool enabled);
+bool IsSHARBloomEnabled();
+void SetSHARBloomEnabled(bool enabled);
+bool IsSHARCloudShadowsEnabled();
+void SetSHARCloudShadowsEnabled(bool enabled);
 int GetFrameSharpeningLevel();
 void SetFrameSharpeningLevel(int level);
 bool RequestSHARAndroidRenderResolutionHeight(int targetHeight);
@@ -1062,6 +1066,51 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
         {
         }
     }
+
+    // The second Graphics page uses the Jump Cameras row for Sharpening.
+    // Keep its six-value text separate from the normal settings value and the
+    // first-page FPS selector so switching pages never overwrites Scrooby text.
+    {
+        Scrooby::Group* pSharpeningGroup = pPage->GetGroup( "JumpCamera" );
+        FeGroup* pFeSharpeningGroup = dynamic_cast<FeGroup*>( pSharpeningGroup );
+        FeText* pOriginalValue = pSharpeningGroup != NULL
+            ? dynamic_cast<FeText*>( pSharpeningGroup->GetText( "JumpCamera_Value" ) )
+            : NULL;
+
+        if( pFeSharpeningGroup != NULL && pOriginalValue != NULL )
+        {
+            FeText* pGraphicsValue =
+                pFeSharpeningGroup->AddText( "AndroidMoreGraphicsSharpeningValue", 0, 0 );
+
+            if( pGraphicsValue != NULL )
+            {
+                CopyAndroidMenuTextAppearance( pGraphicsValue, pOriginalValue );
+
+                int width = 0;
+                int height = 0;
+                int centerX = 0;
+                int centerY = 0;
+                pOriginalValue->GetBoundingBoxSize( width, height );
+                pOriginalValue->GetBoundingBoxCenter( centerX, centerY );
+                pGraphicsValue->SetBoundingBoxSize( width, height );
+                pGraphicsValue->SetPositionOfCenter( centerX, centerY );
+
+                const char* sharpeningValues[6] =
+                {
+                    "OFF", "20%", "40%", "60%", "80%", "MAX"
+                };
+                for( int valueIndex = 0; valueIndex < 6; ++valueIndex )
+                {
+                    pGraphicsValue->AddHardCodedString( sharpeningValues[valueIndex] );
+                }
+
+                pGraphicsValue->SetIndex( 2 );
+                pGraphicsValue->SetVisible( false );
+                m_pMoreGraphicsSharpeningValue = pGraphicsValue;
+            }
+        }
+    }
+
 #endif
 
 MEMTRACK_POP_GROUP( "CGuiScreenPauseSettings" );
@@ -1129,17 +1178,14 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         "Resolution",
         "Max FPS",
         "Cel Shading",
-        "CRT Filter",
-        "Sharpening",
-        "Motion Blur"
+        "Bloom",
+        "Cloud Shadows",
+        "More Options.."
     };
 
-    const bool enabled[3] =
-    {
-        IsCelShadingEnabled(),
-        IsCRTFilterEnabled(),
-        IsMotionBlurEnabled()
-    };
+    const bool celShadingEnabled = IsCelShadingEnabled();
+    const bool bloomEnabled = IsSHARBloomEnabled();
+    const bool cloudShadowsEnabled = IsSHARCloudShadowsEnabled();
 
     const char* sharpeningValues[6] =
     {
@@ -1186,18 +1232,14 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
             m_pOriginalFPSValue->SetVisible( false );
             m_pGraphicsFPSValue->SetVisible( true );
         }
-        else if( i == 4 && m_pGraphicsSharpeningValue != NULL &&
-                 m_pOriginalSharpeningValue != NULL )
-        {
-            item->SetItemValue( m_pGraphicsSharpeningValue );
-            m_pOriginalSharpeningValue->SetVisible( false );
-            m_pGraphicsSharpeningValue->SetVisible( true );
-        }
-
-        // All six Graphics entries are left/right value selectors.
+        // The last row is an action that opens the second Graphics page.
         item->m_attributes &= ~SELECTABLE;
-        item->m_showValueArrows = true;
+        item->m_showValueArrows = ( i != 5 );
         item->m_useBackSoundOnSelection = false;
+        if( i == 5 )
+        {
+            item->m_attributes |= SELECTABLE;
+        }
 
         m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
 
@@ -1258,31 +1300,23 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
                     m_pMenu->SetSelectionValue( guiIndex, 0 );
                 }
             }
-            else if( i == 2 || i == 3 || i == 5 )
+            else if( i == 2 || i == 3 || i == 4 )
             {
                 value->SetVisible( true );
                 value->SetString( 0, "OFF" );
                 value->SetString( 1, "ON" );
                 m_pMenu->SetSelectionValueCount( guiIndex, 2 );
-                const int enabledIndex = ( i == 5 ) ? 2 : i - 2;
-                m_pMenu->SetSelectionValue( guiIndex, enabled[enabledIndex] ? 1 : 0 );
+                const bool enabled =
+                    ( i == 2 ) ? celShadingEnabled :
+                    ( i == 3 ) ? bloomEnabled : cloudShadowsEnabled;
+                m_pMenu->SetSelectionValue( guiIndex, enabled ? 1 : 0 );
             }
-            else if( i == 4 )
+            else if( i == 5 )
             {
-                value->SetVisible( true );
-                if( m_pGraphicsSharpeningValue != NULL &&
-                    value == m_pGraphicsSharpeningValue )
-                {
-                    m_pMenu->SetSelectionValueCount( guiIndex, 6 );
-                    m_pMenu->SetSelectionValue( guiIndex, sharpeningLevel );
-                }
-                else
-                {
-                    value->SetString( 0, "OFF" );
-                    value->SetString( 1, "ON" );
-                    m_pMenu->SetSelectionValueCount( guiIndex, 2 );
-                    m_pMenu->SetSelectionValue( guiIndex, 0 );
-                }
+                // More Options is an action, not an ON/OFF value selector.
+                value->SetVisible( false );
+                m_pMenu->SetSelectionValueCount( guiIndex, 1 );
+                m_pMenu->SetSelectionValue( guiIndex, 0 );
             }
             else
             {
@@ -1298,6 +1332,125 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
         {
             item->m_itemValueArrowR->SetVisible( false );
         }
+    }
+
+    m_pMenu->Reset( 0 );
+    m_configuringAndroidSubmenu = false;
+}
+
+void CGuiScreenPauseSettings::ConfigureAndroidMoreGraphicsMenu()
+{
+    m_configuringAndroidSubmenu = true;
+
+    const int logicalItems[6] =
+    {
+        MENU_ITEM_CAMERA,
+        MENU_ITEM_JUMP_CAMERAS,
+        MENU_ITEM_INTERSECT_NAV_SYSTEM,
+        MENU_ITEM_RADAR,
+        MENU_ITEM_INVERT_CAM_CONTROL,
+        MENU_ITEM_VIBRATION
+    };
+
+    const char* labels[3] =
+    {
+        "CRT Filter",
+        "Sharpening",
+        "Motion Blur"
+    };
+
+    const bool crtEnabled = IsCRTFilterEnabled();
+    const bool motionBlurEnabled = IsMotionBlurEnabled();
+    const int sharpeningLevel = GetFrameSharpeningLevel();
+
+    for( int i = 0; i < 6; ++i )
+    {
+        const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
+        if( guiIndex < 0 )
+        {
+            continue;
+        }
+
+        GuiMenuItem* item = m_pMenu->GetMenuItem( guiIndex );
+        if( item == NULL )
+        {
+            continue;
+        }
+
+        if( i >= 3 )
+        {
+            item->m_attributes &= ~SELECTABLE;
+            item->m_showValueArrows = false;
+            Scrooby::Text* hiddenLabel =
+                dynamic_cast<Scrooby::Text*>( item->GetItem() );
+            Scrooby::Text* hiddenValue =
+                dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
+            if( hiddenLabel != NULL ) hiddenLabel->SetVisible( false );
+            if( hiddenValue != NULL ) hiddenValue->SetVisible( false );
+            if( item->m_itemValueArrowL != NULL ) item->m_itemValueArrowL->SetVisible( false );
+            if( item->m_itemValueArrowR != NULL ) item->m_itemValueArrowR->SetVisible( false );
+            m_pMenu->SetMenuItemEnabled( guiIndex, false, true );
+            continue;
+        }
+
+        item->m_attributes &= ~SELECTABLE;
+        item->m_showValueArrows = true;
+        item->m_useBackSoundOnSelection = false;
+        m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
+
+        if( i == 0 && m_pGraphicsResolutionValue != NULL &&
+            m_pOriginalResolutionValue != NULL )
+        {
+            item->SetItemValue( m_pGraphicsResolutionValue );
+            m_pOriginalResolutionValue->SetVisible( false );
+            m_pGraphicsResolutionValue->SetVisible( true );
+        }
+        else if( i == 1 && m_pMoreGraphicsSharpeningValue != NULL &&
+                 m_pOriginalFPSValue != NULL )
+        {
+            item->SetItemValue( m_pMoreGraphicsSharpeningValue );
+            if( m_pGraphicsFPSValue != NULL ) m_pGraphicsFPSValue->SetVisible( false );
+            m_pOriginalFPSValue->SetVisible( false );
+            m_pMoreGraphicsSharpeningValue->SetVisible( true );
+        }
+
+        Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
+        Scrooby::Text* value = dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
+
+        if( label != NULL )
+        {
+            label->SetString( 0, labels[i] );
+            label->SetVisible( true );
+        }
+
+        if( value != NULL )
+        {
+            value->SetVisible( true );
+            if( i == 0 || i == 2 )
+            {
+                value->SetString( 0, "OFF" );
+                value->SetString( 1, "ON" );
+                m_pMenu->SetSelectionValueCount( guiIndex, 2 );
+                m_pMenu->SetSelectionValue(
+                    guiIndex, ( i == 0 ? crtEnabled : motionBlurEnabled ) ? 1 : 0 );
+            }
+            else
+            {
+                const char* sharpeningValues[6] =
+                {
+                    "OFF", "20%", "40%", "60%", "80%", "MAX"
+                };
+                for( int valueIndex = 0; valueIndex < 6; ++valueIndex )
+                {
+                    value->SetString( valueIndex, sharpeningValues[valueIndex] );
+                }
+                m_pMenu->SetSelectionValueCount( guiIndex, 6 );
+                m_pMenu->SetSelectionValue( guiIndex, sharpeningLevel );
+            }
+        }
+
+        if( item->m_itemValueArrowL != NULL ) item->m_itemValueArrowL->SetVisible( false );
+        if( item->m_itemValueArrowR != NULL ) item->m_itemValueArrowR->SetVisible( false );
     }
 
     m_pMenu->Reset( 0 );
@@ -1573,9 +1726,12 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
         // Restore the original Jump Cameras value text after the Graphics FPS selector.
         if( logicalItems[i] == MENU_ITEM_JUMP_CAMERAS &&
             m_pOriginalFPSValue != NULL &&
-            item->GetItemValue() == m_pGraphicsFPSValue )
+            ( item->GetItemValue() == m_pGraphicsFPSValue ||
+              item->GetItemValue() == m_pMoreGraphicsSharpeningValue ) )
         {
-            m_pGraphicsFPSValue->SetVisible( false );
+            if( m_pGraphicsFPSValue != NULL ) m_pGraphicsFPSValue->SetVisible( false );
+            if( m_pMoreGraphicsSharpeningValue != NULL )
+                m_pMoreGraphicsSharpeningValue->SetVisible( false );
             m_pOriginalFPSValue->SetVisible( true );
             item->SetItemValue( m_pOriginalFPSValue );
         }
@@ -1680,8 +1836,10 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
 
 void CGuiScreenPauseSettings::LeaveAndroidGraphicsMenu( bool backSoundAlreadyPlayed )
 {
-    // Keep graphics mode active through the outro so the custom labels/values
-    // are not applied as camera and gameplay settings.
+    // Both Graphics pages leave directly to the parent Options menu, matching Cheats.
+    // Keep graphics mode active through the outro so custom values are not applied
+    // as camera and gameplay settings.
+    m_moreGraphicsSettingsMode = false;
     gAndroidGraphicsSettingsRequested = false;
     m_pParent->HandleMessage( GUI_MSG_BACK_SCREEN );
 
@@ -1782,8 +1940,16 @@ void CGuiScreenPauseSettings::HandleMessage
             case GUI_MSG_MENU_SELECTION_MADE:
             {
 #if defined(RAD_ANDROID)
-                // The action row opens More Cheats in-place. Back from either
-                // cheat page continues to return directly to OPTIONS.
+                // More Options opens a second Graphics page. Back from that page
+                // follows the same direct-to-parent behaviour as the Cheats pages.
+                if( m_graphicsSettingsMode && !m_moreGraphicsSettingsMode &&
+                    GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) ) ==
+                        MENU_ITEM_VIBRATION )
+                {
+                    m_moreGraphicsSettingsMode = true;
+                    ConfigureAndroidMoreGraphicsMenu();
+                }
+                // The action row opens More Cheats in-place.
                 if( m_cheatsSettingsMode && !m_moreCheatsSettingsMode &&
                     GetMenuItemFromGuiMenuIndex( static_cast<int>( param1 ) ) ==
                         MENU_ITEM_VIBRATION )
@@ -1813,7 +1979,22 @@ void CGuiScreenPauseSettings::HandleMessage
                     const bool enabled = ( param2 == 1 );
                     if( m_graphicsSettingsMode )
                     {
-                        if( logicalMenuItem == MENU_ITEM_CAMERA )
+                        if( m_moreGraphicsSettingsMode )
+                        {
+                            if( logicalMenuItem == MENU_ITEM_CAMERA )
+                            {
+                                SetCRTFilterEnabled( enabled );
+                            }
+                            else if( logicalMenuItem == MENU_ITEM_JUMP_CAMERAS )
+                            {
+                                SetFrameSharpeningLevel( static_cast<int>( param2 ) );
+                            }
+                            else if( logicalMenuItem == MENU_ITEM_INTERSECT_NAV_SYSTEM )
+                            {
+                                SetMotionBlurEnabled( enabled );
+                            }
+                        }
+                        else if( logicalMenuItem == MENU_ITEM_CAMERA )
                         {
                             if( param2 < SHAR_GRAPHICS_RESOLUTION_COUNT )
                             {
@@ -1859,15 +2040,11 @@ void CGuiScreenPauseSettings::HandleMessage
                         }
                         else if( logicalMenuItem == MENU_ITEM_RADAR )
                         {
-                            SetCRTFilterEnabled( enabled );
+                            SetSHARBloomEnabled( enabled );
                         }
                         else if( logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL )
                         {
-                            SetFrameSharpeningLevel( static_cast<int>( param2 ) );
-                        }
-                        else if( logicalMenuItem == MENU_ITEM_VIBRATION )
-                        {
-                            SetMotionBlurEnabled( enabled );
+                            SetSHARCloudShadowsEnabled( enabled );
                         }
                     }
                     else
@@ -2080,6 +2257,7 @@ void CGuiScreenPauseSettings::InitIntro()
     // CGuiMenu::SetSelectionValue notifies this screen, so treating these
     // normal values as submenu toggles would change unrelated settings.
     m_graphicsSettingsMode = false;
+    m_moreGraphicsSettingsMode = false;
     m_cheatsSettingsMode = false;
     m_moreCheatsSettingsMode = false;
     gAndroidGraphicsSettingsRequested = false;

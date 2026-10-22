@@ -40,6 +40,165 @@ static int gSHARAndroidTargetFPS = 60;
 // between the closing and opening halves.
 static bool gSHARIrisTransitionActive = false;
 
+static bool gSHARBloomEnabled = true;
+static bool gSHARCloudShadowsEnabled = true;
+static bool gSHARGraphicsEffectTogglesLoaded = false;
+
+static bool ReadSHARGraphicsToggleFile(const char* filename, bool defaultValue)
+{
+    const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if( basePath == NULL || basePath[0] == '\0' )
+    {
+        return defaultValue;
+    }
+
+    char path[512];
+    const int length = snprintf(
+        path, sizeof(path), "%s/Graphics/%s", basePath, filename );
+    if( length < 0 || length >= static_cast<int>( sizeof(path) ) )
+    {
+        return defaultValue;
+    }
+
+    FILE* file = fopen( path, "r" );
+    if( file == NULL )
+    {
+        return defaultValue;
+    }
+
+    bool result = defaultValue;
+    char line[256];
+    while( fgets( line, sizeof(line), file ) != NULL )
+    {
+        char* value = strchr( line, '=' );
+        if( value == NULL )
+        {
+            continue;
+        }
+        ++value;
+        while( *value == ' ' || *value == '\t' )
+        {
+            ++value;
+        }
+
+        if( strncmp( value, "true", 4 ) == 0 ||
+            strncmp( value, "TRUE", 4 ) == 0 ||
+            *value == '1' || strncmp( value, "on", 2 ) == 0 ||
+            strncmp( value, "ON", 2 ) == 0 ||
+            strncmp( value, "yes", 3 ) == 0 )
+        {
+            result = true;
+        }
+        else if( strncmp( value, "false", 5 ) == 0 ||
+                 strncmp( value, "FALSE", 5 ) == 0 ||
+                 *value == '0' || strncmp( value, "off", 3 ) == 0 ||
+                 strncmp( value, "OFF", 3 ) == 0 ||
+                 strncmp( value, "no", 2 ) == 0 )
+        {
+            result = false;
+        }
+        break;
+    }
+
+    fclose( file );
+    return result;
+}
+
+static void WriteSHARGraphicsToggleFile(const char* filename, bool enabled)
+{
+    const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if( basePath == NULL || basePath[0] == '\0' )
+    {
+        return;
+    }
+
+    char directory[512];
+    int length = snprintf(
+        directory, sizeof(directory), "%s/Graphics", basePath );
+    if( length < 0 || length >= static_cast<int>( sizeof(directory) ) )
+    {
+        return;
+    }
+
+    struct stat directoryInfo;
+    if( stat( directory, &directoryInfo ) != 0 )
+    {
+        mkdir( directory, 0777 );
+    }
+    if( stat( directory, &directoryInfo ) != 0 || !S_ISDIR( directoryInfo.st_mode ) )
+    {
+        return;
+    }
+
+    char path[512];
+    length = snprintf( path, sizeof(path), "%s/%s", directory, filename );
+    if( length < 0 || length >= static_cast<int>( sizeof(path) ) )
+    {
+        return;
+    }
+
+    FILE* file = fopen( path, "w" );
+    if( file == NULL )
+    {
+        return;
+    }
+
+    fprintf( file,
+        "# Simpsons Hit & Run Android graphics effect setting\n"
+        "# Saved by the in-game Graphics menu.\n"
+        "enabled=%s\n",
+        enabled ? "true" : "false" );
+    fclose( file );
+}
+
+static void EnsureSHARGraphicsEffectTogglesLoaded()
+{
+    if( gSHARGraphicsEffectTogglesLoaded )
+    {
+        return;
+    }
+    gSHARGraphicsEffectTogglesLoaded = true;
+
+    gSHARBloomEnabled =
+        ReadSHARGraphicsToggleFile( "Simpsons_bloom.txt", true );
+    gSHARCloudShadowsEnabled =
+        ReadSHARGraphicsToggleFile( "Simpsons_cloud_shadows.txt", true );
+}
+
+bool IsSHARBloomEnabled()
+{
+    EnsureSHARGraphicsEffectTogglesLoaded();
+    return gSHARBloomEnabled;
+}
+
+void SetSHARBloomEnabled(bool enabled)
+{
+    EnsureSHARGraphicsEffectTogglesLoaded();
+    if( gSHARBloomEnabled == enabled )
+    {
+        return;
+    }
+    gSHARBloomEnabled = enabled;
+    WriteSHARGraphicsToggleFile( "Simpsons_bloom.txt", enabled );
+}
+
+bool IsSHARCloudShadowsEnabled()
+{
+    EnsureSHARGraphicsEffectTogglesLoaded();
+    return gSHARCloudShadowsEnabled;
+}
+
+void SetSHARCloudShadowsEnabled(bool enabled)
+{
+    EnsureSHARGraphicsEffectTogglesLoaded();
+    if( gSHARCloudShadowsEnabled == enabled )
+    {
+        return;
+    }
+    gSHARCloudShadowsEnabled = enabled;
+    WriteSHARGraphicsToggleFile( "Simpsons_cloud_shadows.txt", enabled );
+}
+
 void SetSHARIrisTransitionActive(bool active)
 {
     gSHARIrisTransitionActive = active;
@@ -819,13 +978,13 @@ static bool CheckSHARRenderTargetSize(
         }
 
         size_t estimatedBytes = 0;
-        const bool celEnabled = IsCelShadingEnabled();
+        const bool bloomEnabled = IsSHARBloomEnabled();
         const bool sharpeningEnabled = IsFrameSharpeningEnabled();
 
         // The offscreen scene target (RGBA color + 16-bit depth) is used
-        // even when cel shading is disabled; only bloom targets are conditional.
+        // regardless of Cel Shading; bloom targets are budgeted independently.
         estimatedBytes += pixels * 6;
-        if (celEnabled)
+        if (bloomEnabled)
         {
             const size_t bloomWidth = width > 3 ? (size_t)(width / 4) : 1;
             const size_t bloomHeight = height > 3 ? (size_t)(height / 4) : 1;
@@ -1589,7 +1748,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    bright = max(bright, max(max(leftLuma, rightLuma), max(upLuma, downLuma)) - 0.78);\n"
             "    bright = max(bright, 0.0);\n"
             "    float sunRegion = 1.0 - smoothstep(0.18, 0.70, distance(texcoord, vec2(0.5, 0.82)));\n"
-            "    float glare = bright * sunRegion * 0.10;\n"
+            "    float glare = bright * sunRegion * 0.10 * step(0.001, bloomStrength);\n"
             "    toonColour += vec3(glare, glare * 0.95, glare * 0.82);\n"
             "\n"
             "    // Global saturation adds +20%% later; 1.125 * 1.20 keeps Cel Shading at +35%% overall.\n"
@@ -1602,6 +1761,10 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "\n"
             "\n"
             "    finalColour = toonColour;\n"
+            "    }\n"
+            "    // Bloom stays available even when the cel outline/colour treatment is disabled.\n"
+            "    if (celEffectsEnabled < 0.5 && bloomStrength > 0.0) {\n"
+            "        finalColour += texture2D(bloomTex, texcoord).rgb * bloomStrength;\n"
             "    }\n"
             "    // This world pass runs before GUI/touch rendering; skip the effect during iris transitions.\n"
             "    if (cloudShadowEnabled > 0.5) finalColour = applyWorldCloudShadow(texcoord, finalColour);\n"
@@ -2157,6 +2320,8 @@ static void ApplyCelPostProcess(int width, int height)
     SHARPerfPassScope composePerfScope(SHAR_PERF_COMPOSE, width, height);
     const bool celEffectsEnabled = IsCelShadingEnabled();
     const bool motionBlurRequested = IsMotionBlurEnabled();
+    const bool bloomRequested = IsSHARBloomEnabled();
+    const bool cloudShadowsUserEnabled = IsSHARCloudShadowsEnabled();
     // Experimental Option B: limit cloud shadows to approved exterior gameplay levels.
     // Do not key this effect off the iris-transition flag: the world behind the expanding
     // iris is already the exterior again, and toggling shadows here caused a visible blink.
@@ -2164,7 +2329,8 @@ static void ApplyCelPostProcess(int width, int height)
     // Experimental test setting: use the same full strength on Levels 1, 2, and 3.
     const float cloudShadowStrengthMultiplier = 1.0f;
     const bool cloudShadowsActive =
-        cloudShadowLevelAllowed && gCelDepthTextureActive && haveCurrentMotionBlurCamera;
+        cloudShadowsUserEnabled && cloudShadowLevelAllowed &&
+        gCelDepthTextureActive && haveCurrentMotionBlurCamera;
     // Report only state transitions so the test can distinguish an unavailable depth/camera path
     // from an effect that is active but visually too subtle, without per-frame log spam.
     static int lastCloudShadowState = -1;
@@ -2173,11 +2339,13 @@ static void ApplyCelPostProcess(int width, int height)
         (gCelDepthTextureActive ? 2 : 0) |
         (haveCurrentMotionBlurCamera ? 4 : 0) |
         (gSHARIrisTransitionActive ? 8 : 0) |
-        (cloudShadowsActive ? 16 : 0);
+        (cloudShadowsActive ? 16 : 0) |
+        (cloudShadowsUserEnabled ? 32 : 0);
     if (cloudShadowState != lastCloudShadowState)
     {
-        SDL_Log("SHAR cloud-shadow test state: allowedLevel=%d depthTexture=%d camera=%d irisTransition=%d active=%d",
+        SDL_Log("SHAR cloud-shadow test state: allowedLevel=%d userEnabled=%d depthTexture=%d camera=%d irisTransition=%d active=%d",
             cloudShadowLevelAllowed ? 1 : 0,
+            cloudShadowsUserEnabled ? 1 : 0,
             gCelDepthTextureActive ? 1 : 0,
             haveCurrentMotionBlurCamera ? 1 : 0,
             gSHARIrisTransitionActive ? 1 : 0,
@@ -2196,7 +2364,7 @@ static void ApplyCelPostProcess(int width, int height)
         motionBlurRequested && gCelDepthTextureActive && haveCurrentMotionBlurCamera &&
         IsSHARMotionBlurHistoryUsable(currentMotionBlurCamera, width, height);
 
-    if (!celEffectsEnabled && !motionBlurRequested && !cloudShadowsActive)
+    if (!celEffectsEnabled && !motionBlurRequested && !cloudShadowsActive && !bloomRequested)
     {
         ResolveSceneToScreen(width, height);
         CommitSHARMotionBlurCameraHistory(currentMotionBlurCamera, haveCurrentMotionBlurCamera, width, height);
@@ -2221,7 +2389,7 @@ static void ApplyCelPostProcess(int width, int height)
         return;
     }
 
-    const bool bloomReady = celEffectsEnabled ? EnsureCelBloomResources(width, height) : false;
+    const bool bloomReady = bloomRequested ? EnsureCelBloomResources(width, height) : false;
 
     GLint viewport[4];
     glGetIntegerv(GL_VIEWPORT, viewport);

@@ -87,10 +87,12 @@ private:
    #if defined(RAD_ANDROID)
     bool m_graphicsSettingsMode = false;
     bool m_cheatsSettingsMode = false;
+    bool m_moreGraphicsSettingsMode = false;
     bool m_moreCheatsSettingsMode = false;
     bool m_configuringAndroidSubmenu = false;
 
     void ConfigureAndroidGraphicsMenu();
+    void ConfigureAndroidMoreGraphicsMenu();
     void ConfigureAndroidCheatsMenu();
     void ConfigureAndroidMoreCheatsMenu();
     void RestoreAndroidSettingsMenu();
@@ -106,6 +108,7 @@ private:
     Scrooby::Text* m_pGraphicsFPSValue = NULL;
     Scrooby::Text* m_pOriginalSharpeningValue = NULL;
     Scrooby::Text* m_pGraphicsSharpeningValue = NULL;
+    Scrooby::Text* m_pMoreGraphicsSharpeningValue = NULL;
 
     int mMenuItemToGuiMenuIndex[ NUM_PAUSE_SETTINGS_MENU_ITEMS ];
     int mGuiMenuIndexToMenuItem[ NUM_PAUSE_SETTINGS_MENU_ITEMS ];
