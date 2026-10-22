@@ -29,6 +29,7 @@ void SetSHARCharacterMaskWorldEnabled(bool enabled);
 void SetSHARCharacterMaskModelPass(bool enabled);
 bool GetSHARMotionBlurCameraData(float* output);
 bool IsSHARWorldCloudShadowLevelAllowed();
+float GetSHARWorldCloudShadowStrengthMultiplier();
 bool IsFrameSharpeningEnabled();
 float GetFrameSharpenStrength();
 
@@ -232,6 +233,7 @@ GLint gCelPostDepthEdgeDetectionAvailableLocation = -1;
 // Experimental Option B: depth-aware, world-anchored moving cloud shadows.
 GLint gCelPostCloudShadowEnabledLocation = -1;
 GLint gCelPostCloudShadowTimeLocation = -1;
+GLint gCelPostCloudShadowStrengthLocation = -1;
 GLint gCelPostCelEffectsLocation = -1;
 GLint gCelPostMotionBlurEnabledLocation = -1;
 GLint gCelPostMotionBlurValidLocation = -1;
@@ -917,6 +919,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "uniform float depthEdgeDetectionAvailable;\n"
             "uniform float cloudShadowEnabled;\n"
             "uniform float cloudShadowTime;\n"
+            "uniform float cloudShadowStrengthMultiplier;\n"
             "uniform vec2 texelSize;\n"
             "uniform vec2 outlineTexelSize;\n"
             "uniform float fineDetailEnabled;\n"
@@ -996,7 +999,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
             "    float cloudDensity = cloudNoise(cloudCoordinates);\n"
             "    float shadowCoverage = smoothstep(0.62, 0.78, cloudDensity);\n"
             "    // Occasional cloud shadows remain clearly noticeable without making the level overcast.\n"
-            "    return baseColour * (1.0 - shadowCoverage * 0.28);\n"
+            "    return baseColour * (1.0 - shadowCoverage * 0.28 * cloudShadowStrengthMultiplier);\n"
             "}\n"
             "\n"
             "float randomNoise(vec2 p) {\n"
@@ -1320,6 +1323,7 @@ static bool EnsureCelPostProcessResources(int width, int height)
         gCelPostDepthEdgeDetectionAvailableLocation = glGetUniformLocation(gCelPostProgram, "depthEdgeDetectionAvailable");
         gCelPostCloudShadowEnabledLocation = glGetUniformLocation(gCelPostProgram, "cloudShadowEnabled");
         gCelPostCloudShadowTimeLocation = glGetUniformLocation(gCelPostProgram, "cloudShadowTime");
+        gCelPostCloudShadowStrengthLocation = glGetUniformLocation(gCelPostProgram, "cloudShadowStrengthMultiplier");
         gCelPostCelEffectsLocation = glGetUniformLocation(gCelPostProgram, "celEffectsEnabled");
         gCelPostMotionBlurEnabledLocation = glGetUniformLocation(gCelPostProgram, "motionBlurEnabled");
         gCelPostMotionBlurValidLocation = glGetUniformLocation(gCelPostProgram, "motionBlurCameraValid");
@@ -1817,12 +1821,14 @@ static void ApplyCelPostProcess(int width, int height)
 
     const bool celEffectsEnabled = IsCelShadingEnabled();
     const bool motionBlurRequested = IsMotionBlurEnabled();
-    // Experimental Option B: strictly limit cloud shadows to Level 1/Level 2 exterior gameplay.
-    // Requires the depth texture and camera data, and remains disabled during iris transitions.
+    // Experimental Option B: limit cloud shadows to approved exterior gameplay levels.
+    // Do not key this effect off the iris-transition flag: the world behind the expanding
+    // iris is already the exterior again, and toggling shadows here caused a visible blink.
     const bool cloudShadowLevelAllowed = IsSHARWorldCloudShadowLevelAllowed();
+    const float cloudShadowStrengthMultiplier = cloudShadowLevelAllowed
+        ? GetSHARWorldCloudShadowStrengthMultiplier() : 1.0f;
     const bool cloudShadowsActive =
-        cloudShadowLevelAllowed && gCelDepthTextureActive &&
-        haveCurrentMotionBlurCamera && !gSHARIrisTransitionActive;
+        cloudShadowLevelAllowed && gCelDepthTextureActive && haveCurrentMotionBlurCamera;
     // Report only state transitions so the test can distinguish an unavailable depth/camera path
     // from an effect that is active but visually too subtle, without per-frame log spam.
     static int lastCloudShadowState = -1;
@@ -2018,6 +2024,8 @@ static void ApplyCelPostProcess(int width, int height)
         glUniform1f(gCelPostCloudShadowTimeLocation,
             (float)cloudShadowElapsedTicks * 0.001f);
     }
+    if (gCelPostCloudShadowStrengthLocation >= 0)
+        glUniform1f(gCelPostCloudShadowStrengthLocation, cloudShadowStrengthMultiplier);
 
     if (gCelPostCelEffectsLocation >= 0)
         glUniform1f(gCelPostCelEffectsLocation, celEffectsEnabled ? 1.0f : 0.0f);
