@@ -471,6 +471,19 @@ int gCelRenderbufferFailedWidth = 0;
 int gCelRenderbufferFailedHeight = 0;
 int gCelRenderFboFailedWidth = 0;
 int gCelRenderFboFailedHeight = 0;
+
+// Successful scene-FBO validation is reusable while its size, attachments and
+// resource-budget inputs remain unchanged. ResetAndroidPostProcess() invalidates
+// this cache whenever the GL resources are recreated or the context is reset.
+static bool gCelRenderTargetValidationCached = false;
+static int gCelRenderTargetValidatedWidth = 0;
+static int gCelRenderTargetValidatedHeight = 0;
+static bool gCelRenderTargetValidatedBloomEnabled = false;
+static bool gCelRenderTargetValidatedUsesDepthTexture = false;
+static GLuint gCelRenderTargetValidatedFbo = 0;
+static GLuint gCelRenderTargetValidatedColourTexture = 0;
+static GLuint gCelRenderTargetValidatedDepthObject = 0;
+
 int gFrameSharpenFailedWidth = 0;
 int gFrameSharpenFailedHeight = 0;
 int gCRTFailedWidth = 0;
@@ -1105,8 +1118,57 @@ static GLuint CreateCelPostProgram(const char* vertexSource, const char* fragmen
 
 static bool EnsureCelPostProcessResources(int width, int height);
 
+static void InvalidateCelRenderTargetValidationCache()
+{
+    gCelRenderTargetValidationCached = false;
+}
+
 static bool EnsureCelRenderTarget(int width, int height)
 {
+    // The budget check depends on whether bloom is enabled, so a runtime toggle
+    // invalidates this cache entry even if the render dimensions are unchanged.
+    const bool bloomEnabled =
+        (width > 0 && height > 0) ? IsSHARBloomEnabled() : false;
+    const GLuint depthObject =
+        gCelDepthTextureActive ? gCelRenderDepthTexture : gCelRenderDepth;
+    const bool depthStorageMatches =
+        gCelDepthTextureActive
+            ? (gCelRenderDepthTexture != 0 &&
+               gCelDepthTextureWidth == width &&
+               gCelDepthTextureHeight == height)
+            : (gCelRenderDepth != 0 &&
+               gCelRenderbufferWidth == width &&
+               gCelRenderbufferHeight == height);
+
+#if !defined(RAD_DEBUG) && !defined(SHAR_FORCE_CEL_RENDER_TARGET_REVALIDATION)
+    // Release fast path: reuse the known-good attachments rather than repeating
+    // GL setup, completeness checks, hardware-limit queries and error polling.
+    // Define SHAR_FORCE_CEL_RENDER_TARGET_REVALIDATION (or build RAD_DEBUG) to
+    // retain full validation every frame while diagnosing a rendering problem.
+    if (width > 0 && height > 0 &&
+        gCelRenderTargetValidationCached &&
+        gCelRenderFboReady &&
+        gCelRenderTargetValidatedWidth == width &&
+        gCelRenderTargetValidatedHeight == height &&
+        gCelPostWidth == width && gCelPostHeight == height &&
+        gCelRenderTargetValidatedBloomEnabled == bloomEnabled &&
+        gCelRenderTargetValidatedUsesDepthTexture == gCelDepthTextureActive &&
+        gCelRenderTargetValidatedFbo == gCelRenderFbo &&
+        gCelRenderTargetValidatedColourTexture == gCelPostTexture &&
+        gCelRenderTargetValidatedDepthObject == depthObject &&
+        depthStorageMatches &&
+        !(gCelPostFailedWidth == width && gCelPostFailedHeight == height) &&
+        !(gCelRenderbufferFailedWidth == width && gCelRenderbufferFailedHeight == height) &&
+        !(gCelRenderFboFailedWidth == width && gCelRenderFboFailedHeight == height))
+    {
+        return true;
+    }
+#endif
+
+    // Any non-fast-path call performs the original size, allocation, attachment
+    // and framebuffer validation below before it can repopulate the cache.
+    InvalidateCelRenderTargetValidationCache();
+
     if (!CheckSHARRenderTargetSize(
             width, height, "cel render target", 2, true, true))
     {
@@ -1362,6 +1424,23 @@ static bool EnsureCelRenderTarget(int width, int height)
     glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previousFramebuffer);
     glBindRenderbuffer(GL_RENDERBUFFER, (GLuint)previousRenderbuffer);
     glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture2D);
+
+    if (gCelRenderFboReady)
+    {
+        gCelRenderTargetValidationCached = true;
+        gCelRenderTargetValidatedWidth = width;
+        gCelRenderTargetValidatedHeight = height;
+        gCelRenderTargetValidatedBloomEnabled = bloomEnabled;
+        gCelRenderTargetValidatedUsesDepthTexture = gCelDepthTextureActive;
+        gCelRenderTargetValidatedFbo = gCelRenderFbo;
+        gCelRenderTargetValidatedColourTexture = gCelPostTexture;
+        gCelRenderTargetValidatedDepthObject =
+            gCelDepthTextureActive ? gCelRenderDepthTexture : gCelRenderDepth;
+    }
+    else
+    {
+        InvalidateCelRenderTargetValidationCache();
+    }
 
     return gCelRenderFboReady;
 }
@@ -2241,6 +2320,7 @@ static void RecreateSHARTexture(GLuint& texture)
 
 static void ResetAndroidPostProcess()
 {
+    InvalidateCelRenderTargetValidationCache();
     // Detach the old texture storage from FBOs before replacing texture names.
     if (gCelRenderFbo != 0)
     {
@@ -3427,6 +3507,7 @@ pglDisplay ::pglDisplay(pddiDisplayInfo* info)
 pglDisplay ::~pglDisplay()
 {
 #ifdef RAD_ANDROID
+    InvalidateCelRenderTargetValidationCache();
     if (gCelRenderDepth)
     {
         glDeleteRenderbuffers(1, &gCelRenderDepth);
