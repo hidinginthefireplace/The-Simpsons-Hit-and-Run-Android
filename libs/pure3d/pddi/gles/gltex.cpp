@@ -11,8 +11,138 @@
 #include <math.h>
 #include <pddi/base/debug.hpp>
 #include <radmemory.hpp>
+#if defined(RAD_ANDROID)
+#include <SDL.h>
+#include <SDL_system.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#endif
 
 #include <microprofile.h>
+
+#if defined(RAD_ANDROID)
+static const int SHAR_ANISOTROPIC_FILTER_LEVELS[5] = { 2, 4, 8, 12, 16 };
+static int gSHARAnisotropicFilteringSelection = 0; // 2x on new installs
+static bool gSHARAnisotropicFilteringConfigurationLoaded = false;
+static bool gSHARAnisotropyCapabilityChecked = false;
+static bool gSHARAnisotropySupported = false;
+static GLfloat gSHARMaximumAnisotropy = 1.0f;
+static const GLenum SHAR_GL_TEXTURE_MAX_ANISOTROPY_EXT = 0x84FE;
+static const GLenum SHAR_GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT = 0x84FF;
+
+static bool BuildSHARAnisotropicConfigurationPath( char* path, size_t pathSize )
+{
+    const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
+    if( basePath == NULL || basePath[0] == '\0' )
+        return false;
+    char directory[512];
+    const int length = snprintf(directory, sizeof(directory), "%s/Graphics", basePath);
+    if( length < 0 || length >= static_cast<int>(sizeof(directory)) )
+        return false;
+    struct stat info;
+    if( mkdir(directory, 0777) != 0 && errno != EEXIST )
+        return false;
+    if( stat(directory, &info) != 0 || !S_ISDIR(info.st_mode) )
+        return false;
+    const int pathLength = snprintf(path, pathSize, "%s/Simpsons_anisotropic_filtering.txt", directory);
+    return pathLength >= 0 && pathLength < static_cast<int>(pathSize);
+}
+
+static void WriteSHARAnisotropicFilteringConfiguration()
+{
+    char path[512];
+    if( !BuildSHARAnisotropicConfigurationPath(path, sizeof(path)) )
+        return;
+    FILE* file = fopen(path, "w");
+    if( file == NULL )
+        return;
+    fprintf(file, "# Simpsons Hit & Run Android - experimental anisotropic filtering\n");
+    fprintf(file, "# Requested level is clamped to device extension capability when applied.\n");
+    fprintf(file, "anisotropy=%dx\n", SHAR_ANISOTROPIC_FILTER_LEVELS[gSHARAnisotropicFilteringSelection]);
+    fclose(file);
+}
+
+static void LoadSHARAnisotropicFilteringConfiguration()
+{
+    if( gSHARAnisotropicFilteringConfigurationLoaded )
+        return;
+    gSHARAnisotropicFilteringConfigurationLoaded = true;
+    char path[512];
+    if( !BuildSHARAnisotropicConfigurationPath(path, sizeof(path)) )
+        return;
+    FILE* file = fopen(path, "r");
+    if( file == NULL )
+    {
+        WriteSHARAnisotropicFilteringConfiguration();
+        return;
+    }
+    char line[256];
+    while( fgets(line, sizeof(line), file) != NULL )
+    {
+        char* value = strstr(line, "anisotropy=");
+        if( value == NULL )
+            continue;
+        value += strlen("anisotropy=");
+        const int requested = static_cast<int>(strtol(value, NULL, 10));
+        for( int i = 0; i < 5; ++i )
+        {
+            if( requested == SHAR_ANISOTROPIC_FILTER_LEVELS[i] )
+            {
+                gSHARAnisotropicFilteringSelection = i;
+                break;
+            }
+        }
+        break;
+    }
+    fclose(file);
+}
+
+int GetSHARAnisotropicFilteringSelection()
+{
+    LoadSHARAnisotropicFilteringConfiguration();
+    return gSHARAnisotropicFilteringSelection;
+}
+
+void SetSHARAnisotropicFilteringSelection( int selection )
+{
+    LoadSHARAnisotropicFilteringConfiguration();
+    if( selection < 0 ) selection = 0;
+    if( selection > 4 ) selection = 4;
+    if( gSHARAnisotropicFilteringSelection == selection )
+        return;
+    gSHARAnisotropicFilteringSelection = selection;
+    WriteSHARAnisotropicFilteringConfiguration();
+}
+
+static void ApplySHARAnisotropicFilteringToBoundTexture( int selection )
+{
+    if( !gSHARAnisotropyCapabilityChecked )
+    {
+        gSHARAnisotropyCapabilityChecked = true;
+        if( SDL_GL_ExtensionSupported("GL_EXT_texture_filter_anisotropic") )
+        {
+            GLfloat maximum = 1.0f;
+            glGetFloatv(SHAR_GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maximum);
+            if( maximum >= 1.0f )
+            {
+                gSHARMaximumAnisotropy = maximum;
+                gSHARAnisotropySupported = true;
+            }
+        }
+    }
+    if( !gSHARAnisotropySupported )
+        return;
+    if( selection < 0 ) selection = 0;
+    if( selection > 4 ) selection = 4;
+    GLfloat requested = static_cast<GLfloat>(SHAR_ANISOTROPIC_FILTER_LEVELS[selection]);
+    if( requested > gSHARMaximumAnisotropy )
+        requested = gSHARMaximumAnisotropy;
+    glTexParameterf(GL_TEXTURE_2D, SHAR_GL_TEXTURE_MAX_ANISOTROPY_EXT, requested);
+}
+#endif
 
 static inline GLenum PickPixelFormat(pddiPixelFormat format)
 {
@@ -87,6 +217,9 @@ void pglTexture::SetGLState(void)
     {
         contextID = context->contextID;
         gltexture = 0;
+#if defined(RAD_ANDROID)
+        anisotropySelectionApplied = -1;
+#endif
     }
 
     MICROPROFILE_SCOPEI("PDDI", "pglTexture::SetGLState", MP_RED);
@@ -186,6 +319,16 @@ void pglTexture::SetGLState(void)
     {
         glBindTexture(GL_TEXTURE_2D, gltexture);
     }
+
+#if defined(RAD_ANDROID)
+    const int anisotropySelection = GetSHARAnisotropicFilteringSelection();
+    if( anisotropySelectionApplied != anisotropySelection )
+    {
+        // Only touch the texture parameter when the user has changed the level.
+        anisotropySelectionApplied = anisotropySelection;
+        ApplySHARAnisotropicFilteringToBoundTexture(anisotropySelection);
+    }
+#endif
 }
 
 int fastlog2(int x)
@@ -296,6 +439,9 @@ pglTexture::pglTexture(pglContext* c)
     gltexture = 0;
     priority = 15;
     valid = false;
+#if defined(RAD_ANDROID)
+    anisotropySelectionApplied = -1;
+#endif
 }
 
 pglTexture::~pglTexture()

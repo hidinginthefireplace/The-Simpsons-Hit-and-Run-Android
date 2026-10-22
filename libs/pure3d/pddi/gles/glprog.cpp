@@ -58,6 +58,7 @@ pglProgram::pglProgram()
     lit = -1;
     toonEnabled = -1;
     toonObjectEnabled = -1;
+    toonRimEnabled = -1;
     toonOutlinePass = -1;
     toonOutlineWidth = -1;
     nightObjectBrightness = -1;
@@ -237,12 +238,14 @@ void pglProgram::SetCelShadingEnabled(bool enabled)
 }
 
 #ifdef RAD_ANDROID
-void pglProgram::SetCelShadingState(bool enabled, bool objectEnabled, bool outlinePass, float objectBrightness, float objectSaturation)
+void pglProgram::SetCelShadingState(bool enabled, bool objectEnabled, bool outlinePass, float objectBrightness, float objectSaturation, bool rimLightingEnabled)
 {
     if (toonEnabled >= 0)
         glUniform1i(toonEnabled, enabled ? 1 : 0);
     if (toonObjectEnabled >= 0)
         glUniform1i(toonObjectEnabled, objectEnabled ? 1 : 0);
+    if (toonRimEnabled >= 0)
+        glUniform1i(toonRimEnabled, rimLightingEnabled ? 1 : 0);
     if (toonOutlinePass >= 0)
         glUniform1i(toonOutlinePass, outlinePass ? 1 : 0);
     if (toonOutlineWidth >= 0)
@@ -355,6 +358,7 @@ bool pglProgram::LinkProgram(GLuint vertexShader, GLuint fragmentShader)
     lit = glGetUniformLocation(program, "lit");
     toonEnabled = glGetUniformLocation(program, "toonEnabled");
     toonObjectEnabled = glGetUniformLocation(program, "toonObjectEnabled");
+    toonRimEnabled = glGetUniformLocation(program, "toonRimEnabled");
     toonOutlinePass = glGetUniformLocation(program, "toonOutlinePass");
     toonOutlineWidth = glGetUniformLocation(program, "toonOutlineWidth");
     nightObjectBrightness = glGetUniformLocation(program, "nightObjectBrightness");

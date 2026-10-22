@@ -109,6 +109,7 @@ private:
     Scrooby::Text* m_pOriginalSharpeningValue = NULL;
     Scrooby::Text* m_pGraphicsSharpeningValue = NULL;
     Scrooby::Text* m_pMoreGraphicsSharpeningValue = NULL;
+    Scrooby::Text* m_pOriginalRadarValue = NULL;
 
     int mMenuItemToGuiMenuIndex[ NUM_PAUSE_SETTINGS_MENU_ITEMS ];
     int mGuiMenuIndexToMenuItem[ NUM_PAUSE_SETTINGS_MENU_ITEMS ];

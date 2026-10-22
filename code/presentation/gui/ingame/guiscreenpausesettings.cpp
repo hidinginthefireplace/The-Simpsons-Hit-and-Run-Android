@@ -69,6 +69,10 @@ bool IsSHARBloomEnabled();
 void SetSHARBloomEnabled(bool enabled);
 bool IsSHARCloudShadowsEnabled();
 void SetSHARCloudShadowsEnabled(bool enabled);
+bool IsSHARRimLightingEnabled();
+void SetSHARRimLightingEnabled(bool enabled);
+int GetSHARAnisotropicFilteringSelection();
+void SetSHARAnisotropicFilteringSelection(int selection);
 int GetFrameSharpeningLevel();
 void SetFrameSharpeningLevel(int level);
 bool RequestSHARAndroidRenderResolutionHeight(int targetHeight);
@@ -1067,44 +1071,54 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
         }
     }
 
-    // The second Graphics page uses the Jump Cameras row for Sharpening.
-    // Keep its six-value text separate from the normal settings value and the
-    // first-page FPS selector so switching pages never overwrites Scrooby text.
+    // The second Graphics page places Sharpening on the Radar row.
+    // Keep its selector separate from the native Settings values.
     {
-        Scrooby::Group* pSharpeningGroup = pPage->GetGroup( "JumpCamera" );
+        Scrooby::Group* pSharpeningGroup = pPage->GetGroup( "Radar" );
         FeGroup* pFeSharpeningGroup = dynamic_cast<FeGroup*>( pSharpeningGroup );
         FeText* pOriginalValue = pSharpeningGroup != NULL
-            ? dynamic_cast<FeText*>( pSharpeningGroup->GetText( "JumpCamera_Value" ) )
+            ? dynamic_cast<FeText*>( pSharpeningGroup->GetText( "Radar_Value" ) )
             : NULL;
+
+        if( pFeSharpeningGroup == NULL || pOriginalValue == NULL )
+        {
+            Scrooby::Group* pMenuGroup = pPage->GetGroup( "Menu" );
+            FeGroup* pFeMenuGroup = dynamic_cast<FeGroup*>( pMenuGroup );
+            FeText* pGeneratedValue = pMenuGroup != NULL
+                ? dynamic_cast<FeText*>(
+                    pMenuGroup->GetText( "AndroidSettings_Radar_Value" ) )
+                : NULL;
+
+            if( pFeMenuGroup != NULL && pGeneratedValue != NULL )
+            {
+                pSharpeningGroup = pMenuGroup;
+                pFeSharpeningGroup = pFeMenuGroup;
+                pOriginalValue = pGeneratedValue;
+            }
+        }
 
         if( pFeSharpeningGroup != NULL && pOriginalValue != NULL )
         {
+            m_pOriginalRadarValue = pOriginalValue;
             FeText* pGraphicsValue =
                 pFeSharpeningGroup->AddText( "AndroidMoreGraphicsSharpeningValue", 0, 0 );
-
             if( pGraphicsValue != NULL )
             {
                 CopyAndroidMenuTextAppearance( pGraphicsValue, pOriginalValue );
-
-                int width = 0;
-                int height = 0;
-                int centerX = 0;
-                int centerY = 0;
+                int width = 0, height = 0, centerX = 0, centerY = 0;
                 pOriginalValue->GetBoundingBoxSize( width, height );
                 pOriginalValue->GetBoundingBoxCenter( centerX, centerY );
                 pGraphicsValue->SetBoundingBoxSize( width, height );
                 pGraphicsValue->SetPositionOfCenter( centerX, centerY );
 
-                const char* sharpeningValues[6] =
+                const char* sharpeningValues[5] =
                 {
-                    "OFF", "20%", "40%", "60%", "80%", "MAX"
+                    "20%", "40%", "60%", "80%", "MAX"
                 };
-                for( int valueIndex = 0; valueIndex < 6; ++valueIndex )
-                {
+                for( int valueIndex = 0; valueIndex < 5; ++valueIndex )
                     pGraphicsValue->AddHardCodedString( sharpeningValues[valueIndex] );
-                }
 
-                pGraphicsValue->SetIndex( 2 );
+                pGraphicsValue->SetIndex( 1 );
                 pGraphicsValue->SetVisible( false );
                 m_pMoreGraphicsSharpeningValue = pGraphicsValue;
             }
@@ -1352,39 +1366,37 @@ void CGuiScreenPauseSettings::ConfigureAndroidMoreGraphicsMenu()
         MENU_ITEM_VIBRATION
     };
 
-    const char* labels[3] =
+    const char* labels[5] =
     {
         "CRT Filter",
+        "Motion Blur",
+        "Rim Lighting",
         "Sharpening",
-        "Motion Blur"
+        "Anisotropic Filtering"
     };
 
     const bool crtEnabled = IsCRTFilterEnabled();
     const bool motionBlurEnabled = IsMotionBlurEnabled();
+    const bool rimLightingEnabled = IsSHARRimLightingEnabled();
     const int sharpeningLevel = GetFrameSharpeningLevel();
+    const int anisotropicSelection = GetSHARAnisotropicFilteringSelection();
 
     for( int i = 0; i < 6; ++i )
     {
         const int guiIndex = GetGuiMenuIndexFromMenuItem( logicalItems[i] );
         if( guiIndex < 0 )
-        {
             continue;
-        }
 
         GuiMenuItem* item = m_pMenu->GetMenuItem( guiIndex );
         if( item == NULL )
-        {
             continue;
-        }
 
-        if( i >= 3 )
+        if( i >= 5 )
         {
             item->m_attributes &= ~SELECTABLE;
             item->m_showValueArrows = false;
-            Scrooby::Text* hiddenLabel =
-                dynamic_cast<Scrooby::Text*>( item->GetItem() );
-            Scrooby::Text* hiddenValue =
-                dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
+            Scrooby::Text* hiddenLabel = dynamic_cast<Scrooby::Text*>( item->GetItem() );
+            Scrooby::Text* hiddenValue = dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
             if( hiddenLabel != NULL ) hiddenLabel->SetVisible( false );
             if( hiddenValue != NULL ) hiddenValue->SetVisible( false );
             if( item->m_itemValueArrowL != NULL ) item->m_itemValueArrowL->SetVisible( false );
@@ -1398,25 +1410,39 @@ void CGuiScreenPauseSettings::ConfigureAndroidMoreGraphicsMenu()
         item->m_useBackSoundOnSelection = false;
         m_pMenu->SetMenuItemEnabled( guiIndex, true, true );
 
-        if( i == 0 && m_pGraphicsResolutionValue != NULL &&
-            m_pOriginalResolutionValue != NULL )
+        // Use native row-value objects for the first three toggles. The
+        // Sharpening and Anisotropic Filtering selectors use private value text.
+        if( i == 0 && m_pOriginalResolutionValue != NULL )
         {
-            item->SetItemValue( m_pGraphicsResolutionValue );
-            m_pOriginalResolutionValue->SetVisible( false );
-            m_pGraphicsResolutionValue->SetVisible( true );
+            if( m_pGraphicsResolutionValue != NULL )
+                m_pGraphicsResolutionValue->SetVisible( false );
+            m_pOriginalResolutionValue->SetVisible( true );
+            item->SetItemValue( m_pOriginalResolutionValue );
         }
-        else if( i == 1 && m_pMoreGraphicsSharpeningValue != NULL &&
-                 m_pOriginalFPSValue != NULL )
+        else if( i == 1 && m_pOriginalFPSValue != NULL )
         {
-            item->SetItemValue( m_pMoreGraphicsSharpeningValue );
-            if( m_pGraphicsFPSValue != NULL ) m_pGraphicsFPSValue->SetVisible( false );
-            m_pOriginalFPSValue->SetVisible( false );
+            if( m_pGraphicsFPSValue != NULL )
+                m_pGraphicsFPSValue->SetVisible( false );
+            m_pOriginalFPSValue->SetVisible( true );
+            item->SetItemValue( m_pOriginalFPSValue );
+        }
+        else if( i == 3 && m_pMoreGraphicsSharpeningValue != NULL )
+        {
+            if( m_pOriginalRadarValue != NULL )
+                m_pOriginalRadarValue->SetVisible( false );
             m_pMoreGraphicsSharpeningValue->SetVisible( true );
+            item->SetItemValue( m_pMoreGraphicsSharpeningValue );
+        }
+        else if( i == 4 && m_pGraphicsSharpeningValue != NULL )
+        {
+            if( m_pOriginalSharpeningValue != NULL )
+                m_pOriginalSharpeningValue->SetVisible( false );
+            m_pGraphicsSharpeningValue->SetVisible( true );
+            item->SetItemValue( m_pGraphicsSharpeningValue );
         }
 
         Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( item->GetItem() );
         Scrooby::Text* value = dynamic_cast<Scrooby::Text*>( item->GetItemValue() );
-
         if( label != NULL )
         {
             label->SetString( 0, labels[i] );
@@ -1426,26 +1452,37 @@ void CGuiScreenPauseSettings::ConfigureAndroidMoreGraphicsMenu()
         if( value != NULL )
         {
             value->SetVisible( true );
-            if( i == 0 || i == 2 )
+            if( i <= 2 )
             {
                 value->SetString( 0, "OFF" );
                 value->SetString( 1, "ON" );
                 m_pMenu->SetSelectionValueCount( guiIndex, 2 );
-                m_pMenu->SetSelectionValue(
-                    guiIndex, ( i == 0 ? crtEnabled : motionBlurEnabled ) ? 1 : 0 );
+                const bool enabled = i == 0 ? crtEnabled :
+                                     i == 1 ? motionBlurEnabled : rimLightingEnabled;
+                m_pMenu->SetSelectionValue( guiIndex, enabled ? 1 : 0 );
             }
-            else
+            else if( i == 3 && m_pMoreGraphicsSharpeningValue != NULL )
             {
-                const char* sharpeningValues[6] =
-                {
-                    "OFF", "20%", "40%", "60%", "80%", "MAX"
-                };
-                for( int valueIndex = 0; valueIndex < 6; ++valueIndex )
-                {
-                    value->SetString( valueIndex, sharpeningValues[valueIndex] );
-                }
-                m_pMenu->SetSelectionValueCount( guiIndex, 6 );
-                m_pMenu->SetSelectionValue( guiIndex, sharpeningLevel );
+                const char* values[5] = { "20%", "40%", "60%", "80%", "MAX" };
+                for( int valueIndex = 0; valueIndex < 5; ++valueIndex )
+                    value->SetString( valueIndex, values[valueIndex] );
+                m_pMenu->SetSelectionValueCount( guiIndex, 5 );
+                // Level 0 is legacy OFF; the five-choice selector represents
+                // levels 1..5 as 20%, 40%, 60%, 80%, and MAX.
+                int selection = sharpeningLevel > 0 ? sharpeningLevel - 1 : 0;
+                if( selection > 4 ) selection = 4;
+                m_pMenu->SetSelectionValue( guiIndex, selection );
+            }
+            else if( i == 4 && m_pGraphicsSharpeningValue != NULL )
+            {
+                const char* values[5] = { "2x", "4x", "8x", "12x", "16x" };
+                for( int valueIndex = 0; valueIndex < 5; ++valueIndex )
+                    value->SetString( valueIndex, values[valueIndex] );
+                m_pMenu->SetSelectionValueCount( guiIndex, 5 );
+                int selection = anisotropicSelection;
+                if( selection < 0 ) selection = 0;
+                if( selection > 4 ) selection = 4;
+                m_pMenu->SetSelectionValue( guiIndex, selection );
             }
         }
 
@@ -1726,14 +1763,21 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
         // Restore the original Jump Cameras value text after the Graphics FPS selector.
         if( logicalItems[i] == MENU_ITEM_JUMP_CAMERAS &&
             m_pOriginalFPSValue != NULL &&
-            ( item->GetItemValue() == m_pGraphicsFPSValue ||
-              item->GetItemValue() == m_pMoreGraphicsSharpeningValue ) )
+            item->GetItemValue() == m_pGraphicsFPSValue )
         {
             if( m_pGraphicsFPSValue != NULL ) m_pGraphicsFPSValue->SetVisible( false );
-            if( m_pMoreGraphicsSharpeningValue != NULL )
-                m_pMoreGraphicsSharpeningValue->SetVisible( false );
             m_pOriginalFPSValue->SetVisible( true );
             item->SetItemValue( m_pOriginalFPSValue );
+        }
+
+        if( logicalItems[i] == MENU_ITEM_RADAR &&
+            m_pOriginalRadarValue != NULL &&
+            item->GetItemValue() == m_pMoreGraphicsSharpeningValue )
+        {
+            if( m_pMoreGraphicsSharpeningValue != NULL )
+                m_pMoreGraphicsSharpeningValue->SetVisible( false );
+            m_pOriginalRadarValue->SetVisible( true );
+            item->SetItemValue( m_pOriginalRadarValue );
         }
 
         // Restore the original Invert Camera value text after the
@@ -1987,11 +2031,20 @@ void CGuiScreenPauseSettings::HandleMessage
                             }
                             else if( logicalMenuItem == MENU_ITEM_JUMP_CAMERAS )
                             {
-                                SetFrameSharpeningLevel( static_cast<int>( param2 ) );
+                                SetMotionBlurEnabled( enabled );
                             }
                             else if( logicalMenuItem == MENU_ITEM_INTERSECT_NAV_SYSTEM )
                             {
-                                SetMotionBlurEnabled( enabled );
+                                SetSHARRimLightingEnabled( enabled );
+                            }
+                            else if( logicalMenuItem == MENU_ITEM_RADAR )
+                            {
+                                if( param2 < 5 )
+                                    SetFrameSharpeningLevel( static_cast<int>( param2 ) + 1 );
+                            }
+                            else if( logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL )
+                            {
+                                SetSHARAnisotropicFilteringSelection( static_cast<int>( param2 ) );
                             }
                         }
                         else if( logicalMenuItem == MENU_ITEM_CAMERA )

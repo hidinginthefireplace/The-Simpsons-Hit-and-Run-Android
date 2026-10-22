@@ -87,6 +87,8 @@ static bool gCRTConfigurationLoaded = false;
 static bool gMotionBlurConfigurationLoaded = false;
 static bool gMotionBlurEnabled = false;
 static bool gCRTEnabled = false;
+static bool gSHARRimLightingEnabled = false;
+static bool gSHARRimLightingConfigurationLoaded = false;
 static float gCRTScanlineStrength = 0.5f;
 static float gCRTCurvature = 0.06f;
 static float gCRTGlowStrength = 0.25f;
@@ -99,6 +101,7 @@ static const char* CRT_CONFIGURATION_FILE_NAME = "Simpsons_crt_configuration.txt
 static const char* MOTION_BLUR_CONFIGURATION_FILE_NAME = "Simpsons_motion_blur.txt";
 static const char* CEL_SHADING_CONFIGURATION_FILE_NAME = "Simpsons_cel_shading.txt";
 static const char* SHARPENING_CONFIGURATION_FILE_NAME = "Simpsons_sharpening.txt";
+static const char* RIM_LIGHTING_CONFIGURATION_FILE_NAME = "Simpsons_rim_lighting.txt";
 
 static bool BuildGraphicsConfigurationPath(char* filePath, size_t filePathSize, const char* fileName)
 {
@@ -572,6 +575,56 @@ void SetMotionBlurEnabled(bool enabled)
 }
 
 
+static void WriteSHARRimLightingConfiguration()
+{
+    char filePath[512];
+    if( !BuildGraphicsConfigurationPath( filePath, sizeof(filePath),
+                                         RIM_LIGHTING_CONFIGURATION_FILE_NAME ) )
+        return;
+    FILE* file = fopen( filePath, "w" );
+    if( file == nullptr )
+        return;
+    fprintf( file, "# Simpsons Hit & Run Android - model toon rim lighting\n" );
+    fprintf( file, "# Restored parameters: rim strength 0.20, power 2.5, flat base 0.78\n" );
+    fprintf( file, "rim_lighting=%s\n", gSHARRimLightingEnabled ? "true" : "false" );
+    fclose( file );
+}
+
+static void LoadSHARRimLightingConfiguration()
+{
+    if( gSHARRimLightingConfigurationLoaded )
+        return;
+    gSHARRimLightingConfigurationLoaded = true;
+
+    char filePath[512];
+    if( !BuildGraphicsConfigurationPath( filePath, sizeof(filePath),
+                                         RIM_LIGHTING_CONFIGURATION_FILE_NAME ) )
+        return;
+    FILE* file = fopen( filePath, "r" );
+    if( file == nullptr )
+    {
+        WriteSHARRimLightingConfiguration();
+        return;
+    }
+
+    char line[256];
+    while( fgets( line, sizeof(line), file ) != nullptr )
+    {
+        char* value = strstr( line, "rim_lighting=" );
+        if( value == nullptr )
+            continue;
+        value += strlen( "rim_lighting=" );
+        while( *value == ' ' || *value == '\t' )
+            ++value;
+        gSHARRimLightingEnabled =
+            ( *value == '1' || strncmp(value, "true", 4) == 0 ||
+              strncmp(value, "on", 2) == 0 || strncmp(value, "ON", 2) == 0 );
+        break;
+    }
+    fclose( file );
+}
+
+
 bool GetSHARMotionBlurCameraData(float* output)
 {
     if (output == NULL || gCelShadingContext == NULL)
@@ -655,6 +708,22 @@ static void ApplyCelShadingState()
 {
     if (gCelShadingContext)
         gCelShadingContext->ApplyCelShadingState();
+}
+
+bool IsSHARRimLightingEnabled()
+{
+    LoadSHARRimLightingConfiguration();
+    return gSHARRimLightingEnabled;
+}
+
+void SetSHARRimLightingEnabled( bool enabled )
+{
+    LoadSHARRimLightingConfiguration();
+    if( gSHARRimLightingEnabled == enabled )
+        return;
+    gSHARRimLightingEnabled = enabled;
+    WriteSHARRimLightingConfiguration();
+    ApplyCelShadingState();
 }
 
 void SetCelShadingEnabled(bool enabled)
@@ -940,6 +1009,7 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "uniform int lit;\n"
         "uniform int toonEnabled;\n"
         "uniform int toonObjectEnabled;\n"
+        "uniform int toonRimEnabled;\n"
         "uniform int toonOutlinePass;\n"
         "uniform float toonOutlineWidth;\n"
         "uniform float nightObjectBrightness;\n"
@@ -953,6 +1023,9 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         // One flat toon tone for enabled characters and vehicles. This removes
         // the two-band light/shadow jump and keeps the source texture colours intact.
         "const float toonFlatLight = 0.78;\n"
+#ifdef RAD_ANDROID
+        "const float toonRimStrength = 0.20;\n"
+#endif
 
         "vec3 toonLightingColor() {\n"
         "    if (toonEnabled == 0 || toonObjectEnabled == 0) {\n"
@@ -978,8 +1051,13 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
         "    }\n"
 #ifdef RAD_ANDROID
         "    if (lit == 0) return vec3(1.0);\n"
-#endif
+        "    if (toonRimEnabled == 0) return dcm.rgb * toonFlatLight;\n"
+        "    vec3 n = normalize(toonNormal);\n"
+        "    float rim = pow(1.0 - max(dot(n, normalize(-toonViewPos)), 0.0), 2.5);\n"
+        "    return dcm.rgb * (toonFlatLight + toonRimStrength * rim);\n"
+#else
         "    return dcm.rgb * toonFlatLight;\n"
+#endif
         "}\n"
 #ifdef RAD_ANDROID
         "vec3 applySHARObjectDimming(vec3 colour) {\n"
@@ -1965,7 +2043,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
     {
 #ifdef RAD_ANDROID
         if (currentProgram)
-            currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation);
+            currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation, IsSHARRimLightingEnabled());
 #endif
         return;
     }

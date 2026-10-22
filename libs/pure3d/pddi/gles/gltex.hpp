@@ -55,6 +55,9 @@ protected:
     bool valid;
     unsigned int gltexture;
     int priority;
+#if defined(RAD_ANDROID)
+    int anisotropySelectionApplied;
+#endif
 
     pddiLockInfo lock;
 
