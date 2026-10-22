@@ -107,11 +107,17 @@ GameplayContext* GameplayContext::spInstance = NULL;
 
 #if defined(RAD_ANDROID)
 // Called by the GLES renderer so experimental cloud shadows never bleed into
-// interiors, other levels, menus, or non-gameplay presentation contexts.
+// interiors or other levels. Keep the world effect enabled behind the pause UI.
 bool IsSHARWorldCloudShadowLevelAllowed()
 {
     GameFlow* gameFlow = GetGameFlow();
-    if (gameFlow == NULL || gameFlow->GetCurrentContext() != CONTEXT_GAMEPLAY)
+    if (gameFlow == NULL)
+    {
+        return false;
+    }
+
+    const ContextEnum currentContext = gameFlow->GetCurrentContext();
+    if (currentContext != CONTEXT_GAMEPLAY && currentContext != CONTEXT_PAUSE)
     {
         return false;
     }
