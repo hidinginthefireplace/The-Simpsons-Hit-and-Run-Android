@@ -33,21 +33,65 @@ static pglContext* gCelShadingContext = nullptr;
 static bool gSHARCharacterMaskWorldEnabled = false;
 static bool gSHARCharacterMaskModelPass = false;
 static bool gSHARCharacterMaskAlphaWriteRequested = true;
+
+// Mirror the colour-write mask set through the Android GLES backend. Character
+// mask policy changes usually only need to toggle alpha; querying GL state for
+// both transitions on every character was unnecessary. All Android-side
+// glColorMask calls in this backend go through SetSHARTrackedColorWriteMask().
+static GLboolean gSHARTrackedColorWriteMask[4] = {
+    GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE
+};
+static bool gSHARTrackedColorWriteMaskKnown = false;
+
 #ifdef RAD_ANDROID
 static float gSHARObjectBrightness = 1.0f;
 static float gSHARObjectSaturation = 1.0f;
 #endif
 
+void SetSHARTrackedColorWriteMask(
+    GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha)
+{
+    if (!gSHARTrackedColorWriteMaskKnown ||
+        gSHARTrackedColorWriteMask[0] != red ||
+        gSHARTrackedColorWriteMask[1] != green ||
+        gSHARTrackedColorWriteMask[2] != blue ||
+        gSHARTrackedColorWriteMask[3] != alpha)
+    {
+        glColorMask(red, green, blue, alpha);
+    }
+
+    gSHARTrackedColorWriteMask[0] = red;
+    gSHARTrackedColorWriteMask[1] = green;
+    gSHARTrackedColorWriteMask[2] = blue;
+    gSHARTrackedColorWriteMask[3] = alpha;
+    gSHARTrackedColorWriteMaskKnown = true;
+}
+
+void InvalidateSHARTrackedColorWriteMaskCache()
+{
+    gSHARTrackedColorWriteMaskKnown = false;
+}
+
 static void ApplySHARCharacterMaskAlphaPolicy()
 {
-    GLboolean writeMask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
-    glGetBooleanv(GL_COLOR_WRITEMASK, writeMask);
+    // Query only when the tracked state is unknown (startup/context reset), not
+    // on every character's begin/end model-pass transition.
+    if (!gSHARTrackedColorWriteMaskKnown)
+    {
+        glGetBooleanv(GL_COLOR_WRITEMASK, gSHARTrackedColorWriteMask);
+        gSHARTrackedColorWriteMaskKnown = true;
+    }
+
     // The repurposed alpha channel is a mask, so character geometry must
     // mark it even if a material disables ordinary framebuffer alpha writes.
     const GLboolean alphaAllowed = gSHARCharacterMaskWorldEnabled
         ? (gSHARCharacterMaskModelPass ? GL_TRUE : GL_FALSE)
         : (gSHARCharacterMaskAlphaWriteRequested ? GL_TRUE : GL_FALSE);
-    glColorMask(writeMask[0], writeMask[1], writeMask[2], alphaAllowed);
+    SetSHARTrackedColorWriteMask(
+        gSHARTrackedColorWriteMask[0],
+        gSHARTrackedColorWriteMask[1],
+        gSHARTrackedColorWriteMask[2],
+        alphaAllowed);
 }
 
 void SetSHARCharacterMaskWorldEnabled(bool enabled)
@@ -1894,7 +1938,11 @@ void pglContext::SetColourWrite( bool red, bool green, bool blue, bool alpha )
     const bool effectiveAlpha = gSHARCharacterMaskWorldEnabled
         ? gSHARCharacterMaskModelPass
         : alpha;
-    glColorMask(red, green, blue, effectiveAlpha);
+    SetSHARTrackedColorWriteMask(
+        red ? GL_TRUE : GL_FALSE,
+        green ? GL_TRUE : GL_FALSE,
+        blue ? GL_TRUE : GL_FALSE,
+        effectiveAlpha ? GL_TRUE : GL_FALSE);
 #else
     glColorMask(red, green, blue, alpha);
 #endif

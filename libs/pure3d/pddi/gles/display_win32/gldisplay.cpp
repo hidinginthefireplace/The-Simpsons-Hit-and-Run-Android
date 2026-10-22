@@ -27,6 +27,8 @@ bool IsCelShadingEnabled();
 bool IsMotionBlurEnabled();
 void SetSHARCharacterMaskWorldEnabled(bool enabled);
 void SetSHARCharacterMaskModelPass(bool enabled);
+void SetSHARTrackedColorWriteMask(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha);
+void InvalidateSHARTrackedColorWriteMaskCache();
 bool GetSHARMotionBlurCameraData(float* output);
 bool IsSHARWorldCloudShadowLevelAllowed();
 bool IsFrameSharpeningEnabled();
@@ -2320,6 +2322,7 @@ static void RecreateSHARTexture(GLuint& texture)
 
 static void ResetAndroidPostProcess()
 {
+    InvalidateSHARTrackedColorWriteMaskCache();
     InvalidateCelRenderTargetValidationCache();
     // Detach the old texture storage from FBOs before replacing texture names.
     if (gCelRenderFbo != 0)
@@ -2771,15 +2774,20 @@ bool BeginCelPostProcessFrame(int width, int height)
     GLboolean previousScissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
     GLfloat previousClearColour[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     glGetBooleanv(GL_COLOR_WRITEMASK, previousColourMask);
+    // Synchronize tracking with the queried state before the temporary clear.
+    SetSHARTrackedColorWriteMask(
+        previousColourMask[0], previousColourMask[1],
+        previousColourMask[2], previousColourMask[3]);
     glGetFloatv(GL_COLOR_CLEAR_VALUE, previousClearColour);
     glDisable(GL_SCISSOR_TEST);
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+    SetSHARTrackedColorWriteMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     glClearColor(previousClearColour[0], previousClearColour[1],
                  previousClearColour[2], previousClearColour[3]);
-    glColorMask(previousColourMask[0], previousColourMask[1],
-                previousColourMask[2], previousColourMask[3]);
+    SetSHARTrackedColorWriteMask(
+        previousColourMask[0], previousColourMask[1],
+        previousColourMask[2], previousColourMask[3]);
     if (previousScissorEnabled)
         glEnable(GL_SCISSOR_TEST);
 
@@ -2879,7 +2887,7 @@ void BeginSHARAndroidFMVOutputRender()
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    SetSHARTrackedColorWriteMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -3507,6 +3515,7 @@ pglDisplay ::pglDisplay(pddiDisplayInfo* info)
 pglDisplay ::~pglDisplay()
 {
 #ifdef RAD_ANDROID
+    InvalidateSHARTrackedColorWriteMaskCache();
     InvalidateCelRenderTargetValidationCache();
     if (gCelRenderDepth)
     {
