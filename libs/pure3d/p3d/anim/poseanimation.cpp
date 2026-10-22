@@ -98,9 +98,19 @@ void tPoseAnimationController::UpdateNoBlending()
 
         if (IsL1Gas04SignJoint(anim, joint))
         {
-            // Freeze the complete transform for the faulty sign only. This
-            // also prevents its animated rotation from moving it off the pole.
+            // Keep gas04 at its authored position, but borrow gas03's known-good
+            // rotation channel so this sign can rotate without using the faulty
+            // transform animation recorded for gas04.
             joint->objectMatrix = skeletonJoint->restPose;
+            const tAnimationGroup* workingSignGroup =
+                anim->GetGroupByUID(tEntity::MakeUID("gas03"));
+            const tRotationChannel* workingSignRotation = workingSignGroup
+                ? workingSignGroup->GetRotationChannel(Pure3DAnimationChannels::Pose::ROTATION_ROT)
+                : NULL;
+            if (workingSignRotation)
+            {
+                workingSignRotation->GetMatrix(frame, &joint->objectMatrix);
+            }
             continue;
         }
 
@@ -250,27 +260,16 @@ void tPoseAnimationController::UpdateWithBlending()
         tPose::Joint* joint = pose->GetJoint(i);
         P3DASSERT(joint);
 
-        bool freezeGas04Rotation = false;
-        for (int activeIndex = 0; activeIndex < nAnim; ++activeIndex)
-        {
-            if (IsL1Gas04SignJoint(playInfo[activeIndex].GetAnimation(), joint))
-            {
-                freezeGas04Rotation = true;
-                break;
-            }
-        }
-        if (freezeGas04Rotation)
-        {
-            // The translation pass already set the full rest transform.
-            // Leave it untouched so the sign remains at its authored pose.
-            continue;
-        }
-
         Quaternion qBlend(0.0f, 0.0f, 0.0f, 1.0f);
 
-        // Prime the accumulation buffer by evaluating the first animation in the buffer.  
-        tAnimation *anim = playInfo[0].GetAnimation();      
-        const tAnimationGroup* animGroup = anim->GetGroupByUID(joint->uid);
+        // Prime the accumulation buffer by evaluating the first animation in the buffer.
+        // When evaluating gas04 in PTRN_animsigns, reuse gas03's known-good
+        // rotation channel while the translation pass keeps gas04 at rest.
+        tAnimation *anim = playInfo[0].GetAnimation();
+        const tUID rotationJointUID = IsL1Gas04SignJoint(anim, joint)
+            ? tEntity::MakeUID("gas03")
+            : joint->uid;
+        const tAnimationGroup* animGroup = anim->GetGroupByUID(rotationJointUID);
         const tRotationChannel* rotation = NULL;
 
         if(animGroup)
@@ -293,7 +292,10 @@ void tPoseAnimationController::UpdateWithBlending()
         for(int j=1; j < nAnim; j++)
         {
             anim = playInfo[j].GetAnimation();
-            animGroup = anim->GetGroupByUID(joint->uid);
+            const tUID blendedRotationJointUID = IsL1Gas04SignJoint(anim, joint)
+                ? tEntity::MakeUID("gas03")
+                : joint->uid;
+            animGroup = anim->GetGroupByUID(blendedRotationJointUID);
             rotation = NULL;
             if(animGroup)
             {
