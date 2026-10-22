@@ -1412,19 +1412,19 @@ void CGuiScreenPauseSettings::ConfigureAndroidMoreGraphicsMenu()
 
         // Use native row-value objects for the first three toggles. The
         // Sharpening and Anisotropic Filtering selectors use private value text.
-        if( i == 0 && m_pOriginalResolutionValue != NULL )
+        if( i == 0 && m_pGraphicsResolutionValue != NULL &&
+            m_pOriginalResolutionValue != NULL )
         {
-            if( m_pGraphicsResolutionValue != NULL )
-                m_pGraphicsResolutionValue->SetVisible( false );
-            m_pOriginalResolutionValue->SetVisible( true );
-            item->SetItemValue( m_pOriginalResolutionValue );
+            m_pOriginalResolutionValue->SetVisible( false );
+            m_pGraphicsResolutionValue->SetVisible( true );
+            item->SetItemValue( m_pGraphicsResolutionValue );
         }
-        else if( i == 1 && m_pOriginalFPSValue != NULL )
+        else if( i == 1 && m_pGraphicsFPSValue != NULL &&
+                 m_pOriginalFPSValue != NULL )
         {
-            if( m_pGraphicsFPSValue != NULL )
-                m_pGraphicsFPSValue->SetVisible( false );
-            m_pOriginalFPSValue->SetVisible( true );
-            item->SetItemValue( m_pOriginalFPSValue );
+            m_pOriginalFPSValue->SetVisible( false );
+            m_pGraphicsFPSValue->SetVisible( true );
+            item->SetItemValue( m_pGraphicsFPSValue );
         }
         else if( i == 3 && m_pMoreGraphicsSharpeningValue != NULL )
         {
