@@ -70,8 +70,6 @@ class ParticleSystemDSG : public InstStatEntityDSG
                 
         void Init( tParticleSystemFactory* pFactory, tEffectController* pController);
         void SetVelocity( const rmt::Vector& velocity );
-        void SetSHARLowResolutionCap(int maxHeight) { mSHARLowResolutionCap = maxHeight; }
-        int GetSHARLowResolutionCap() const { return mSHARLowResolutionCap; }
 
         void SetBias(unsigned bias, float b);
         int GetNumLiveParticles()const;
@@ -94,7 +92,6 @@ class ParticleSystemDSG : public InstStatEntityDSG
         rmt::Vector mPosition;
         tParticleSystem* mpSystem;
         tEffectController* mpController;
-        int mSHARLowResolutionCap;
 };
 
 

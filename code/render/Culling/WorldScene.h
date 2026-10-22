@@ -159,10 +159,6 @@ protected:
    std::vector< IEntityDSG*, s2alloc<IEntityDSG*> > mpZSortsPassShadowCasters;
    std::vector< zSortBlah, s2alloc<zSortBlah> > mpZSorts;
    std::vector< IEntityDSG*, s2alloc<IEntityDSG*> > mpZSortsPass2;
-#ifdef RAD_ANDROID
-   std::vector< IEntityDSG*, s2alloc<IEntityDSG*> > mSHARLowResSmokeSystems;
-   std::vector< IEntityDSG*, s2alloc<IEntityDSG*> > mSHARLowResOtherSystems;
-#endif
    ReserveArray<IEntityDSG*> mShadowCastersPass1;      
    //ReserveArray<IEntityDSG*> mShadowCastersPass2;      
    FixedArray< rmt::Vector4 > mCamPlanes; 

@@ -16,11 +16,6 @@
 #include <functional>
 
 #include <render/Culling/NodeFLL.h>
-#ifdef RAD_ANDROID
-#include <p3d/utility.hpp>
-#include <pddi/gles/gldisplay.hpp>
-#include <render/Particles/particlesystemdsg.h>
-#endif
 
 #include <render/Culling/Matrix3f.h>
 #include <camera/supercammanager.h>
@@ -1733,58 +1728,16 @@ void WorldScene::RenderTranslucent( void )
     END_PROFILE("qsort2")
 #endif
 DSG_SET_PROFILE('T')
-#ifdef RAD_ANDROID
-    mSHARLowResSmokeSystems.resize(0);
-    mSHARLowResOtherSystems.resize(0);
-    const int sharWorldWidth = p3d::display ? p3d::display->GetWidth() : 0;
-    const int sharWorldHeight = p3d::display ? p3d::display->GetHeight() : 0;
-#endif
 BEGIN_PROFILE("qsort2 display")
     for(int i=mpZSortsPass2.size()-1; i>-1; i--)
 	{
-        IEntityDSG* entity = mpZSortsPass2[i];
-#ifdef RAD_ANDROID
-        if (sharWorldWidth > 0 && sharWorldHeight > 0)
-        {
-            ParticleSystemDSG* particle = dynamic_cast<ParticleSystemDSG*>(entity);
-            if (particle != NULL)
-            {
-                const int cap = particle->GetSHARLowResolutionCap();
-                if (sharWorldHeight > cap)
-                {
-                    if (cap <= 480)
-                        mSHARLowResSmokeSystems.push_back(entity);
-                    else
-                        mSHARLowResOtherSystems.push_back(entity);
-                    continue;
-                }
-            }
-        }
-#endif
-        entity->Display();
+//BEGIN_PROFILE("translucent inner")	
+		mpZSortsPass2[i]->Display();
+//END_PROFILE("translucent inner")	
 	}
 END_PROFILE("qsort2 display")
-#ifdef RAD_ANDROID
-    if (!mSHARLowResSmokeSystems.empty() && sharWorldWidth > 0 && sharWorldHeight > 480)
-    {
-        const bool lowResolutionPass = BeginSHARLowResolutionEffectPass(
-            480, sharWorldWidth, sharWorldHeight);
-        for (size_t i = 0; i < mSHARLowResSmokeSystems.size(); ++i)
-            mSHARLowResSmokeSystems[i]->Display();
-        if (lowResolutionPass)
-            EndSHARLowResolutionEffectPass();
-    }
-    if (!mSHARLowResOtherSystems.empty() && sharWorldWidth > 0 && sharWorldHeight > 720)
-    {
-        const bool lowResolutionPass = BeginSHARLowResolutionEffectPass(
-            720, sharWorldWidth, sharWorldHeight);
-        for (size_t i = 0; i < mSHARLowResOtherSystems.size(); ++i)
-            mSHARLowResOtherSystems[i]->Display();
-        if (lowResolutionPass)
-            EndSHARLowResolutionEffectPass();
-    }
-#endif
 }
+
 //========================================================================
 // WorldScene::
 //========================================================================

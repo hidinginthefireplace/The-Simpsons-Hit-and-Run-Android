@@ -49,9 +49,8 @@
 //      None
 //  //===========================================================================
 ParticleSystemDSG::ParticleSystemDSG()
- : mpSystem( NULL ), 
-mpController( NULL ),
-mSHARLowResolutionCap( 720 )
+: mpSystem( NULL ), 
+mpController( NULL )
 {
 	IEntityDSG::mTranslucent = true;
 }

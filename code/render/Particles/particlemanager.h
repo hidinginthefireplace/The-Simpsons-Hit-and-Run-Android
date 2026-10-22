@@ -148,7 +148,7 @@ class ParticleManager
         class ManagedParticleSystem
         {
         public:
-            ManagedParticleSystem( tParticleSystemFactory*, tEffectController*, int sharLowResolutionCap );
+            ManagedParticleSystem( tParticleSystemFactory*, tEffectController* );
             ~ManagedParticleSystem();
             void Display()const { mpSystem->Display(); }
             void Update( float deltaTime );
