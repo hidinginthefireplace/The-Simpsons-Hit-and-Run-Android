@@ -2079,7 +2079,7 @@ static bool EnsureSHARLowResolutionEffectTarget(SHARLowResolutionEffectTarget& t
     return ok;
 }
 
-bool BeginSHARLowResolutionEffectPass(int targetHeight, int worldWidth, int worldHeight)
+static bool BeginSHARLowResolutionEffectPassInternal(int targetHeight, int worldWidth, int worldHeight)
 {
     if (gSHARLowResPassActive || targetHeight<=0 || worldWidth<=0 || worldHeight<=targetHeight ||
         !gCelWorldInFbo || !gCelRenderFboReady ||
@@ -2121,7 +2121,7 @@ bool BeginSHARLowResolutionEffectPass(int targetHeight, int worldWidth, int worl
     return true;
 }
 
-void EndSHARLowResolutionEffectPass()
+static void EndSHARLowResolutionEffectPassInternal()
 {
     if (!gSHARLowResPassActive || gSHARLowResActiveTarget<0 || gSHARLowResActiveTarget>1) return;
     SHARLowResolutionEffectTarget& t=gSHARLowResEffectTargets[gSHARLowResActiveTarget];
@@ -2751,6 +2751,20 @@ static void ApplyCelPostProcess(int width, int height)
 }
 
 }
+
+#ifdef RAD_ANDROID
+// Public wrappers must be at global scope; the implementation and its GL state
+// remain private to this translation unit's unnamed namespace.
+bool BeginSHARLowResolutionEffectPass(int targetHeight, int worldWidth, int worldHeight)
+{
+    return BeginSHARLowResolutionEffectPassInternal(targetHeight, worldWidth, worldHeight);
+}
+
+void EndSHARLowResolutionEffectPass()
+{
+    EndSHARLowResolutionEffectPassInternal();
+}
+#endif
 
 static void ApplyFrameSharpening(int width, int height);
 static void ApplyCRTFilter(int width, int height, bool saturationOnly);
