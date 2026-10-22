@@ -57,7 +57,7 @@ ParticleManager* ParticleManager::spInstance = NULL;
 // Constraints: Must be given valid pFactory and pController pointers
 //
 //==============================================================================
-ParticleManager::ManagedParticleSystem::ManagedParticleSystem( tParticleSystemFactory* pFactory, tEffectController* pController ) 
+ParticleManager::ManagedParticleSystem::ManagedParticleSystem( tParticleSystemFactory* pFactory, tEffectController* pController, int sharLowResolutionCap ) 
 : mUserID( -1 ),
 mIsActive( false ),
 mEmissionBias( 1.0f ),
@@ -68,7 +68,8 @@ mIsInDSG( false )
 	mpSystem->AddRef();
 
     rAssert( mpSystem != NULL );
-    mpSystem->Init( pFactory, pController ); 
+    mpSystem->Init( pFactory, pController );
+    mpSystem->SetSHARLowResolutionCap( sharLowResolutionCap );
 }
 //==============================================================================
 // ParticleManager::ParticleSystemEntityDSG::~ParticleSystemEntityDSG
@@ -434,9 +435,17 @@ void ParticleManager::InitializeSystem( ParticleEnum::ParticleID type,
     mActiveSystems[ type ].Resize( maxInstances );
 
 
+    int sharLowResolutionCap = 720;
+    if (type == ParticleEnum::eEngineSmokeLight ||
+        type == ParticleEnum::eEngineSmokeMedium ||
+        type == ParticleEnum::eEngineSmokeHeavy)
+    {
+        sharLowResolutionCap = 480;
+    }
     for (int i = 0 ; i < maxInstances ; ++i)
     {
-        mActiveSystems[ type ][ i ] = new ManagedParticleSystem( pFactory, pController);
+        mActiveSystems[ type ][ i ] = new ManagedParticleSystem(
+            pFactory, pController, sharLowResolutionCap);
     }
     mIsParticleTypeDynamicallyLoaded[ type ] = isDynamic;
     #ifdef RAD_GAMECUBE

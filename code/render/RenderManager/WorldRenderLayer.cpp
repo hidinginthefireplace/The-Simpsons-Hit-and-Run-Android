@@ -38,6 +38,10 @@
 #include <worldsim/coins/coinmanager.h>
 #include <worldsim/coins/sparkle.h>
 #include <worldsim/character/footprint/footprintmanager.h>
+#if defined(RAD_ANDROID)
+#include <p3d/display.hpp>
+#include <pddi/gles/gldisplay.hpp>
+#endif
 
 #include <worldsim/worldphysicsmanager.h>
 
@@ -333,7 +337,18 @@ void WorldRenderLayer::Render()
             BEGIN_PROFILE( "RenderSparkles" );
             // Render the procedural particle effects:
             // coin glints, collection/spawn trail sparkles, hit sparks, etc.
+#if defined(RAD_ANDROID)
+            const int sparkleWorldWidth = p3d::display ? p3d::display->GetWidth() : 0;
+            const int sparkleWorldHeight = p3d::display ? p3d::display->GetHeight() : 0;
+            const bool lowResolutionSparklePass =
+                sparkleWorldWidth > 0 && sparkleWorldHeight > 720 &&
+                BeginSHARLowResolutionEffectPass(720, sparkleWorldWidth, sparkleWorldHeight);
+#endif
             GetSparkleManager()->Render( Sparkle::SRM_ExcludeSorted );
+#if defined(RAD_ANDROID)
+            if (lowResolutionSparklePass)
+                EndSHARLowResolutionEffectPass();
+#endif
             END_PROFILE( "RenderSparkles" );
             
             //Drawing the characters and stuff after the shadows to attempt to 

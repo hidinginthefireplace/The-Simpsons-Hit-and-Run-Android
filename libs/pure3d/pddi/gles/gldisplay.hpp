@@ -90,6 +90,8 @@ private:
 #ifdef RAD_ANDROID
 bool BeginCelPostProcessFrame(int width, int height);
 void ApplyCelPostProcessBeforeGui(int width, int height);
+bool BeginSHARLowResolutionEffectPass(int targetHeight, int worldWidth, int worldHeight);
+void EndSHARLowResolutionEffectPass();
 void BeginSHARAndroidFMVOutputRender();
 #endif
 #endif
