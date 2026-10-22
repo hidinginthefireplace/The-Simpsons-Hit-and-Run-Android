@@ -17,7 +17,7 @@
 
 #include <render/Culling/NodeFLL.h>
 #ifdef RAD_ANDROID
-#include <p3d/display.hpp>
+#include <p3d/utility.hpp>
 #include <pddi/gles/gldisplay.hpp>
 #include <render/Particles/particlesystemdsg.h>
 #endif

@@ -39,7 +39,7 @@
 #include <worldsim/coins/sparkle.h>
 #include <worldsim/character/footprint/footprintmanager.h>
 #if defined(RAD_ANDROID)
-#include <p3d/display.hpp>
+#include <p3d/utility.hpp>
 #include <pddi/gles/gldisplay.hpp>
 #endif
 
