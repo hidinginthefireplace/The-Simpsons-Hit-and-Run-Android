@@ -19,6 +19,9 @@
 #include <radmath/radmath.hpp>
 #include <pddi/pddiext.hpp>
 #include <p3d/anim/instancedgeometry.hpp>
+#ifdef RAD_ANDROID
+#include <pddi/gles/glcon.hpp>
+#endif
 
 #include <string.h>
 
@@ -61,17 +64,44 @@ tPolySkin::~tPolySkin()
 
 void tPolySkin::Display(tPose* p)
 {
+#ifdef RAD_ANDROID
+    // NIS/gag characters bypass CharacterRenderable::DisplayModel(), so their
+    // skinned meshes would otherwise miss the regular two-pass toon outline.
+    // Gate this to presentation scenes and skinned meshes: static props, effects,
+    // and ordinary world rendering keep their existing path.
+    if (IsSHARGagCharacterCelPassActive() && IsCelShadingEnabled())
+    {
+        SetSHARCharacterMaskModelPass(true);
+        SetCelShadingObjectEnabled(true);
+
+        SetCelShadingOutlinePass(true);
+        DisplaySkinGeometry(p);
+
+        SetCelShadingOutlinePass(false);
+        DisplaySkinGeometry(p);
+
+        SetCelShadingObjectEnabled(false);
+        SetSHARCharacterMaskModelPass(false);
+        return;
+    }
+#endif
+
+    DisplaySkinGeometry(p);
+}
+
+void tPolySkin::DisplaySkinGeometry(tPose* p)
+{
     if (p == NULL)
     {
         return;
     }
 
-    // transform the pose joints into world space
+    // Transform the pose joints into world space.
+    // The skin vertices are stored in rest-pose relative world space.
+    // The below matrix transforms from rest-pose relative space, into
+    // bone-local space where the animation is applied, and then into view space.
     p->Evaluate();
 
-    // The skin vertices are stored in rest-pose relative world space.
-    // The below matrix will transform from this space, into bone-local
-    // space where the animation is applied, and then back into camera space.
     for(int i = 0; i < p->GetNumJoint(); i++)
     {
 #ifndef RAD_PS2
@@ -79,15 +109,12 @@ void tPolySkin::Display(tPose* p)
 #else
         boneMatrix[i].MultAligned(skeleton->GetJoint(i)->inverseWorldMatrix, p->GetJoint(i)->worldMatrix);
 #endif
-
         boneMatrix[i].Mult(skeleton->GetJoint(i)->inverseWorldMatrix, p->GetJoint(i)->worldMatrix);
-
     }
 
     boneMatrix[skeleton->GetNumJoint()].Identity();
 
     pddiExtHardwareSkinning* hwSkin = p3d::context->GetHardwareSkinning();
-
     if(hwSkin)
     {
         hwSkin->Begin();

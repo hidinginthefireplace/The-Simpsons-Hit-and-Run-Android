@@ -49,6 +49,10 @@ protected:
     tPtrArray<tPrimGroup*> primGroup;
     tExpressionOffsets* exprAnimOffsets;  // stores all tOffsetLists for this skin
 
+    // Draw the ordinary skinned mesh once. Android gag cel shading uses this
+    // helper for both silhouette and normal passes without recursive calls.
+    void DisplaySkinGeometry(tPose* p);
+
     rmt::Sphere boundingSphere;
     rmt::Box3D  boundingBox;
 

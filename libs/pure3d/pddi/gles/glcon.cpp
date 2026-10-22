@@ -34,6 +34,11 @@ static bool gSHARCharacterMaskWorldEnabled = false;
 static bool gSHARCharacterMaskModelPass = false;
 static bool gSHARCharacterMaskAlphaWriteRequested = true;
 
+// Enabled only while an NIS/presentation scene graph is being displayed.
+// Actual skinned meshes use this flag to receive the same two-pass toon
+// silhouette treatment as CharacterRenderable; static gag props are untouched.
+static bool gSHARGagCharacterCelPassActive = false;
+
 // Mirror the colour-write mask set through the Android GLES backend. Character
 // mask policy changes usually only need to toggle alpha; querying GL state for
 // both transitions on every character was unnecessary. All Android-side
@@ -104,6 +109,16 @@ void SetSHARCharacterMaskModelPass(bool enabled)
 {
     gSHARCharacterMaskModelPass = enabled;
     ApplySHARCharacterMaskAlphaPolicy();
+}
+
+void SetSHARGagCharacterCelPassActive(bool enabled)
+{
+    gSHARGagCharacterCelPassActive = enabled;
+}
+
+bool IsSHARGagCharacterCelPassActive()
+{
+    return gSHARGagCharacterCelPassActive;
 }
 
 #ifdef RAD_ANDROID

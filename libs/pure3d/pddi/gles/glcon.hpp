@@ -31,6 +31,9 @@ bool IsCelShadingObjectEnabled();
 void SetCelShadingObjectEnabled(bool enabled);
 bool IsCelShadingOutlinePass();
 void SetCelShadingOutlinePass(bool enabled);
+void SetSHARCharacterMaskModelPass(bool enabled);
+void SetSHARGagCharacterCelPassActive(bool enabled);
+bool IsSHARGagCharacterCelPassActive();
 #endif
 
 //--------------------------------------------------------------

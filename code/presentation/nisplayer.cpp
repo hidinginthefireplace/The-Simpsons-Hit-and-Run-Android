@@ -21,6 +21,9 @@
 // Project Includes
 //========================================
 #include <presentation/nisplayer.h>
+#ifdef RAD_ANDROID
+#include <pddi/gles/glcon.hpp>
+#endif
 #include <loading/filehandlerenum.h>
 #include <loading/loadingmanager.h>
 
@@ -136,7 +139,18 @@ void NISPlayer::DoRender()
     SimpleAnimationPlayer::DoRender();
     
     if(mpSceneGraph)
+    {
+#ifdef RAD_ANDROID
+        // Enable character-only cel-pass handling for this presentation scene.
+        // The skinned-mesh layer filters the actual tPolySkin draws, so static
+        // props and effects are not needlessly rendered twice.
+        SetSHARGagCharacterCelPassActive(true);
         mpSceneGraph->Display();
+        SetSHARGagCharacterCelPassActive(false);
+#else
+        mpSceneGraph->Display();
+#endif
+    }
 }
 
 //=============================================================================
