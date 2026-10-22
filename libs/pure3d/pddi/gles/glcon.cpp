@@ -1052,8 +1052,20 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
 #ifdef RAD_ANDROID
         "    if (lit == 0) return vec3(1.0);\n"
         "    if (toonRimEnabled == 0) return dcm.rgb * toonFlatLight;\n"
-        "    vec3 n = normalize(toonNormal);\n"
-        "    float rim = pow(1.0 - max(dot(n, normalize(-toonViewPos)), 0.0), 2.5);\n"
+        // Guard the rim calculation against zero-length vectors and precision
+        // overshoot. Some mobile GPUs can round a normalized dot product above
+        // 1.0; pow() with a negative base and fractional exponent is undefined.
+        "    vec3 nRaw = toonNormal;\n"
+        "    vec3 vRaw = -toonViewPos;\n"
+        "    float nLen2 = dot(nRaw, nRaw);\n"
+        "    float vLen2 = dot(vRaw, vRaw);\n"
+        "    float rim = 0.0;\n"
+        "    if (nLen2 > 0.000001 && vLen2 > 0.000001) {\n"
+        "        vec3 n = nRaw * inversesqrt(nLen2);\n"
+        "        vec3 v = vRaw * inversesqrt(vLen2);\n"
+        "        float facing = clamp(dot(n, v), 0.0, 1.0);\n"
+        "        rim = pow(max(1.0 - facing, 0.0), 2.5);\n"
+        "    }\n"
         "    return dcm.rgb * (toonFlatLight + toonRimStrength * rim);\n"
 #else
         "    return dcm.rgb * toonFlatLight;\n"
