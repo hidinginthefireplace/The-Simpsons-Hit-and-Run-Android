@@ -102,6 +102,7 @@ public :
     void SetTextureEnvironment(const pglTextureEnv* texEnv);
 #ifdef RAD_ANDROID
     void ApplyCelShadingState();
+    void ApplySHARVideoCelShadingState();
 #endif
 
     unsigned contextID;

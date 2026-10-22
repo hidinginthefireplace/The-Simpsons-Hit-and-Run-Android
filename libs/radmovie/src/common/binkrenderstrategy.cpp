@@ -26,6 +26,10 @@
 #include <radprofiler.hpp>
 #include "binkrenderstrategy.hpp"
 
+#ifdef RAD_ANDROID
+void SetSHARVideoCelShadingActive(bool active, float texelSizeX, float texelSizeY);
+#endif
+
 extern bool inLoop;
 
 //=============================================================================
@@ -310,6 +314,20 @@ bool radMovieRenderStrategyBink::Render( void )
 
     rAssert( m_pShader != NULL );
 
+#ifdef RAD_ANDROID
+    // Enable the texture-space cartoon filter only while this RMV is drawn.
+    // Texel offsets use the actual backing texture size, including padded edges.
+    if (m_NumTiles > 0 && m_pTile[0].m_pTexture != NULL)
+    {
+        const int textureWidth = m_pTile[0].m_pTexture->GetWidth();
+        const int textureHeight = m_pTile[0].m_pTexture->GetHeight();
+        SetSHARVideoCelShadingActive(
+            true,
+            textureWidth > 0 ? 1.0f / (float)textureWidth : 1.0f / 1024.0f,
+            textureHeight > 0 ? 1.0f / (float)textureHeight : 1.0f / 1024.0f);
+    }
+#endif
+
     // Render each tile 
 
     for( unsigned int tile = 0; tile < m_NumTiles; tile++ )
@@ -422,6 +440,11 @@ bool radMovieRenderStrategyBink::Render( void )
 
         p3d::pddi->EndPrims( pStream );
     }
+
+#ifdef RAD_ANDROID
+    // Do not leak the video-only shader mode into GUI or subsequent world draws.
+    SetSHARVideoCelShadingActive(false, 1.0f / 1024.0f, 1.0f / 1024.0f);
+#endif
 
     p3d::pddi->PopMatrix(PDDI_MATRIX_MODELVIEW);
     p3d::pddi->PopState(PDDI_STATE_ALL);

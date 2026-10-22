@@ -46,6 +46,9 @@ static bool gSHARTrackedColorWriteMaskKnown = false;
 #ifdef RAD_ANDROID
 static float gSHARObjectBrightness = 1.0f;
 static float gSHARObjectSaturation = 1.0f;
+static bool gSHARVideoCelShadingActive = false;
+static float gSHARVideoCelTexelSizeX = 1.0f / 1024.0f;
+static float gSHARVideoCelTexelSizeY = 1.0f / 1024.0f;
 #endif
 
 void SetSHARTrackedColorWriteMask(
@@ -700,6 +703,21 @@ bool IsCelShadingEnabled()
     return gCelShadingEnabled;
 }
 
+// The video renderer brackets RMV texture draws with this flag. The regular
+// textured-material shader applies the image filter only inside that bracket,
+// and only when the user's existing cel-shading toggle is on.
+void SetSHARVideoCelShadingActive(bool active, float texelSizeX, float texelSizeY)
+{
+    LoadCelShadingConfiguration();
+    gSHARVideoCelShadingActive = active;
+    if (texelSizeX > 0.0f)
+        gSHARVideoCelTexelSizeX = texelSizeX;
+    if (texelSizeY > 0.0f)
+        gSHARVideoCelTexelSizeY = texelSizeY;
+    if (gCelShadingContext)
+        gCelShadingContext->ApplySHARVideoCelShadingState();
+}
+
 bool IsFrameSharpeningEnabled()
 {
     LoadSharpeningConfiguration();
@@ -1143,6 +1161,23 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
     GLuint textureShader = pglProgram::CompileShader(GL_FRAGMENT_SHADER,
         (toonLighting +
         "uniform sampler2D tex;\n"
+#ifdef RAD_ANDROID
+        "uniform float sharVideoCelEnabled;\n"
+        "uniform vec2 sharVideoTexelSize;\n"
+        "vec3 applySHARVideoCel(vec2 uv, vec3 sourceColour) {\n"
+        "    if (sharVideoCelEnabled < 0.5) return sourceColour;\n"
+        "    float centreLuma = dot(sourceColour, vec3(0.299, 0.587, 0.114));\n"
+        "    float leftLuma = dot(texture2D(tex, uv - vec2(sharVideoTexelSize.x, 0.0)).rgb, vec3(0.299, 0.587, 0.114));\n"
+        "    float rightLuma = dot(texture2D(tex, uv + vec2(sharVideoTexelSize.x, 0.0)).rgb, vec3(0.299, 0.587, 0.114));\n"
+        "    float upLuma = dot(texture2D(tex, uv + vec2(0.0, sharVideoTexelSize.y)).rgb, vec3(0.299, 0.587, 0.114));\n"
+        "    float downLuma = dot(texture2D(tex, uv - vec2(0.0, sharVideoTexelSize.y)).rgb, vec3(0.299, 0.587, 0.114));\n"
+        "    float edgeStrength = max(max(abs(centreLuma - leftLuma), abs(centreLuma - rightLuma)), max(abs(centreLuma - upLuma), abs(centreLuma - downLuma)));\n"
+        "    float bandLuma = (floor(clamp(centreLuma, 0.0, 0.999) * 5.0) + 0.5) / 5.0;\n"
+        "    vec3 cartoonColour = clamp(sourceColour * (bandLuma / max(centreLuma, 0.08)), 0.0, 1.0);\n"
+        "    float outline = smoothstep(0.10, 0.24, edgeStrength);\n"
+        "    return mix(cartoonColour, vec3(0.025, 0.020, 0.015), outline * 0.84);\n"
+        "}\n"
+#endif
         "void main() {\n"
         "    vec4 base = texture2D(tex, tc) * cpri;\n"
         "    if (toonOutlinePass != 0 && toonEnabled != 0 && toonObjectEnabled != 0) {\n"
@@ -1152,6 +1187,7 @@ pglContext::pglContext(pglDevice* dev, pglDisplay* disp) : pddiBaseContext((pddi
 #ifdef RAD_ANDROID
         "    vec4 finalColour = base * vec4(toonLightingColor(), dcm.a);\n"
         "    finalColour.rgb = applySHARObjectDimming(finalColour.rgb);\n"
+        "    finalColour.rgb = applySHARVideoCel(tc, finalColour.rgb);\n"
         "    gl_FragColor = finalColour;\n"
 #else
         "    gl_FragColor = base * vec4(toonLightingColor(), dcm.a);\n"
@@ -2104,6 +2140,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
 #ifdef RAD_ANDROID
         if (currentProgram)
             currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation, IsSHARRimLightingEnabled());
+        ApplySHARVideoCelShadingState();
 #endif
         return;
     }
@@ -2118,6 +2155,7 @@ void pglContext::SetShaderProgram(pglProgram* program)
     currentProgram->UseProgram();
 #ifdef RAD_ANDROID
     currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation, IsSHARRimLightingEnabled());
+    ApplySHARVideoCelShadingState();
 #endif
     currentProgram->SetProjectionMatrix(&projection);
 
@@ -2135,6 +2173,18 @@ void pglContext::ApplyCelShadingState()
 {
     if (currentProgram)
         currentProgram->SetCelShadingState(gCelShadingEnabled, gCelShadingObjectEnabled, gCelShadingOutlinePass, gSHARObjectBrightness, gSHARObjectSaturation, IsSHARRimLightingEnabled());
+    ApplySHARVideoCelShadingState();
+}
+
+void pglContext::ApplySHARVideoCelShadingState()
+{
+    if (currentProgram)
+    {
+        currentProgram->SetSHARVideoCelShadingState(
+            gSHARVideoCelShadingActive && gCelShadingEnabled,
+            gSHARVideoCelTexelSizeX,
+            gSHARVideoCelTexelSizeY);
+    }
 }
 #endif
 

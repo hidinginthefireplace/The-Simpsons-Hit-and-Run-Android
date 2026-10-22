@@ -39,6 +39,7 @@ public:
     void SetCelShadingEnabled(bool enabled);
 #ifdef RAD_ANDROID
     void SetCelShadingState(bool enabled, bool objectEnabled, bool outlinePass, float objectBrightness, float objectSaturation, bool rimLightingEnabled);
+    void SetSHARVideoCelShadingState(bool enabled, float texelSizeX, float texelSizeY);
 #endif
 
     inline bool SupportsLighting() { return acs >= 0; }
@@ -81,6 +82,8 @@ protected:
     GLint toonOutlineWidth;
     GLint nightObjectBrightness;
     GLint nightObjectSaturation;
+    GLint sharVideoCelEnabled;
+    GLint sharVideoTexelSize;
     #endif
 #endif
 };

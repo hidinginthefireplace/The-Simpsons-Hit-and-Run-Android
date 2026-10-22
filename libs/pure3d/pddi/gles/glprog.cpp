@@ -63,6 +63,8 @@ pglProgram::pglProgram()
     toonOutlineWidth = -1;
     nightObjectBrightness = -1;
     nightObjectSaturation = -1;
+    sharVideoCelEnabled = -1;
+    sharVideoTexelSize = -1;
     #endif
 
 #endif
@@ -255,6 +257,14 @@ void pglProgram::SetCelShadingState(bool enabled, bool objectEnabled, bool outli
     if (nightObjectSaturation >= 0)
         glUniform1f(nightObjectSaturation, objectSaturation);
 }
+
+void pglProgram::SetSHARVideoCelShadingState(bool enabled, float texelSizeX, float texelSizeY)
+{
+    if (sharVideoCelEnabled >= 0)
+        glUniform1f(sharVideoCelEnabled, enabled ? 1.0f : 0.0f);
+    if (sharVideoTexelSize >= 0)
+        glUniform2f(sharVideoTexelSize, texelSizeX, texelSizeY);
+}
 #endif
 
 void pglProgram::SetAmbientLight(pddiColour ambient)
@@ -363,6 +373,8 @@ bool pglProgram::LinkProgram(GLuint vertexShader, GLuint fragmentShader)
     toonOutlineWidth = glGetUniformLocation(program, "toonOutlineWidth");
     nightObjectBrightness = glGetUniformLocation(program, "nightObjectBrightness");
     nightObjectSaturation = glGetUniformLocation(program, "nightObjectSaturation");
+    sharVideoCelEnabled = glGetUniformLocation(program, "sharVideoCelEnabled");
+    sharVideoTexelSize = glGetUniformLocation(program, "sharVideoTexelSize");
     #endif
 
 #ifndef RAD_VITAGL
