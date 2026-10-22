@@ -17,6 +17,17 @@
 
 using namespace RadicalMathLibrary;
 
+// Level 1's PTRN_animsigns asset gives gas03 a translation track that travels
+// across a large part of the map. Keep that specific joint at its authored
+// rest-pose position, but continue applying its existing rotation animation.
+static bool IsL1GasSignTranslationTrack(const tAnimation* animation, const tPose::Joint* joint)
+{
+    return animation != NULL &&
+           joint != NULL &&
+           animation->GetUID() == tEntity::MakeUID("PTRN_animsigns") &&
+           joint->uid == tEntity::MakeUID("gas03");
+}
+
 //*********************************************************
 // Class tPoseAnimationController
 //*********************************************************
@@ -81,7 +92,14 @@ void tPoseAnimationController::UpdateNoBlending()
         {
             translation = animGroup->GetVectorChannel(Pure3DAnimationChannels::Pose::TRANSLATION_TRAN);
             rotation = animGroup->GetRotationChannel(Pure3DAnimationChannels::Pose::ROTATION_ROT);
-        }     
+        }
+
+        if (IsL1GasSignTranslationTrack(anim, joint))
+        {
+            // The rotation channel remains active; only the map-spanning
+            // translation keys are ignored for this one joint.
+            translation = NULL;
+        }
 
         tSkeleton::Joint* skeletonJoint = pose->GetSkeleton()->GetJoint(i);
         if(skeletonJoint->preserveBoneLengths)
@@ -147,6 +165,24 @@ void tPoseAnimationController::UpdateWithBlending()
         // Ask the skeleton if it needs to preserve it's bonelength
         // to allow for shared animations across different Hierarchies.
         tSkeleton::Joint* skeletonJoint = pose->GetSkeleton()->GetJoint(i);
+
+        // During a blend, make the same exception if PTRN_animsigns is one
+        // of the active tracks. The rotation pass below still runs normally.
+        bool keepGas03AtRest = false;
+        for (int activeIndex = 0; activeIndex < nAnim; ++activeIndex)
+        {
+            if (IsL1GasSignTranslationTrack(playInfo[activeIndex].GetAnimation(), joint))
+            {
+                keepGas03AtRest = true;
+                break;
+            }
+        }
+        if (keepGas03AtRest)
+        {
+            joint->objectMatrix.Row(3) = skeletonJoint->restPose.Row(3);
+            continue;
+        }
+
         if(skeletonJoint->preserveBoneLengths)
         {
             // Stuff the bonelengths into the pose
