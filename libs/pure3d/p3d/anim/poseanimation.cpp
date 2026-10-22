@@ -17,15 +17,16 @@
 
 using namespace RadicalMathLibrary;
 
-// Level 1's PTRN_animsigns asset gives gas03 a translation track that travels
-// across a large part of the map. Keep that specific joint at its authored
-// rest-pose position, but continue applying its existing rotation animation.
+// Level 1's PTRN_animsigns asset gives both gas03 and gas04 translation
+// tracks that travel across a large part of the map. Keep these sign joints
+// at their authored rest-pose positions, but preserve their rotation animation.
 static bool IsL1GasSignTranslationTrack(const tAnimation* animation, const tPose::Joint* joint)
 {
     return animation != NULL &&
            joint != NULL &&
            animation->GetUID() == tEntity::MakeUID("PTRN_animsigns") &&
-           joint->uid == tEntity::MakeUID("gas03");
+           (joint->uid == tEntity::MakeUID("gas03") ||
+            joint->uid == tEntity::MakeUID("gas04"));
 }
 
 //*********************************************************
@@ -97,7 +98,7 @@ void tPoseAnimationController::UpdateNoBlending()
         if (IsL1GasSignTranslationTrack(anim, joint))
         {
             // The rotation channel remains active; only the map-spanning
-            // translation keys are ignored for this one joint.
+            // translation keys are ignored for these sign joints.
             translation = NULL;
         }
 
@@ -166,18 +167,18 @@ void tPoseAnimationController::UpdateWithBlending()
         // to allow for shared animations across different Hierarchies.
         tSkeleton::Joint* skeletonJoint = pose->GetSkeleton()->GetJoint(i);
 
-        // During a blend, make the same exception if PTRN_animsigns is one
+        // During a blend, make the same exception if PTRN_animsigns is active for either sign
         // of the active tracks. The rotation pass below still runs normally.
-        bool keepGas03AtRest = false;
+        bool keepGasSignAtRest = false;
         for (int activeIndex = 0; activeIndex < nAnim; ++activeIndex)
         {
             if (IsL1GasSignTranslationTrack(playInfo[activeIndex].GetAnimation(), joint))
             {
-                keepGas03AtRest = true;
+                keepGasSignAtRest = true;
                 break;
             }
         }
-        if (keepGas03AtRest)
+        if (keepGasSignAtRest)
         {
             joint->objectMatrix.Row(3) = skeletonJoint->restPose.Row(3);
             continue;
