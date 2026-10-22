@@ -135,17 +135,6 @@ bool IsSHARWorldCloudShadowLevelAllowed()
     return level == RenderEnums::L1 || level == RenderEnums::L2 || level == RenderEnums::L3;
 }
 
-// Full-strength cloud shadows on Levels 1/2; half-strength on Level 3.
-float GetSHARWorldCloudShadowStrengthMultiplier()
-{
-    GameplayManager* gameplayManager = GetGameplayManager();
-    if (gameplayManager == NULL)
-    {
-        return 1.0f;
-    }
-
-    return gameplayManager->GetCurrentRawLevelIndex() == RenderEnums::L3 ? 0.5f : 1.0f;
-}
 #endif
 
 //******************************************************************************

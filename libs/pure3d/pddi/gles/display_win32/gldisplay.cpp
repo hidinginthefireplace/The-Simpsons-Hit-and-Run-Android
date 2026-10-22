@@ -29,7 +29,6 @@ void SetSHARCharacterMaskWorldEnabled(bool enabled);
 void SetSHARCharacterMaskModelPass(bool enabled);
 bool GetSHARMotionBlurCameraData(float* output);
 bool IsSHARWorldCloudShadowLevelAllowed();
-float GetSHARWorldCloudShadowStrengthMultiplier();
 bool IsFrameSharpeningEnabled();
 float GetFrameSharpenStrength();
 
@@ -328,6 +327,341 @@ static const size_t SHAR_POSTPROCESS_BUDGET_BYTES =
 static int gSHARLastRejectedWidth = 0;
 static int gSHARLastRejectedHeight = 0;
 static int gSHARLastRejectedReason = 0;
+
+
+#if defined(RAD_ANDROID)
+// Temporary, non-blocking performance diagnostics for the cloud-shadow experiment.
+// GPU timings use GL_EXT_disjoint_timer_query when available. CPU timings measure
+// time spent submitting commands, not GPU completion time; frame intervals include
+// scheduling and the configured FPS cap. No GL query result is synchronously waited on.
+enum
+{
+    SHAR_PERF_WORLD = 0,
+    SHAR_PERF_COMPOSE,
+    SHAR_PERF_SHARPEN,
+    SHAR_PERF_CRT,
+    SHAR_PERF_SATURATION,
+    SHAR_PERF_PASS_COUNT
+};
+static const int SHAR_PERF_QUERY_SLOTS = 4;
+static const GLenum SHAR_GL_TIME_ELAPSED_EXT = 0x88BF;
+static const GLenum SHAR_GL_QUERY_RESULT_EXT = 0x8866;
+static const GLenum SHAR_GL_QUERY_RESULT_AVAILABLE_EXT = 0x8867;
+static const GLenum SHAR_GL_GPU_DISJOINT_EXT = 0x8FBB;
+
+typedef void (*SHARGenQueriesEXTProc)(GLsizei, GLuint*);
+typedef void (*SHARDeleteQueriesEXTProc)(GLsizei, const GLuint*);
+typedef void (*SHARBeginQueryEXTProc)(GLenum, GLuint);
+typedef void (*SHAREndQueryEXTProc)(GLenum);
+typedef void (*SHARGetQueryObjectuivEXTProc)(GLuint, GLenum, GLuint*);
+typedef void (*SHARGetQueryObjectui64vEXTProc)(GLuint, GLenum, unsigned long long*);
+
+struct SHARGpuQuerySlot
+{
+    GLuint id;
+    bool pending;
+    int width;
+    int height;
+};
+
+struct SHARPerfAccumulator
+{
+    Uint64 total;
+    Uint64 maximum;
+    unsigned int samples;
+    int width;
+    int height;
+};
+
+static bool gSHARGpuTimerChecked = false;
+static bool gSHARGpuTimerSupported = false;
+static SHARGenQueriesEXTProc gSHARGenQueriesEXT = NULL;
+static SHARDeleteQueriesEXTProc gSHARDeleteQueriesEXT = NULL;
+static SHARBeginQueryEXTProc gSHARBeginQueryEXT = NULL;
+static SHAREndQueryEXTProc gSHAREndQueryEXT = NULL;
+static SHARGetQueryObjectuivEXTProc gSHARGetQueryObjectuivEXT = NULL;
+static SHARGetQueryObjectui64vEXTProc gSHARGetQueryObjectui64vEXT = NULL;
+static SHARGpuQuerySlot gSHARGpuQuerySlots[SHAR_PERF_PASS_COUNT][SHAR_PERF_QUERY_SLOTS] = {};
+static SHARPerfAccumulator gSHARPerfCpu[SHAR_PERF_PASS_COUNT] = {};
+static SHARPerfAccumulator gSHARPerfGpu[SHAR_PERF_PASS_COUNT] = {};
+static int gSHARPerfActivePass = -1;
+static int gSHARPerfActiveSlot = -1;
+static Uint64 gSHARPerfCpuStart = 0;
+static int gSHARPerfActiveWidth = 0;
+static int gSHARPerfActiveHeight = 0;
+static Uint64 gSHARPerfLastSwapCounter = 0;
+static Uint64 gSHARPerfSwapTotalTicks = 0;
+static Uint64 gSHARPerfSwapMaxTicks = 0;
+static unsigned int gSHARPerfSwapSamples = 0;
+
+static const char* SHARPerfPassName(int pass)
+{
+    switch (pass)
+    {
+        case SHAR_PERF_WORLD: return "world_render";
+        case SHAR_PERF_COMPOSE: return "compose_resolve";
+        case SHAR_PERF_SHARPEN: return "sharpen";
+        case SHAR_PERF_CRT: return "crt";
+        case SHAR_PERF_SATURATION: return "final_saturation";
+        default: return "unknown";
+    }
+}
+
+static bool EnsureSHARGpuTimerSupport()
+{
+    if (gSHARGpuTimerChecked)
+        return gSHARGpuTimerSupported;
+
+    gSHARGpuTimerChecked = true;
+    if (SDL_GL_ExtensionSupported("GL_EXT_disjoint_timer_query") != SDL_TRUE)
+    {
+        SDL_Log("SHAR PERF: GL_EXT_disjoint_timer_query unavailable; CPU and frame-interval diagnostics remain enabled.");
+        return false;
+    }
+
+    gSHARGenQueriesEXT = reinterpret_cast<SHARGenQueriesEXTProc>(SDL_GL_GetProcAddress("glGenQueriesEXT"));
+    gSHARDeleteQueriesEXT = reinterpret_cast<SHARDeleteQueriesEXTProc>(SDL_GL_GetProcAddress("glDeleteQueriesEXT"));
+    gSHARBeginQueryEXT = reinterpret_cast<SHARBeginQueryEXTProc>(SDL_GL_GetProcAddress("glBeginQueryEXT"));
+    gSHAREndQueryEXT = reinterpret_cast<SHAREndQueryEXTProc>(SDL_GL_GetProcAddress("glEndQueryEXT"));
+    gSHARGetQueryObjectuivEXT = reinterpret_cast<SHARGetQueryObjectuivEXTProc>(SDL_GL_GetProcAddress("glGetQueryObjectuivEXT"));
+    gSHARGetQueryObjectui64vEXT = reinterpret_cast<SHARGetQueryObjectui64vEXTProc>(SDL_GL_GetProcAddress("glGetQueryObjectui64vEXT"));
+
+    if (gSHARGenQueriesEXT == NULL || gSHARDeleteQueriesEXT == NULL ||
+        gSHARBeginQueryEXT == NULL || gSHAREndQueryEXT == NULL ||
+        gSHARGetQueryObjectuivEXT == NULL || gSHARGetQueryObjectui64vEXT == NULL)
+    {
+        SDL_Log("SHAR PERF: timer-query entry points unavailable; CPU and frame-interval diagnostics remain enabled.");
+        return false;
+    }
+
+    GLuint ids[SHAR_PERF_PASS_COUNT * SHAR_PERF_QUERY_SLOTS] = {};
+    gSHARGenQueriesEXT((GLsizei)(SHAR_PERF_PASS_COUNT * SHAR_PERF_QUERY_SLOTS), ids);
+    bool allCreated = true;
+    for (int i = 0; i < SHAR_PERF_PASS_COUNT * SHAR_PERF_QUERY_SLOTS; ++i)
+    {
+        if (ids[i] == 0)
+            allCreated = false;
+    }
+    if (!allCreated)
+    {
+        for (int i = 0; i < SHAR_PERF_PASS_COUNT * SHAR_PERF_QUERY_SLOTS; ++i)
+        {
+            if (ids[i] != 0)
+                gSHARDeleteQueriesEXT(1, &ids[i]);
+        }
+        SDL_Log("SHAR PERF: could not allocate timer queries; CPU and frame-interval diagnostics remain enabled.");
+        return false;
+    }
+
+    for (int pass = 0; pass < SHAR_PERF_PASS_COUNT; ++pass)
+    {
+        for (int slot = 0; slot < SHAR_PERF_QUERY_SLOTS; ++slot)
+        {
+            gSHARGpuQuerySlots[pass][slot].id = ids[pass * SHAR_PERF_QUERY_SLOTS + slot];
+        }
+    }
+    gSHARGpuTimerSupported = true;
+    SDL_Log("SHAR PERF: GPU timer queries enabled. Results are asynchronous and sampled in 120-result batches.");
+    return true;
+}
+
+static void RecordSHARPerfCpu(int pass, Uint64 ticks, int width, int height)
+{
+    if (pass < 0 || pass >= SHAR_PERF_PASS_COUNT)
+        return;
+
+    SHARPerfAccumulator& stats = gSHARPerfCpu[pass];
+    stats.total += ticks;
+    if (ticks > stats.maximum)
+        stats.maximum = ticks;
+    stats.samples++;
+    stats.width = width;
+    stats.height = height;
+
+    if (stats.samples >= 120)
+    {
+        const Uint64 frequency = SDL_GetPerformanceFrequency();
+        if (frequency > 0)
+        {
+            const double averageMs = (double)stats.total * 1000.0 /
+                ((double)frequency * (double)stats.samples);
+            const double maximumMs = (double)stats.maximum * 1000.0 / (double)frequency;
+            SDL_Log("SHAR PERF CPU-submit pass=%s avg=%.3fms max=%.3fms samples=%u size=%dx%d",
+                SHARPerfPassName(pass), averageMs, maximumMs, stats.samples,
+                stats.width, stats.height);
+        }
+        stats.total = 0;
+        stats.maximum = 0;
+        stats.samples = 0;
+    }
+}
+
+static void RecordSHARPerfGpu(int pass, unsigned long long nanoseconds, int width, int height)
+{
+    if (pass < 0 || pass >= SHAR_PERF_PASS_COUNT)
+        return;
+
+    SHARPerfAccumulator& stats = gSHARPerfGpu[pass];
+    stats.total += (Uint64)nanoseconds;
+    if ((Uint64)nanoseconds > stats.maximum)
+        stats.maximum = (Uint64)nanoseconds;
+    stats.samples++;
+    stats.width = width;
+    stats.height = height;
+
+    if (stats.samples >= 120)
+    {
+        const double averageMs = (double)stats.total / ((double)stats.samples * 1000000.0);
+        const double maximumMs = (double)stats.maximum / 1000000.0;
+        SDL_Log("SHAR PERF GPU pass=%s avg=%.3fms max=%.3fms samples=%u size=%dx%d",
+            SHARPerfPassName(pass), averageMs, maximumMs, stats.samples,
+            stats.width, stats.height);
+        stats.total = 0;
+        stats.maximum = 0;
+        stats.samples = 0;
+    }
+}
+
+static bool BeginSHARPerformancePass(int pass, int width, int height)
+{
+    if (pass < 0 || pass >= SHAR_PERF_PASS_COUNT || gSHARPerfActivePass >= 0)
+        return false;
+
+    gSHARPerfActivePass = pass;
+    gSHARPerfActiveSlot = -1;
+    gSHARPerfActiveWidth = width;
+    gSHARPerfActiveHeight = height;
+    gSHARPerfCpuStart = SDL_GetPerformanceCounter();
+
+    if (EnsureSHARGpuTimerSupport())
+    {
+        for (int slot = 0; slot < SHAR_PERF_QUERY_SLOTS; ++slot)
+        {
+            SHARGpuQuerySlot& query = gSHARGpuQuerySlots[pass][slot];
+            if (query.id != 0 && !query.pending)
+            {
+                query.width = width;
+                query.height = height;
+                gSHARBeginQueryEXT(SHAR_GL_TIME_ELAPSED_EXT, query.id);
+                gSHARPerfActiveSlot = slot;
+                break;
+            }
+        }
+    }
+    return true;
+}
+
+static void EndSHARPerformancePass()
+{
+    if (gSHARPerfActivePass < 0)
+        return;
+
+    const int pass = gSHARPerfActivePass;
+    const Uint64 now = SDL_GetPerformanceCounter();
+    if (gSHARPerfActiveSlot >= 0)
+    {
+        SHARGpuQuerySlot& query = gSHARGpuQuerySlots[pass][gSHARPerfActiveSlot];
+        gSHAREndQueryEXT(SHAR_GL_TIME_ELAPSED_EXT);
+        query.pending = true;
+    }
+
+    if (now >= gSHARPerfCpuStart)
+    {
+        RecordSHARPerfCpu(pass, now - gSHARPerfCpuStart,
+            gSHARPerfActiveWidth, gSHARPerfActiveHeight);
+    }
+
+    gSHARPerfActivePass = -1;
+    gSHARPerfActiveSlot = -1;
+}
+
+class SHARPerfPassScope
+{
+public:
+    SHARPerfPassScope(int pass, int width, int height)
+        : mActive(BeginSHARPerformancePass(pass, width, height))
+    {
+    }
+    ~SHARPerfPassScope()
+    {
+        if (mActive)
+            EndSHARPerformancePass();
+    }
+private:
+    bool mActive;
+    SHARPerfPassScope(const SHARPerfPassScope&);
+    SHARPerfPassScope& operator=(const SHARPerfPassScope&);
+};
+
+static void PollSHARGpuTimerQueries()
+{
+    if (!EnsureSHARGpuTimerSupport())
+        return;
+
+    GLint disjoint = 0;
+    glGetIntegerv(SHAR_GL_GPU_DISJOINT_EXT, &disjoint);
+    if (disjoint != 0)
+    {
+        for (int pass = 0; pass < SHAR_PERF_PASS_COUNT; ++pass)
+        {
+            for (int slot = 0; slot < SHAR_PERF_QUERY_SLOTS; ++slot)
+                gSHARGpuQuerySlots[pass][slot].pending = false;
+        }
+        SDL_Log("SHAR PERF GPU timers: discarded pending samples after a disjoint GPU timer interval.");
+        return;
+    }
+
+    for (int pass = 0; pass < SHAR_PERF_PASS_COUNT; ++pass)
+    {
+        for (int slot = 0; slot < SHAR_PERF_QUERY_SLOTS; ++slot)
+        {
+            SHARGpuQuerySlot& query = gSHARGpuQuerySlots[pass][slot];
+            if (!query.pending || query.id == 0)
+                continue;
+
+            GLuint available = 0;
+            gSHARGetQueryObjectuivEXT(query.id, SHAR_GL_QUERY_RESULT_AVAILABLE_EXT, &available);
+            if (available == 0)
+                continue;
+
+            unsigned long long nanoseconds = 0;
+            gSHARGetQueryObjectui64vEXT(query.id, SHAR_GL_QUERY_RESULT_EXT, &nanoseconds);
+            query.pending = false;
+            RecordSHARPerfGpu(pass, nanoseconds, query.width, query.height);
+        }
+    }
+}
+
+static void RecordSHARSwapFrameInterval()
+{
+    const Uint64 frequency = SDL_GetPerformanceFrequency();
+    const Uint64 now = SDL_GetPerformanceCounter();
+    if (frequency == 0)
+        return;
+
+    if (gSHARPerfLastSwapCounter != 0 && now >= gSHARPerfLastSwapCounter)
+    {
+        const Uint64 delta = now - gSHARPerfLastSwapCounter;
+        gSHARPerfSwapTotalTicks += delta;
+        if (delta > gSHARPerfSwapMaxTicks)
+            gSHARPerfSwapMaxTicks = delta;
+        gSHARPerfSwapSamples++;
+
+        if (gSHARPerfSwapSamples >= 120)
+        {
+            const double averageMs = (double)gSHARPerfSwapTotalTicks * 1000.0 /
+                ((double)frequency * (double)gSHARPerfSwapSamples);
+            const double maximumMs = (double)gSHARPerfSwapMaxTicks * 1000.0 / (double)frequency;
+            SDL_Log("SHAR PERF frame_interval avg=%.3fms max=%.3fms samples=%u internal=%dx%d",
+                averageMs, maximumMs, gSHARPerfSwapSamples, gSHARFrameWidth, gSHARFrameHeight);
+            gSHARPerfSwapTotalTicks = 0;
+            gSHARPerfSwapMaxTicks = 0;
+            gSHARPerfSwapSamples = 0;
+        }
+    }
+    gSHARPerfLastSwapCounter = now;
+}
+#endif
 
 static bool QuerySDLDrawableSize(int* width, int* height)
 {
@@ -1804,6 +2138,7 @@ static void ResetAndroidPostProcess()
 
 static void ApplyCelPostProcess(int width, int height)
 {
+    EndSHARPerformancePass();
     // World geometry is finished. Re-enable ordinary alpha writes before the
     // fullscreen post-process and GUI/output rendering passes.
     SetSHARCharacterMaskModelPass(false);
@@ -1819,14 +2154,15 @@ static void ApplyCelPostProcess(int width, int height)
         height = gSHARFrameHeight;
     }
 
+    SHARPerfPassScope composePerfScope(SHAR_PERF_COMPOSE, width, height);
     const bool celEffectsEnabled = IsCelShadingEnabled();
     const bool motionBlurRequested = IsMotionBlurEnabled();
     // Experimental Option B: limit cloud shadows to approved exterior gameplay levels.
     // Do not key this effect off the iris-transition flag: the world behind the expanding
     // iris is already the exterior again, and toggling shadows here caused a visible blink.
     const bool cloudShadowLevelAllowed = IsSHARWorldCloudShadowLevelAllowed();
-    const float cloudShadowStrengthMultiplier = cloudShadowLevelAllowed
-        ? GetSHARWorldCloudShadowStrengthMultiplier() : 1.0f;
+    // Experimental test setting: use the same full strength on Levels 1, 2, and 3.
+    const float cloudShadowStrengthMultiplier = 1.0f;
     const bool cloudShadowsActive =
         cloudShadowLevelAllowed && gCelDepthTextureActive && haveCurrentMotionBlurCamera;
     // Report only state transitions so the test can distinguish an unavailable depth/camera path
@@ -2203,6 +2539,7 @@ bool BeginCelPostProcessFrame(int width, int height)
     // may write scene alpha. Blob and static shadows remain unmarked.
     SetSHARCharacterMaskWorldEnabled(true);
     gCelWorldInFbo = true;
+    BeginSHARPerformancePass(SHAR_PERF_WORLD, width, height);
     return true;
 }
 
@@ -2407,6 +2744,7 @@ static void ApplyFrameSharpening(int width, int height)
 
     if (sharpenTextureReady)
     {
+        SHARPerfPassScope sharpenPerfScope(SHAR_PERF_SHARPEN, width, height);
         // Snapshot the fully rendered frame before drawing the filtered copy back.
         glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,width,height);
         glViewport(0,0,width,height);
@@ -2570,6 +2908,8 @@ static void ApplyCRTFilter(int width, int height, bool saturationOnly)
 
     if (crtTextureReady)
     {
+        SHARPerfPassScope crtPerfScope(
+            saturationOnly ? SHAR_PERF_SATURATION : SHAR_PERF_CRT, width, height);
         // Capture the frame after sharpening, then apply CRT processing to the whole image.
         glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,width,height);
         glViewport(0,0,width,height);
@@ -3311,6 +3651,9 @@ void pglDisplay::SetGamma(float r, float g, float b)
 void pglDisplay::SwapBuffers(void)
 {
 #ifdef RAD_ANDROID
+    PollSHARGpuTimerQueries();
+    RecordSHARSwapFrameInterval();
+
     // First apply the existing optional filters before the touch HUD if they
     // have not already run during rendering.
     ApplySHARPostProcessingBeforeTouchHud();
