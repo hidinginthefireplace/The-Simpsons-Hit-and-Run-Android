@@ -196,10 +196,6 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
             m_credits[ i ]->ResetTransformation();
             m_credits[ i ]->SetPosition( authoredX, authoredY + (int)s_creditsOffsets[ i ] );
 
-            int layoutX = 0;
-            int layoutY = 0;
-            m_credits[ i ]->GetOriginPosition( layoutX, layoutY );
-            rmt::Matrix* partitionMatrix = m_credits[ i ]->GetTransform();
 
             // disable any text outlining or drop shadow effects
             //
@@ -461,13 +457,6 @@ CGuiScreenViewCredits::ResetScrolling()
     rAssert( m_creditsGroup != NULL );
     m_creditsGroup->ResetTransformation();
 
-    for( int i = 0; i < MAX_NUM_CREDITS_PARTITIONS; i++ )
-    {
-        if( m_credits[ i ] != NULL && ( i < 2 || i >= 28 ) )
-        {
-            rmt::Matrix* partitionMatrix = m_credits[ i ]->GetTransform();
-        }
-    }
 
     m_currentTranslateY = 0.0f;
 
