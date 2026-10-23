@@ -341,6 +341,7 @@ void InputManager::NotifyAndroidPhysicalGamepadInput
     float value
 )
 {
+    (void)inputIndex;
 
     if ( instanceId < 0 )
     {
