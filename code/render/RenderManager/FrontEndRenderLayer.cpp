@@ -39,7 +39,6 @@
 #include <presentation/fmvplayer/fmvplayer.h>
 #include <input/touch/touchhudrenderer.h>
 void ApplySHARPostProcessingBeforeTouchHud();
-void ApplySHARFrontendMenuFineDetail();
 #endif
 
 
@@ -361,7 +360,6 @@ void FrontEndRenderLayer::Render()
         
         #ifdef RAD_ANDROID
         ApplySHARPostProcessingBeforeTouchHud();
-        ApplySHARFrontendMenuFineDetail();
         TouchHudRenderer::GetInstance().Render(); // Render touch controls after full-frame filters.
         #endif
         HeapMgr()->PopHeap( GMA_TEMP );
