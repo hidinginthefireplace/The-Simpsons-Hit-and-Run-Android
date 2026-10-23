@@ -2863,8 +2863,9 @@ static bool EnsureSHARFrontendFineDetailResources(int width, int height)
             "        max(max(abs(centre-upLeft), abs(centre-upRight)), max(abs(centre-downLeft), abs(centre-downRight))));\n"
             "    // Lower thresholds recover the very fine ink-like contours that are\n"
             "    // intentionally subtle in the main world post-process.\n"
-            "    float detailEdge = smoothstep(0.028, 0.090, edgeStrength);\n"
-            "    float inkStrength = detailEdge * 0.42;\n"
+            "    // Slightly higher thresholds and lower blend strength reduce soft/doubled ink lines.\n"
+            "    float detailEdge = smoothstep(0.035, 0.100, edgeStrength);\n"
+            "    float inkStrength = detailEdge * 0.28;\n"
             "    vec3 finalColour = mix(source.rgb, vec3(0.012), inkStrength);\n"
             "    gl_FragColor = vec4(finalColour, source.a);\n"
             "}\n";

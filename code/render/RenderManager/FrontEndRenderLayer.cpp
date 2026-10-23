@@ -40,6 +40,7 @@
 #include <input/touch/touchhudrenderer.h>
 void ApplySHARPostProcessingBeforeTouchHud();
 void ApplySHARFrontendMenuFineDetail();
+bool IsSHARFrontendMenuCelPassActive();
 #endif
 
 
@@ -348,7 +349,33 @@ void FrontEndRenderLayer::Render()
 
         if( mpScroobyApp != NULL )
         {
+#ifdef RAD_ANDROID
+            // The front-end fine-contour pass must only see the 3D living-room
+            // scene. Scrooby's FeDivide split lets us process the background
+            // before the 2D foreground menu, so text, sprites and loading UI
+            // are never sampled by the contour shader.
+            Scrooby::Project* project = mpScroobyApp->GetProject();
+            Scrooby::Screen* screen = project != NULL ? project->GetCurrentScreen() : NULL;
+            const bool hasMenuCameraSet =
+                IsSHARFrontendMenuCelPassActive() &&
+                screen != NULL &&
+                screen->GetPage( "3dFE" ) != NULL &&
+                screen->GetPage( "FeDivide" ) != NULL;
+
+            if( hasMenuCameraSet )
+            {
+                const float frameDelta = static_cast<float>( g_scroobySimulationTime );
+                mpScroobyApp->DrawBackground( frameDelta );
+                ApplySHARFrontendMenuFineDetail();
+                mpScroobyApp->DrawForeground( frameDelta );
+            }
+            else
+            {
+                mpScroobyApp->DrawFrame( static_cast<float>( g_scroobySimulationTime ) );
+            }
+#else
             mpScroobyApp->DrawFrame( static_cast<float>( g_scroobySimulationTime ) );
+#endif
         }
 
 #ifdef RAD_PC
@@ -361,7 +388,6 @@ void FrontEndRenderLayer::Render()
         
         #ifdef RAD_ANDROID
         ApplySHARPostProcessingBeforeTouchHud();
-        ApplySHARFrontendMenuFineDetail();
         TouchHudRenderer::GetInstance().Render(); // Render touch controls after full-frame filters.
         #endif
         HeapMgr()->PopHeap( GMA_TEMP );
