@@ -2278,6 +2278,15 @@ static void ResolveSceneToScreen(int width, int height)
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)0);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        const GLenum drawError = glGetError();
+        static bool s_loggedFrontendFineDetailDraw = false;
+        if( !s_loggedFrontendFineDetailDraw )
+        {
+            SDL_LogInfo(SDL_LOG_CATEGORY_RENDER,
+                "SHAR-FINE-DIAG: capture=success draw=issued glError=0x%04x size=%dx%d",
+                (unsigned)drawError, outputWidth, outputHeight);
+            s_loggedFrontendFineDetailDraw = true;
+        }
     }
     else
     {
@@ -2956,17 +2965,59 @@ static bool EnsureSHARFrontendFineDetailResources(int width, int height)
 
 void ApplySHARFrontendMenuFineDetail()
 {
-    if (!IsSHARFrontendMenuCelPassActive() || !IsCelShadingEnabled())
+    const bool frontEndPassActive = IsSHARFrontendMenuCelPassActive();
+    const bool celShadingEnabled = IsCelShadingEnabled();
+    if (!frontEndPassActive)
+    {
+        static bool s_loggedInactivePass = false;
+        if( !s_loggedInactivePass )
+        {
+            SDL_LogInfo(SDL_LOG_CATEGORY_RENDER,
+                "SHAR-FINE-DIAG: skipped because frontend cel pass is inactive");
+            s_loggedInactivePass = true;
+        }
         return;
+    }
+    if (!celShadingEnabled)
+    {
+        static bool s_loggedCelDisabled = false;
+        if( !s_loggedCelDisabled )
+        {
+            SDL_LogInfo(SDL_LOG_CATEGORY_RENDER,
+                "SHAR-FINE-DIAG: skipped because cel shading is disabled");
+            s_loggedCelDisabled = true;
+        }
+        return;
+    }
 
     int outputWidth = 0;
     int outputHeight = 0;
     QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
     if (outputWidth <= 0 || outputHeight <= 0)
+    {
+        static bool s_loggedInvalidOutputSize = false;
+        if( !s_loggedInvalidOutputSize )
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+                "SHAR-FINE-DIAG: skipped because default framebuffer size is invalid (%dx%d)",
+                outputWidth, outputHeight);
+            s_loggedInvalidOutputSize = true;
+        }
         return;
+    }
 
     if (!EnsureSHARFrontendFineDetailResources(outputWidth, outputHeight))
+    {
+        static bool s_loggedResourcesUnavailable = false;
+        if( !s_loggedResourcesUnavailable )
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
+                "SHAR-FINE-DIAG: skipped because fine-detail resources are unavailable (%dx%d)",
+                outputWidth, outputHeight);
+            s_loggedResourcesUnavailable = true;
+        }
         return;
+    }
 
     GLint previousFramebuffer = 0;
     GLint previousViewport[4] = {0, 0, outputWidth, outputHeight};
@@ -2998,6 +3049,43 @@ void ApplySHARFrontendMenuFineDetail()
     previousCullEnabled = glIsEnabled(GL_CULL_FACE);
     previousScissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
     previousStencilEnabled = glIsEnabled(GL_STENCIL_TEST);
+
+    // Snapshot the render target Scrooby left active at the point the contour
+    // pass is called. If this is not framebuffer 0, it helps explain whether
+    // the current implementation is capturing/drawing to a different target.
+    static GLint s_lastLoggedFramebuffer = -1;
+    static GLint s_lastLoggedViewportX = -1;
+    static GLint s_lastLoggedViewportY = -1;
+    static GLint s_lastLoggedViewportW = -1;
+    static GLint s_lastLoggedViewportH = -1;
+    static int s_lastLoggedOutputWidth = 0;
+    static int s_lastLoggedOutputHeight = 0;
+    if( previousFramebuffer != s_lastLoggedFramebuffer ||
+        previousViewport[0] != s_lastLoggedViewportX ||
+        previousViewport[1] != s_lastLoggedViewportY ||
+        previousViewport[2] != s_lastLoggedViewportW ||
+        previousViewport[3] != s_lastLoggedViewportH ||
+        outputWidth != s_lastLoggedOutputWidth ||
+        outputHeight != s_lastLoggedOutputHeight )
+    {
+        SDL_LogInfo(SDL_LOG_CATEGORY_RENDER,
+            "SHAR-FINE-DIAG: before-pass fbo=%d viewport=%d,%d %dx%d output=%dx%d program=%u texture=%u cel=%d frontend=%d",
+            (int)previousFramebuffer,
+            previousViewport[0], previousViewport[1],
+            previousViewport[2], previousViewport[3],
+            outputWidth, outputHeight,
+            (unsigned)gSHARFrontendFineDetailProgram,
+            (unsigned)gSHARFrontendFineDetailTexture,
+            celShadingEnabled ? 1 : 0,
+            frontEndPassActive ? 1 : 0);
+        s_lastLoggedFramebuffer = previousFramebuffer;
+        s_lastLoggedViewportX = previousViewport[0];
+        s_lastLoggedViewportY = previousViewport[1];
+        s_lastLoggedViewportW = previousViewport[2];
+        s_lastLoggedViewportH = previousViewport[3];
+        s_lastLoggedOutputWidth = outputWidth;
+        s_lastLoggedOutputHeight = outputHeight;
+    }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, outputWidth, outputHeight);

@@ -356,11 +356,39 @@ void FrontEndRenderLayer::Render()
             // are never sampled by the contour shader.
             Scrooby::Project* project = mpScroobyApp->GetProject();
             Scrooby::Screen* screen = project != NULL ? project->GetCurrentScreen() : NULL;
+            const bool celPassActive = IsSHARFrontendMenuCelPassActive();
+            Scrooby::Page* menu3dPage = screen != NULL ? screen->GetPage( "3dFE" ) : NULL;
+            Scrooby::Page* dividerPage = screen != NULL ? screen->GetPage( "FeDivide" ) : NULL;
             const bool hasMenuCameraSet =
-                IsSHARFrontendMenuCelPassActive() &&
-                screen != NULL &&
-                screen->GetPage( "3dFE" ) != NULL &&
-                screen->GetPage( "FeDivide" ) != NULL;
+                celPassActive && screen != NULL && menu3dPage != NULL && dividerPage != NULL;
+
+            // Diagnostic only: emit a line whenever the screen/gate state changes.
+            // This does not change which rendering path is selected.
+            static bool s_frontEndGateLogged = false;
+            static const void* s_lastGateScreen = NULL;
+            static const void* s_lastMenu3dPage = NULL;
+            static const void* s_lastDividerPage = NULL;
+            static bool s_lastCelPassActive = false;
+            static bool s_lastHasMenuCameraSet = false;
+            if( !s_frontEndGateLogged ||
+                s_lastGateScreen != (const void*)screen ||
+                s_lastMenu3dPage != (const void*)menu3dPage ||
+                s_lastDividerPage != (const void*)dividerPage ||
+                s_lastCelPassActive != celPassActive ||
+                s_lastHasMenuCameraSet != hasMenuCameraSet )
+            {
+                LOGI( "SHAR-FE-DIAG: gate screen=%p celPassActive=%d 3dFE=%p FeDivide=%p hasMenuCameraSet=%d route=%s",
+                      (void*)screen, celPassActive ? 1 : 0,
+                      (void*)menu3dPage, (void*)dividerPage,
+                      hasMenuCameraSet ? 1 : 0,
+                      hasMenuCameraSet ? "split-background-pass-foreground" : "DrawFrame" );
+                s_frontEndGateLogged = true;
+                s_lastGateScreen = (const void*)screen;
+                s_lastMenu3dPage = (const void*)menu3dPage;
+                s_lastDividerPage = (const void*)dividerPage;
+                s_lastCelPassActive = celPassActive;
+                s_lastHasMenuCameraSet = hasMenuCameraSet;
+            }
 
             if( hasMenuCameraSet )
             {
