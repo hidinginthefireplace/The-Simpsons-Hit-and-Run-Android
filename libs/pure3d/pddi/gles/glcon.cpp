@@ -253,10 +253,11 @@ static void WriteCelShadingConfiguration()
     if (file == nullptr)
         return;
 
-    fprintf(file, "# Simpsons Hit & Run Android - Cel Shading\n");
-    fprintf(file, "# Change with true/false values.\n");
-    fprintf(file, "# You can also use 1/0 values.\n");
-    fprintf(file, "# Restart the game after changing this file.\n");
+    fprintf(file, "# Simpsons Hit & Run - Revamped! [Cel Shading Setting]\n");
+    fprintf(file, "# Changes the graphics to more resemble the original Simpsons cartoon style.\n");
+    fprintf(file, "# Change with true/false or 1/0 values.\n");
+    fprintf(file, "# You can also use the in-game settings toggle.\n");
+    fprintf(file, "# Changes to this file will be reflected upon restart.\n");
     fprintf(file, "\n");
     fprintf(file, "cel_shading=%s\n", gCelShadingEnabled ? "true" : "false");
     fclose(file);
@@ -331,10 +332,11 @@ static void WriteSharpeningConfiguration()
     if (file == nullptr)
         return;
 
-    fprintf(file, "# Simpsons Hit & Run Android - Sharpening\n");
-    fprintf(file, "# Choose OFF, 20%%, 40%%, 60%%, 80%%, or MAX in the Graphics menu.\n");
-    fprintf(file, "# Changes made in the Graphics menu are saved immediately.\n");
-    fprintf(file, "# sharpen=0.00 / 0.20 / 0.40 / 0.60 / 0.80 / 1.00\n");
+    fprintf(file, "# Simpsons Hit & Run - Revamped! [Sharpening Setting]\n");
+    fprintf(file, "# Enhances brightness contrast along edges to make graphics more defined.\n");
+    fprintf(file, "# Change with 0.20/0.40/0.60/0.80/1.00 values and true/false or 1/0 values.\n");
+    fprintf(file, "# You can also use the in-game settings toggle.\n");
+    fprintf(file, "# Changes to this file will be reflected upon restart.\n");
     fprintf(file, "\n");
     fprintf(file, "sharpen=%.2f\n", gFrameSharpenStrength);
     fprintf(file, "sharpening_enabled=%s\n", gFrameSharpeningEnabled ? "true" : "false");
@@ -465,8 +467,13 @@ static void WriteCRTConfiguration()
     if (file == nullptr)
         return;
 
-    fprintf(file, "# Simpsons Hit & Run Android - CRT filter (GLES2 CRT-Geom-style)\n");
-    fprintf(file, "# Changes are read on game startup; 0/off bypasses the CRT pass.\n");
+    fprintf(file, "# Simpsons Hit & Run - Revamped [CRT Filter Configuration]\n");
+    fprintf(file, "# (GLES2 CRT-Geom-Style)\n");
+    fprintf(file, "# Overlays a screen filter that imitates a 90s CRT TV.\n");
+    fprintf(file, "# 0/off bypasses the CRT pass.\n");
+    fprintf(file, "# You can also use the in-game settings toggle.\n");
+    fprintf(file, "# Changes to this file will be reflected upon restart.\n");
+    fprintf(file, "\n");
     fprintf(file, "crt_enabled=%d\n", gCRTEnabled ? 1 : 0);
     fprintf(file, "scanline_strength=%.2f\n", gCRTScanlineStrength);
     fprintf(file, "curvature=%.2f\n", gCRTCurvature);
@@ -576,8 +583,12 @@ static void WriteMotionBlurConfiguration()
     if (file == nullptr)
         return;
 
-    fprintf(file, "# Simpsons Hit & Run Android - camera-aware motion blur\n");
-    fprintf(file, "# This setting affects the 3D world only; menus and touch controls remain sharp.\n");
+    fprintf(file, "# Simpsons Hit & Run - Revamped! [Motion Blur Setting]\n");
+    fprintf(file, "# Adds motion blur to the tail of vehicles and the bottom of the screen.\n");
+    fprintf(file, "# Change with true/false or 1/0 values.\n");
+    fprintf(file, "# You can also use the in-game settings toggle.\n");
+    fprintf(file, "# Changes to this file will be reflected upon restart.\n");
+    fprintf(file, "\n");
     fprintf(file, "motion_blur=%s\n", gMotionBlurEnabled ? "true" : "false");
     fclose(file);
 }
@@ -656,8 +667,12 @@ static void WriteSHARRimLightingConfiguration()
     FILE* file = fopen( filePath, "w" );
     if( file == nullptr )
         return;
-    fprintf( file, "# Simpsons Hit & Run Android - model toon rim lighting\n" );
-    fprintf( file, "# Restored parameters: rim strength 0.20, power 2.5, flat base 0.78\n" );
+    fprintf( file, "# Simpsons Hit & Run - Revamped! [Rim Lighting Setting]\n" );
+    fprintf( file, "# Illuminates the outer edges of characters and vehicles.\n" );
+    fprintf( file, "# Change with true/false or 1/0 values.\n" );
+    fprintf( file, "# You can also use the in-game settings toggle.\n" );
+    fprintf( file, "# Changes to this file will be reflected upon restart.\n" );
+    fprintf( file, "\n" );
     fprintf( file, "rim_lighting=%s\n", gSHARRimLightingEnabled ? "true" : "false" );
     fclose( file );
 }
