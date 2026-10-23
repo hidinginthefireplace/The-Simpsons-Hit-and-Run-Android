@@ -18,9 +18,6 @@
 #include <contexts/bootupcontext.h>
 #include <pddi/pddi.hpp>
 #include <string.h>
-#ifdef RAD_ANDROID
-#include <android/log.h>
-#endif
 
 #ifdef RAD_ANDROID
 bool IsCelShadingEnabled();
@@ -54,13 +51,23 @@ namespace
 {
     const int SMALL_TREE_TOON_SHADOW_SLICES = 32;
 
-    bool IsSmallTreeShadowAsset(const char* shadowName)
+    bool IsSmallTreeShadowTarget(const char* objectName, const char* shadowName)
     {
-        // Diagnostic mode deliberately matches the shared small-tree shadow
-        // drawable regardless of the owning object's name. Cypress trees may
-        // also be highlighted because they share this same asset.
-        return shadowName != NULL &&
-               strcmp(shadowName, "treeshadowsmall") == 0;
+        if (objectName == NULL || shadowName == NULL)
+        {
+            return false;
+        }
+
+        // Restrict this to living small trees. Cypress trees use the same
+        // source drawable but should keep their authored shadows.
+        if (strstr(objectName, "treesm") == NULL ||
+            strstr(objectName, "treesmdead") != NULL ||
+            strstr(objectName, "treedead") != NULL)
+        {
+            return false;
+        }
+
+        return strcmp(shadowName, "treeshadowsmall") == 0;
     }
 
     bool DrawSmallTreeToonShadow(
@@ -81,10 +88,9 @@ namespace
             return false;
         }
 
-        // Diagnostic pass: replace the authored shadow with a bright magenta marker
-        // so it's obvious whether this code path is reached. This is temporary.
-        // No blending: the magenta marker should be clearly visible over the ground.
-        shadowShader->SetInt(PDDI_SP_BLENDMODE, PDDI_BLEND_NONE);
+        // Match the crisp tone used by the cel-enabled character and vehicle
+        // blobs. Replace only the targeted small-tree shadow asset.
+        shadowShader->SetInt(PDDI_SP_BLENDMODE, PDDI_BLEND_MODULATE);
         shadowShader->SetInt(PDDI_SP_ISLIT, 0);
         shadowShader->SetInt(PDDI_SP_ALPHATEST, 0);
         shadowShader->SetInt(PDDI_SP_SHADEMODE, PDDI_SHADE_GOURAUD);
@@ -99,8 +105,7 @@ namespace
             return false;
         }
 
-        // Deliberately unmistakable diagnostic marker; this is not the final shadow tint.
-        const tColour shadowColour(255, 0, 255, 255);
+        const tColour shadowColour(116, 116, 116, 116);
         const float angleStep = rmt::PI_2 / float(SMALL_TREE_TOON_SHADOW_SLICES);
 
         for (int i = 0; i < SMALL_TREE_TOON_SHADOW_SLICES; ++i)
@@ -533,20 +538,6 @@ sim::Solving_Answer StaticPhysDSG::PostReactToCollision(rmt::Vector& impulse, si
 
 void StaticPhysDSG::SetShadow( tDrawable* ipShadow )
 {
-#ifdef RAD_ANDROID
-    // Runtime diagnostic: cap logs to avoid flooding logcat during level streaming. The tag is SHR-ShadowTrace.
-    static int shadowAssignmentLogCount = 0;
-    if (shadowAssignmentLogCount < 180)
-    {
-        const rmt::Vector& pos = rPosition();
-        __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowTrace",
-            "SET_SHADOW[%d] drawable=%s objectPos=(%.2f,%.2f,%.2f)",
-            shadowAssignmentLogCount,
-            (ipShadow != NULL && ipShadow->GetName() != NULL) ? ipShadow->GetName() : "<null>",
-            pos.x, pos.y, pos.z);
-        ++shadowAssignmentLogCount;
-    }
-#endif
     tRefCounted::Assign( mpShadow, ipShadow );
 
     mUseToonSmallTreeShadow = false;
@@ -562,7 +553,7 @@ void StaticPhysDSG::SetShadow( tDrawable* ipShadow )
         mpShadowMatrix = CreateShadowMatrix( rPosition() );
 
 #ifdef RAD_ANDROID
-        if ( IsSmallTreeShadowAsset( ipShadow->GetName() ) )
+        if ( IsSmallTreeShadowTarget( GetName(), ipShadow->GetName() ) )
         {
             // Use the asset's own local bounds to preserve the artist-authored
             // footprint as closely as possible, but render it as a crisp oval.
@@ -586,13 +577,6 @@ void StaticPhysDSG::SetShadow( tDrawable* ipShadow )
             }
 
             mUseToonSmallTreeShadow = true;
-#ifdef RAD_ANDROID
-            __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowTrace",
-                "TREE_SHADOW_MATCH drawable=%s center=(%.2f,%.2f) radius=(%.2f,%.2f)",
-                ipShadow->GetName(),
-                mToonSmallTreeShadowCenterX, mToonSmallTreeShadowCenterZ,
-                mToonSmallTreeShadowRadiusX, mToonSmallTreeShadowRadiusZ);
-#endif
         }
 #endif
     }
@@ -659,29 +643,6 @@ void StaticPhysDSG::RecomputeShadowPositionNoIntersect( float height, const rmt:
 
 void StaticPhysDSG::DisplaySimpleShadow()
 {
-#ifdef RAD_ANDROID
-    // Keep independent caps for cel ON and cel OFF. The previous global cap
-    // was consumed during level loading before the user could toggle cel shading.
-    static int shadowDisplayCelOnLogCount = 0;
-    static int shadowDisplayCelOffLogCount = 0;
-    const bool celEnabledForTrace = IsCelShadingEnabled();
-    int* displayLogCount = celEnabledForTrace
-        ? &shadowDisplayCelOnLogCount
-        : &shadowDisplayCelOffLogCount;
-    if (*displayLogCount < 60)
-    {
-        __android_log_print(ANDROID_LOG_INFO, "SHR-ShadowTrace",
-            "DISPLAY_SHADOW_%s[%d] owner=%s drawable=%s toonTreeMatch=%d cel=%d matrix=%d",
-            celEnabledForTrace ? "ON" : "OFF",
-            *displayLogCount,
-            (GetName() != NULL) ? GetName() : "<null>",
-            (mpShadow != NULL && mpShadow->GetName() != NULL) ? mpShadow->GetName() : "<null>",
-            mUseToonSmallTreeShadow ? 1 : 0,
-            celEnabledForTrace ? 1 : 0,
-            mpShadowMatrix != NULL ? 1 : 0);
-        ++(*displayLogCount);
-    }
-#endif
     p3d::pddi->SetZWrite(false);
     BEGIN_PROFILE("DisplaySimpleShadow")
 	rAssert( mpShadow != NULL );
@@ -706,9 +667,7 @@ void StaticPhysDSG::DisplaySimpleShadow()
 	rmt::Matrix shadowTransform( *mpShadowMatrix );
 	shadowTransform.Row( 3 ).Add( camPos );
 
-    // Display. In this diagnostic build, the bright marker substitutes the
-    // original drawable for any object using the shared small-tree shadow asset
-    // while cel shading is enabled.
+    // Display. Use the crisp oval only for targeted small trees while cel shading is enabled.
     p3d::stack->PushMultiply( shadowTransform );
     bool displayedToonSmallTreeShadow = false;
 #ifdef RAD_ANDROID
@@ -717,8 +676,8 @@ void StaticPhysDSG::DisplaySimpleShadow()
         displayedToonSmallTreeShadow = DrawSmallTreeToonShadow(
             mToonSmallTreeShadowCenterX,
             mToonSmallTreeShadowCenterZ,
-            mToonSmallTreeShadowRadiusX * 1.8f,
-            mToonSmallTreeShadowRadiusZ * 1.8f );
+            mToonSmallTreeShadowRadiusX,
+            mToonSmallTreeShadowRadiusZ );
     }
 #endif
     if ( !displayedToonSmallTreeShadow )
