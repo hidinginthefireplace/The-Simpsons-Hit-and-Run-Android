@@ -56,15 +56,20 @@ static void WriteSHARAnisotropicFilteringConfiguration()
     char path[512];
     if( !BuildSHARAnisotropicConfigurationPath(path, sizeof(path)) )
         return;
+
     FILE* file = fopen(path, "w");
     if( file == NULL )
         return;
-    fprintf(file, "# Simpsons Hit & Run Android - experimental anisotropic filtering\n");
-    fprintf(file, "# Requested level is clamped to device extension capability when applied.\n");
+
+    fprintf(file, "# Simpsons Hit & Run - Revamped! [AF Settings]\n");
+    fprintf(file, "# Improves the quality of textures at distant oblique angles.\n");
+    fprintf(file, "# Change with 2x/4x/8x/12x/16x values.\n");
+    fprintf(file, "# You can also use the in-game settings toggle.\n");
+    fprintf(file, "# Changes to this file will be reflected upon restart.\n");
+    fprintf(file, "\n");
     fprintf(file, "anisotropy=%dx\n", SHAR_ANISOTROPIC_FILTER_LEVELS[gSHARAnisotropicFilteringSelection]);
     fclose(file);
 }
-
 static void LoadSHARAnisotropicFilteringConfiguration()
 {
     if( gSHARAnisotropicFilteringConfigurationLoaded )
