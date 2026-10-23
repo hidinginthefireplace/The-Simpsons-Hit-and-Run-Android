@@ -54,6 +54,10 @@
 
 #include <string.h>
 
+#ifdef RAD_ANDROID
+void SetSHARFrontendMenuCelPassActive(bool enabled);
+#endif
+
 //===========================================================================
 // Global Data, Local Data, Local Classes
 //===========================================================================
@@ -354,6 +358,10 @@ MEMTRACK_POP_GROUP( "CGUIScreenMainMenu" );
 //===========================================================================
 CGuiScreenMainMenu::~CGuiScreenMainMenu()
 {
+#ifdef RAD_ANDROID
+    SetSHARFrontendMenuCelPassActive(false);
+#endif
+
     if( m_nextGagIndex == -1 )
     {
         // stop any FE gag dialog that was triggered and may still be playing
@@ -776,6 +784,10 @@ CGuiScreenMainMenu::InitMenu()
 //===========================================================================
 void CGuiScreenMainMenu::InitIntro()
 {
+#ifdef RAD_ANDROID
+    SetSHARFrontendMenuCelPassActive(true);
+#endif
+
     if( m_firstTimeEntered )
     {
         this->SetFadeTime( FIRST_TIME_FADE_IN_TIME );
@@ -801,6 +813,10 @@ void CGuiScreenMainMenu::InitIntro()
 //===========================================================================
 void CGuiScreenMainMenu::InitRunning()
 {
+#ifdef RAD_ANDROID
+    SetSHARFrontendMenuCelPassActive(true);
+#endif
+
     if( m_firstTimeEntered )
     {
         this->SetFadingEnabled( true );
@@ -829,6 +845,10 @@ void CGuiScreenMainMenu::InitRunning()
 //===========================================================================
 void CGuiScreenMainMenu::InitOutro()
 {
+#ifdef RAD_ANDROID
+    SetSHARFrontendMenuCelPassActive(false);
+#endif
+
     if( m_nextGagIndex == -1 )
     {
         // stop any FE gag dialog that was triggered and may still be playing

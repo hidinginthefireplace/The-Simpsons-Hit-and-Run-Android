@@ -34,6 +34,8 @@ void SetCelShadingOutlinePass(bool enabled);
 void SetSHARCharacterMaskModelPass(bool enabled);
 void SetSHARGagCharacterCelPassActive(bool enabled);
 bool IsSHARGagCharacterCelPassActive();
+void SetSHARFrontendMenuCelPassActive(bool enabled);
+bool IsSHARFrontendMenuCelPassActive();
 #endif
 
 //--------------------------------------------------------------

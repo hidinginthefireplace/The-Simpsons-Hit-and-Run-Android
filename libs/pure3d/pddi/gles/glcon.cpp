@@ -38,6 +38,9 @@ static bool gSHARCharacterMaskAlphaWriteRequested = true;
 // Actual skinned meshes use this flag to receive the same two-pass toon
 // silhouette treatment as CharacterRenderable; static gag props are untouched.
 static bool gSHARGagCharacterCelPassActive = false;
+// Enabled while Scrooby displays the main-menu camera set. This is separate
+// from the NIS gag flag because the front-end scene is not rendered by NISPlayer.
+static bool gSHARFrontendMenuCelPassActive = false;
 
 // Mirror the colour-write mask set through the Android GLES backend. Character
 // mask policy changes usually only need to toggle alpha; querying GL state for
@@ -119,6 +122,16 @@ void SetSHARGagCharacterCelPassActive(bool enabled)
 bool IsSHARGagCharacterCelPassActive()
 {
     return gSHARGagCharacterCelPassActive;
+}
+
+void SetSHARFrontendMenuCelPassActive(bool enabled)
+{
+    gSHARFrontendMenuCelPassActive = enabled;
+}
+
+bool IsSHARFrontendMenuCelPassActive()
+{
+    return gSHARFrontendMenuCelPassActive;
 }
 
 #ifdef RAD_ANDROID

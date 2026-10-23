@@ -22,6 +22,7 @@
 #ifdef RAD_ANDROID
 bool IsCelShadingEnabled();
 bool IsSHARGagCharacterCelPassActive();
+bool IsSHARFrontendMenuCelPassActive();
 void SetSHARCharacterMaskModelPass(bool enabled);
 void SetCelShadingObjectEnabled(bool enabled);
 void SetCelShadingOutlinePass(bool enabled);
@@ -69,11 +70,11 @@ tPolySkin::~tPolySkin()
 void tPolySkin::Display(tPose* p)
 {
 #ifdef RAD_ANDROID
-    // NIS/gag characters bypass CharacterRenderable::DisplayModel(), so their
-    // skinned meshes would otherwise miss the regular two-pass toon outline.
-    // Gate this to presentation scenes and skinned meshes: static props, effects,
-    // and ordinary world rendering keep their existing path.
-    if (IsSHARGagCharacterCelPassActive() && IsCelShadingEnabled())
+    // NIS/gag characters and skinned models in the main-menu camera set bypass
+    // CharacterRenderable::DisplayModel(), so explicitly give those meshes the
+    // same silhouette + normal pass. Ordinary gameplay remains unchanged.
+    if ((IsSHARGagCharacterCelPassActive() ||
+         IsSHARFrontendMenuCelPassActive()) && IsCelShadingEnabled())
     {
         SetSHARCharacterMaskModelPass(true);
         SetCelShadingObjectEnabled(true);
