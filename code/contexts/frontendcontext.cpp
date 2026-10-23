@@ -36,6 +36,10 @@
 
 #include <worldsim/coins/coinmanager.h>
 
+#ifdef RAD_ANDROID
+void SetSHARFrontendMenuCelPassActive(bool enabled);
+#endif
+
 //******************************************************************************
 //
 // Global Data, Local Data, Local Classes
@@ -123,6 +127,11 @@ FrontEndContext::~FrontEndContext()
 //=============================================================================
 void FrontEndContext::OnStart( ContextEnum previousContext )
 {
+#ifdef RAD_ANDROID
+    // Keep frontend 3D assets cel shaded across all camera and menu transitions.
+    SetSHARFrontendMenuCelPassActive(true);
+#endif
+
     SetMemoryIdentification( "FEContext" );
     MEMTRACK_PUSH_FLAG( "Front End" );
 
@@ -177,6 +186,11 @@ void FrontEndContext::OnStart( ContextEnum previousContext )
 //=============================================================================
 void FrontEndContext::OnStop( ContextEnum nextContext )
 {
+#ifdef RAD_ANDROID
+    // Stop the frontend-only cel pass before releasing its screens and assets.
+    SetSHARFrontendMenuCelPassActive(false);
+#endif
+
     GetGuiSystem()->UnregisterUserInputHandlers();
 
     // release GUI frontend
