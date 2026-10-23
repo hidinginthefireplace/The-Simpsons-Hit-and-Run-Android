@@ -337,10 +337,11 @@ void AndroidConfigurationManager::WriteConfigurationFile()
         return;
     }
 
-    fprintf( file, "# Simpsons Hit & Run Android - Controller Configuration\n" );
-    fprintf( file, "# Change with true/false values.\n" );
-    fprintf( file, "# You can also use 1/0 values.\n" );
-    fprintf( file, "# Restart the game after changing this file.\n" );
+    fprintf( file, "# Simpsons Hit & Run - Revamped! [Controller Configuration]\n" );
+    fprintf( file, "# Inverted Camera and Controller Vibration toggles.\n" );
+    fprintf( file, "# Change with true/false or 1/0 values.\n" );
+    fprintf( file, "# You can also use the in-game settings toggle.\n" );
+    fprintf( file, "# Changes to this file will be reflected upon restart.\n" );
     fprintf( file, "\n" );
 
     fprintf( file, "invert_camera=%s\n", m_invertCamera ? "true" : "false" );
