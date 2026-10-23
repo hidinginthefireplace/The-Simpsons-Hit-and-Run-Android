@@ -309,11 +309,12 @@ static bool SaveSHARGraphicsResolutionSelection( int selection )
     const int height = GetSHARGraphicsResolutionHeight( selection );
     const int result = fprintf(
         file,
-        "# Simpsons Hit & Run Android adaptive render resolution\n"
-        "# Selected in the in-game Graphics menu.\n"
-        "# Changes are requested immediately and also saved for the next launch.\n"
-        "# The render width is calculated automatically from the display aspect ratio.\n"
-        "# Supported menu values: 480, 720, 1080, 1440, 2160.\n"
+        "# Simpsons Hit & Run - Revamped! [Resolution Setting]\n"
+        "# Unlocks higher rendering resolutions.\n"
+        "# Change with 480/720/1080/1440/2160/MAX values.\n"
+        "# You can also use the in-game settings toggle.\n"
+        "# Changes to this file will be reflected upon restart.\n"
+        "\n"
         "target_height=%d\n",
         height );
     const int closeResult = fclose( file );
@@ -439,9 +440,12 @@ static bool SaveSHARGraphicsFPSSelection( int selection )
     const int fps = SHAR_GRAPHICS_FPS_VALUES[selection];
     const int result = fprintf(
         file,
-        "# Simpsons Hit & Run Android frame-rate cap\n"
-        "# Selected from the in-game Graphics menu.\n"
-        "# Android may use the closest supported display refresh rate.\n"
+        "# Simpsons Hit & Run - Revamped! [FPS Cap]\n"
+        "# Unlocks a higher FPS cap (Currently experimental)\n"
+        "# Change with 30/60/90/120/144 values.\n"
+        "# You can also use the in-game settings toggle.\n"
+        "# Changes to this file will be reflected upon restart.\n"
+        "\n"
         "target_fps=%d\n",
         fps );
     const int closeResult = fclose( file );
