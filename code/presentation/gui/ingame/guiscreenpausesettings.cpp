@@ -706,11 +706,8 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
     //
     char itemName[ 32 ];
 
-    //
-    // Diagnostic only:
-    // Original PauseSettings code gets each item group directly from pPage.
-    // We only check "Menu" to know whether Android layout differs.
-    //
+    // Locate the shared menu group used for Android layout offsets and
+    // optional setting-row fallbacks.
     Scrooby::Group* pMenuGroup = pPage->GetGroup( "Menu" );
 
 #if defined(RAD_ANDROID)
@@ -750,9 +747,6 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
         //
         Scrooby::Group* group = pPage->GetGroup( item );
 
-        //
-        // Diagnostic only. Do not use this group yet.
-        //
 
 
         if( group == NULL )
@@ -1280,7 +1274,7 @@ void CGuiScreenPauseSettings::ConfigureAndroidGraphicsMenu()
                 else
                 {
                     // Defensive fallback if the dedicated five-value text object
-                    // cannot be created. Keep the row safe and visibly diagnostic.
+                    // cannot be created. Keep the row on a safe, visible 1080p fallback.
                     value->SetString( 0, "1080p" );
                     if( value->GetNumOfStrings() > 1 )
                     {
