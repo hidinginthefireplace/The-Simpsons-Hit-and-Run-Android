@@ -283,8 +283,6 @@ void FrontEndRenderLayer::Render()
     {
         fmvPlaying = pm->GetFMVPlayer()->IsPlaying();
     }
-
-    static bool s_loggedFmvForeground = false;
     if( fmvPlaying )
     {
 #ifdef RAD_ANDROID
@@ -302,18 +300,6 @@ void FrontEndRenderLayer::Render()
 
             if( mpScroobyApp != NULL )
             {
-                if( !s_loggedFmvForeground )
-                {
-                    Scrooby::Project* project = mpScroobyApp->GetProject();
-                    Scrooby::Screen* screen = project != NULL ? project->GetCurrentScreen() : NULL;
-                    Scrooby::Page* divider = screen != NULL ? screen->GetPage( "FeDivide" ) : NULL;
-                    Scrooby::Page* tvFramePage = screen != NULL ? screen->GetPage( "TVFrame" ) : NULL;
-                    LOGI( "FMVForeground: screen=%p pages=%d divider=%p tvFramePage=%p; drawing foreground pages only",
-                          (void*)screen,
-                          screen != NULL ? screen->GetNumberOfPages() : -1,
-                          (void*)divider, (void*)tvFramePage );
-                    s_loggedFmvForeground = true;
-                }
 
                 mpScroobyApp->DrawForeground( static_cast<float>( g_scroobySimulationTime ) );
             }
@@ -329,7 +315,6 @@ void FrontEndRenderLayer::Render()
         END_PROFILE( "FE Render" );
         return;
     }
-    s_loggedFmvForeground = false;
 
     for( unsigned int view = 0; view < mNumViews; view++ )
     {
@@ -365,30 +350,6 @@ void FrontEndRenderLayer::Render()
             const bool hasMenuCameraSet =
                 celPassActive && screen != NULL && menu3dPage != NULL;
 
-            // Diagnostic only: emit a line whenever the screen/gate state changes.
-            // This does not change which rendering path is selected.
-            static bool s_frontEndGateLogged = false;
-            static const void* s_lastGateScreen = NULL;
-            static const void* s_lastMenu3dPage = NULL;
-            static bool s_lastCelPassActive = false;
-            static bool s_lastHasMenuCameraSet = false;
-            if( !s_frontEndGateLogged ||
-                s_lastGateScreen != (const void*)screen ||
-                s_lastMenu3dPage != (const void*)menu3dPage ||
-                s_lastCelPassActive != celPassActive ||
-                s_lastHasMenuCameraSet != hasMenuCameraSet )
-            {
-                LOGI( "SHAR-FE-DIAG: gate screen=%p celPassActive=%d 3dFE=%p hasMenuCameraSet=%d route=%s",
-                      (void*)screen, celPassActive ? 1 : 0,
-                      (void*)menu3dPage,
-                      hasMenuCameraSet ? 1 : 0,
-                      hasMenuCameraSet ? "split-background-pass-foreground" : "DrawFrame" );
-                s_frontEndGateLogged = true;
-                s_lastGateScreen = (const void*)screen;
-                s_lastMenu3dPage = (const void*)menu3dPage;
-                s_lastCelPassActive = celPassActive;
-                s_lastHasMenuCameraSet = hasMenuCameraSet;
-            }
 
             if( hasMenuCameraSet )
             {

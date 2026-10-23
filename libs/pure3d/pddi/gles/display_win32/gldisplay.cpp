@@ -504,340 +504,6 @@ static int gSHARLastRejectedHeight = 0;
 static int gSHARLastRejectedReason = 0;
 
 
-#if defined(RAD_ANDROID)
-// Temporary, non-blocking performance diagnostics for the cloud-shadow experiment.
-// GPU timings use GL_EXT_disjoint_timer_query when available. CPU timings measure
-// time spent submitting commands, not GPU completion time; frame intervals include
-// scheduling and the configured FPS cap. No GL query result is synchronously waited on.
-enum
-{
-    SHAR_PERF_WORLD = 0,
-    SHAR_PERF_COMPOSE,
-    SHAR_PERF_SHARPEN,
-    SHAR_PERF_CRT,
-    SHAR_PERF_SATURATION,
-    SHAR_PERF_PASS_COUNT
-};
-static const int SHAR_PERF_QUERY_SLOTS = 4;
-static const GLenum SHAR_GL_TIME_ELAPSED_EXT = 0x88BF;
-static const GLenum SHAR_GL_QUERY_RESULT_EXT = 0x8866;
-static const GLenum SHAR_GL_QUERY_RESULT_AVAILABLE_EXT = 0x8867;
-static const GLenum SHAR_GL_GPU_DISJOINT_EXT = 0x8FBB;
-
-typedef void (*SHARGenQueriesEXTProc)(GLsizei, GLuint*);
-typedef void (*SHARDeleteQueriesEXTProc)(GLsizei, const GLuint*);
-typedef void (*SHARBeginQueryEXTProc)(GLenum, GLuint);
-typedef void (*SHAREndQueryEXTProc)(GLenum);
-typedef void (*SHARGetQueryObjectuivEXTProc)(GLuint, GLenum, GLuint*);
-typedef void (*SHARGetQueryObjectui64vEXTProc)(GLuint, GLenum, unsigned long long*);
-
-struct SHARGpuQuerySlot
-{
-    GLuint id;
-    bool pending;
-    int width;
-    int height;
-};
-
-struct SHARPerfAccumulator
-{
-    Uint64 total;
-    Uint64 maximum;
-    unsigned int samples;
-    int width;
-    int height;
-};
-
-static bool gSHARGpuTimerChecked = false;
-static bool gSHARGpuTimerSupported = false;
-static SHARGenQueriesEXTProc gSHARGenQueriesEXT = NULL;
-static SHARDeleteQueriesEXTProc gSHARDeleteQueriesEXT = NULL;
-static SHARBeginQueryEXTProc gSHARBeginQueryEXT = NULL;
-static SHAREndQueryEXTProc gSHAREndQueryEXT = NULL;
-static SHARGetQueryObjectuivEXTProc gSHARGetQueryObjectuivEXT = NULL;
-static SHARGetQueryObjectui64vEXTProc gSHARGetQueryObjectui64vEXT = NULL;
-static SHARGpuQuerySlot gSHARGpuQuerySlots[SHAR_PERF_PASS_COUNT][SHAR_PERF_QUERY_SLOTS] = {};
-static SHARPerfAccumulator gSHARPerfCpu[SHAR_PERF_PASS_COUNT] = {};
-static SHARPerfAccumulator gSHARPerfGpu[SHAR_PERF_PASS_COUNT] = {};
-static int gSHARPerfActivePass = -1;
-static int gSHARPerfActiveSlot = -1;
-static Uint64 gSHARPerfCpuStart = 0;
-static int gSHARPerfActiveWidth = 0;
-static int gSHARPerfActiveHeight = 0;
-static Uint64 gSHARPerfLastSwapCounter = 0;
-static Uint64 gSHARPerfSwapTotalTicks = 0;
-static Uint64 gSHARPerfSwapMaxTicks = 0;
-static unsigned int gSHARPerfSwapSamples = 0;
-
-static const char* SHARPerfPassName(int pass)
-{
-    switch (pass)
-    {
-        case SHAR_PERF_WORLD: return "world_render";
-        case SHAR_PERF_COMPOSE: return "compose_resolve";
-        case SHAR_PERF_SHARPEN: return "sharpen";
-        case SHAR_PERF_CRT: return "crt";
-        case SHAR_PERF_SATURATION: return "final_saturation";
-        default: return "unknown";
-    }
-}
-
-static bool EnsureSHARGpuTimerSupport()
-{
-    if (gSHARGpuTimerChecked)
-        return gSHARGpuTimerSupported;
-
-    gSHARGpuTimerChecked = true;
-    if (SDL_GL_ExtensionSupported("GL_EXT_disjoint_timer_query") != SDL_TRUE)
-    {
-        SDL_Log("SHAR PERF: GL_EXT_disjoint_timer_query unavailable; CPU and frame-interval diagnostics remain enabled.");
-        return false;
-    }
-
-    gSHARGenQueriesEXT = reinterpret_cast<SHARGenQueriesEXTProc>(SDL_GL_GetProcAddress("glGenQueriesEXT"));
-    gSHARDeleteQueriesEXT = reinterpret_cast<SHARDeleteQueriesEXTProc>(SDL_GL_GetProcAddress("glDeleteQueriesEXT"));
-    gSHARBeginQueryEXT = reinterpret_cast<SHARBeginQueryEXTProc>(SDL_GL_GetProcAddress("glBeginQueryEXT"));
-    gSHAREndQueryEXT = reinterpret_cast<SHAREndQueryEXTProc>(SDL_GL_GetProcAddress("glEndQueryEXT"));
-    gSHARGetQueryObjectuivEXT = reinterpret_cast<SHARGetQueryObjectuivEXTProc>(SDL_GL_GetProcAddress("glGetQueryObjectuivEXT"));
-    gSHARGetQueryObjectui64vEXT = reinterpret_cast<SHARGetQueryObjectui64vEXTProc>(SDL_GL_GetProcAddress("glGetQueryObjectui64vEXT"));
-
-    if (gSHARGenQueriesEXT == NULL || gSHARDeleteQueriesEXT == NULL ||
-        gSHARBeginQueryEXT == NULL || gSHAREndQueryEXT == NULL ||
-        gSHARGetQueryObjectuivEXT == NULL || gSHARGetQueryObjectui64vEXT == NULL)
-    {
-        SDL_Log("SHAR PERF: timer-query entry points unavailable; CPU and frame-interval diagnostics remain enabled.");
-        return false;
-    }
-
-    GLuint ids[SHAR_PERF_PASS_COUNT * SHAR_PERF_QUERY_SLOTS] = {};
-    gSHARGenQueriesEXT((GLsizei)(SHAR_PERF_PASS_COUNT * SHAR_PERF_QUERY_SLOTS), ids);
-    bool allCreated = true;
-    for (int i = 0; i < SHAR_PERF_PASS_COUNT * SHAR_PERF_QUERY_SLOTS; ++i)
-    {
-        if (ids[i] == 0)
-            allCreated = false;
-    }
-    if (!allCreated)
-    {
-        for (int i = 0; i < SHAR_PERF_PASS_COUNT * SHAR_PERF_QUERY_SLOTS; ++i)
-        {
-            if (ids[i] != 0)
-                gSHARDeleteQueriesEXT(1, &ids[i]);
-        }
-        SDL_Log("SHAR PERF: could not allocate timer queries; CPU and frame-interval diagnostics remain enabled.");
-        return false;
-    }
-
-    for (int pass = 0; pass < SHAR_PERF_PASS_COUNT; ++pass)
-    {
-        for (int slot = 0; slot < SHAR_PERF_QUERY_SLOTS; ++slot)
-        {
-            gSHARGpuQuerySlots[pass][slot].id = ids[pass * SHAR_PERF_QUERY_SLOTS + slot];
-        }
-    }
-    gSHARGpuTimerSupported = true;
-    SDL_Log("SHAR PERF: GPU timer queries enabled. Results are asynchronous and sampled in 120-result batches.");
-    return true;
-}
-
-static void RecordSHARPerfCpu(int pass, Uint64 ticks, int width, int height)
-{
-    if (pass < 0 || pass >= SHAR_PERF_PASS_COUNT)
-        return;
-
-    SHARPerfAccumulator& stats = gSHARPerfCpu[pass];
-    stats.total += ticks;
-    if (ticks > stats.maximum)
-        stats.maximum = ticks;
-    stats.samples++;
-    stats.width = width;
-    stats.height = height;
-
-    if (stats.samples >= 120)
-    {
-        const Uint64 frequency = SDL_GetPerformanceFrequency();
-        if (frequency > 0)
-        {
-            const double averageMs = (double)stats.total * 1000.0 /
-                ((double)frequency * (double)stats.samples);
-            const double maximumMs = (double)stats.maximum * 1000.0 / (double)frequency;
-            SDL_Log("SHAR PERF CPU-submit pass=%s avg=%.3fms max=%.3fms samples=%u size=%dx%d",
-                SHARPerfPassName(pass), averageMs, maximumMs, stats.samples,
-                stats.width, stats.height);
-        }
-        stats.total = 0;
-        stats.maximum = 0;
-        stats.samples = 0;
-    }
-}
-
-static void RecordSHARPerfGpu(int pass, unsigned long long nanoseconds, int width, int height)
-{
-    if (pass < 0 || pass >= SHAR_PERF_PASS_COUNT)
-        return;
-
-    SHARPerfAccumulator& stats = gSHARPerfGpu[pass];
-    stats.total += (Uint64)nanoseconds;
-    if ((Uint64)nanoseconds > stats.maximum)
-        stats.maximum = (Uint64)nanoseconds;
-    stats.samples++;
-    stats.width = width;
-    stats.height = height;
-
-    if (stats.samples >= 120)
-    {
-        const double averageMs = (double)stats.total / ((double)stats.samples * 1000000.0);
-        const double maximumMs = (double)stats.maximum / 1000000.0;
-        SDL_Log("SHAR PERF GPU pass=%s avg=%.3fms max=%.3fms samples=%u size=%dx%d",
-            SHARPerfPassName(pass), averageMs, maximumMs, stats.samples,
-            stats.width, stats.height);
-        stats.total = 0;
-        stats.maximum = 0;
-        stats.samples = 0;
-    }
-}
-
-static bool BeginSHARPerformancePass(int pass, int width, int height)
-{
-    if (pass < 0 || pass >= SHAR_PERF_PASS_COUNT || gSHARPerfActivePass >= 0)
-        return false;
-
-    gSHARPerfActivePass = pass;
-    gSHARPerfActiveSlot = -1;
-    gSHARPerfActiveWidth = width;
-    gSHARPerfActiveHeight = height;
-    gSHARPerfCpuStart = SDL_GetPerformanceCounter();
-
-    if (EnsureSHARGpuTimerSupport())
-    {
-        for (int slot = 0; slot < SHAR_PERF_QUERY_SLOTS; ++slot)
-        {
-            SHARGpuQuerySlot& query = gSHARGpuQuerySlots[pass][slot];
-            if (query.id != 0 && !query.pending)
-            {
-                query.width = width;
-                query.height = height;
-                gSHARBeginQueryEXT(SHAR_GL_TIME_ELAPSED_EXT, query.id);
-                gSHARPerfActiveSlot = slot;
-                break;
-            }
-        }
-    }
-    return true;
-}
-
-static void EndSHARPerformancePass()
-{
-    if (gSHARPerfActivePass < 0)
-        return;
-
-    const int pass = gSHARPerfActivePass;
-    const Uint64 now = SDL_GetPerformanceCounter();
-    if (gSHARPerfActiveSlot >= 0)
-    {
-        SHARGpuQuerySlot& query = gSHARGpuQuerySlots[pass][gSHARPerfActiveSlot];
-        gSHAREndQueryEXT(SHAR_GL_TIME_ELAPSED_EXT);
-        query.pending = true;
-    }
-
-    if (now >= gSHARPerfCpuStart)
-    {
-        RecordSHARPerfCpu(pass, now - gSHARPerfCpuStart,
-            gSHARPerfActiveWidth, gSHARPerfActiveHeight);
-    }
-
-    gSHARPerfActivePass = -1;
-    gSHARPerfActiveSlot = -1;
-}
-
-class SHARPerfPassScope
-{
-public:
-    SHARPerfPassScope(int pass, int width, int height)
-        : mActive(BeginSHARPerformancePass(pass, width, height))
-    {
-    }
-    ~SHARPerfPassScope()
-    {
-        if (mActive)
-            EndSHARPerformancePass();
-    }
-private:
-    bool mActive;
-    SHARPerfPassScope(const SHARPerfPassScope&);
-    SHARPerfPassScope& operator=(const SHARPerfPassScope&);
-};
-
-static void PollSHARGpuTimerQueries()
-{
-    if (!EnsureSHARGpuTimerSupport())
-        return;
-
-    GLint disjoint = 0;
-    glGetIntegerv(SHAR_GL_GPU_DISJOINT_EXT, &disjoint);
-    if (disjoint != 0)
-    {
-        for (int pass = 0; pass < SHAR_PERF_PASS_COUNT; ++pass)
-        {
-            for (int slot = 0; slot < SHAR_PERF_QUERY_SLOTS; ++slot)
-                gSHARGpuQuerySlots[pass][slot].pending = false;
-        }
-        SDL_Log("SHAR PERF GPU timers: discarded pending samples after a disjoint GPU timer interval.");
-        return;
-    }
-
-    for (int pass = 0; pass < SHAR_PERF_PASS_COUNT; ++pass)
-    {
-        for (int slot = 0; slot < SHAR_PERF_QUERY_SLOTS; ++slot)
-        {
-            SHARGpuQuerySlot& query = gSHARGpuQuerySlots[pass][slot];
-            if (!query.pending || query.id == 0)
-                continue;
-
-            GLuint available = 0;
-            gSHARGetQueryObjectuivEXT(query.id, SHAR_GL_QUERY_RESULT_AVAILABLE_EXT, &available);
-            if (available == 0)
-                continue;
-
-            unsigned long long nanoseconds = 0;
-            gSHARGetQueryObjectui64vEXT(query.id, SHAR_GL_QUERY_RESULT_EXT, &nanoseconds);
-            query.pending = false;
-            RecordSHARPerfGpu(pass, nanoseconds, query.width, query.height);
-        }
-    }
-}
-
-static void RecordSHARSwapFrameInterval()
-{
-    const Uint64 frequency = SDL_GetPerformanceFrequency();
-    const Uint64 now = SDL_GetPerformanceCounter();
-    if (frequency == 0)
-        return;
-
-    if (gSHARPerfLastSwapCounter != 0 && now >= gSHARPerfLastSwapCounter)
-    {
-        const Uint64 delta = now - gSHARPerfLastSwapCounter;
-        gSHARPerfSwapTotalTicks += delta;
-        if (delta > gSHARPerfSwapMaxTicks)
-            gSHARPerfSwapMaxTicks = delta;
-        gSHARPerfSwapSamples++;
-
-        if (gSHARPerfSwapSamples >= 120)
-        {
-            const double averageMs = (double)gSHARPerfSwapTotalTicks * 1000.0 /
-                ((double)frequency * (double)gSHARPerfSwapSamples);
-            const double maximumMs = (double)gSHARPerfSwapMaxTicks * 1000.0 / (double)frequency;
-            SDL_Log("SHAR PERF frame_interval avg=%.3fms max=%.3fms samples=%u internal=%dx%d",
-                averageMs, maximumMs, gSHARPerfSwapSamples, gSHARFrameWidth, gSHARFrameHeight);
-            gSHARPerfSwapTotalTicks = 0;
-            gSHARPerfSwapMaxTicks = 0;
-            gSHARPerfSwapSamples = 0;
-        }
-    }
-    gSHARPerfLastSwapCounter = now;
-}
-#endif
-
 static bool QuerySDLDrawableSize(int* width, int* height)
 {
     if (width == NULL || height == NULL)
@@ -1203,10 +869,6 @@ static bool EnsureCelRenderTarget(int width, int height)
         gCelDepthTextureExtensionAvailable =
             SDL_GL_ExtensionSupported("GL_OES_depth_texture") == SDL_TRUE;
         gCelDepthExtensionChecked = true;
-        SDL_Log(
-            "SHAR Android depth-aware outlines: GL_OES_depth_texture %s",
-            gCelDepthTextureExtensionAvailable ? "available" : "unavailable"
-        );
     }
 
     GLint previousFramebuffer = 0;
@@ -2278,15 +1940,6 @@ static void ResolveSceneToScreen(int width, int height)
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)0);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        const GLenum drawError = glGetError();
-        static bool s_loggedFrontendFineDetailDraw = false;
-        if( !s_loggedFrontendFineDetailDraw )
-        {
-            SDL_LogInfo(SDL_LOG_CATEGORY_RENDER,
-                "SHAR-FINE-DIAG: capture=success draw=issued glError=0x%04x size=%dx%d",
-                (unsigned)drawError, outputWidth, outputHeight);
-            s_loggedFrontendFineDetailDraw = true;
-        }
     }
     else
     {
@@ -2394,7 +2047,6 @@ static void ResetAndroidPostProcess()
 
 static void ApplyCelPostProcess(int width, int height)
 {
-    EndSHARPerformancePass();
     // World geometry is finished. Re-enable ordinary alpha writes before the
     // fullscreen post-process and GUI/output rendering passes.
     SetSHARCharacterMaskModelPass(false);
@@ -2410,41 +2062,19 @@ static void ApplyCelPostProcess(int width, int height)
         height = gSHARFrameHeight;
     }
 
-    SHARPerfPassScope composePerfScope(SHAR_PERF_COMPOSE, width, height);
     const bool celEffectsEnabled = IsCelShadingEnabled();
     const bool motionBlurRequested = IsMotionBlurEnabled();
     const bool bloomRequested = IsSHARBloomEnabled();
     const bool cloudShadowsUserEnabled = IsSHARCloudShadowsEnabled();
-    // Experimental Option B: limit cloud shadows to approved exterior gameplay levels.
+    // Limit cloud shadows to the supported exterior gameplay levels.
     // Do not key this effect off the iris-transition flag: the world behind the expanding
     // iris is already the exterior again, and toggling shadows here caused a visible blink.
     const bool cloudShadowLevelAllowed = IsSHARWorldCloudShadowLevelAllowed();
-    // Experimental test setting: use the same full strength on Levels 1, 2, and 3.
+    // Use full-strength cloud shadows on supported levels.
     const float cloudShadowStrengthMultiplier = 1.0f;
     const bool cloudShadowsActive =
         cloudShadowsUserEnabled && cloudShadowLevelAllowed &&
         gCelDepthTextureActive && haveCurrentMotionBlurCamera;
-    // Report only state transitions so the test can distinguish an unavailable depth/camera path
-    // from an effect that is active but visually too subtle, without per-frame log spam.
-    static int lastCloudShadowState = -1;
-    const int cloudShadowState =
-        (cloudShadowLevelAllowed ? 1 : 0) |
-        (gCelDepthTextureActive ? 2 : 0) |
-        (haveCurrentMotionBlurCamera ? 4 : 0) |
-        (gSHARIrisTransitionActive ? 8 : 0) |
-        (cloudShadowsActive ? 16 : 0) |
-        (cloudShadowsUserEnabled ? 32 : 0);
-    if (cloudShadowState != lastCloudShadowState)
-    {
-        SDL_Log("SHAR cloud-shadow test state: allowedLevel=%d userEnabled=%d depthTexture=%d camera=%d irisTransition=%d active=%d",
-            cloudShadowLevelAllowed ? 1 : 0,
-            cloudShadowsUserEnabled ? 1 : 0,
-            gCelDepthTextureActive ? 1 : 0,
-            haveCurrentMotionBlurCamera ? 1 : 0,
-            gSHARIrisTransitionActive ? 1 : 0,
-            cloudShadowsActive ? 1 : 0);
-        lastCloudShadowState = cloudShadowState;
-    }
 
     if (!gCelWorldInFbo)
     {
@@ -2805,7 +2435,6 @@ bool BeginCelPostProcessFrame(int width, int height)
     // may write scene alpha. Blob and static shadows remain unmarked.
     SetSHARCharacterMaskWorldEnabled(true);
     gCelWorldInFbo = true;
-    BeginSHARPerformancePass(SHAR_PERF_WORLD, width, height);
     return true;
 }
 
@@ -2965,59 +2594,17 @@ static bool EnsureSHARFrontendFineDetailResources(int width, int height)
 
 void ApplySHARFrontendMenuFineDetail()
 {
-    const bool frontEndPassActive = IsSHARFrontendMenuCelPassActive();
-    const bool celShadingEnabled = IsCelShadingEnabled();
-    if (!frontEndPassActive)
-    {
-        static bool s_loggedInactivePass = false;
-        if( !s_loggedInactivePass )
-        {
-            SDL_LogInfo(SDL_LOG_CATEGORY_RENDER,
-                "SHAR-FINE-DIAG: skipped because frontend cel pass is inactive");
-            s_loggedInactivePass = true;
-        }
+    if (!IsSHARFrontendMenuCelPassActive() || !IsCelShadingEnabled())
         return;
-    }
-    if (!celShadingEnabled)
-    {
-        static bool s_loggedCelDisabled = false;
-        if( !s_loggedCelDisabled )
-        {
-            SDL_LogInfo(SDL_LOG_CATEGORY_RENDER,
-                "SHAR-FINE-DIAG: skipped because cel shading is disabled");
-            s_loggedCelDisabled = true;
-        }
-        return;
-    }
 
     int outputWidth = 0;
     int outputHeight = 0;
     QueryDefaultFramebufferSize(&outputWidth, &outputHeight);
     if (outputWidth <= 0 || outputHeight <= 0)
-    {
-        static bool s_loggedInvalidOutputSize = false;
-        if( !s_loggedInvalidOutputSize )
-        {
-            SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
-                "SHAR-FINE-DIAG: skipped because default framebuffer size is invalid (%dx%d)",
-                outputWidth, outputHeight);
-            s_loggedInvalidOutputSize = true;
-        }
         return;
-    }
 
     if (!EnsureSHARFrontendFineDetailResources(outputWidth, outputHeight))
-    {
-        static bool s_loggedResourcesUnavailable = false;
-        if( !s_loggedResourcesUnavailable )
-        {
-            SDL_LogWarn(SDL_LOG_CATEGORY_RENDER,
-                "SHAR-FINE-DIAG: skipped because fine-detail resources are unavailable (%dx%d)",
-                outputWidth, outputHeight);
-            s_loggedResourcesUnavailable = true;
-        }
         return;
-    }
 
     GLint previousFramebuffer = 0;
     GLint previousViewport[4] = {0, 0, outputWidth, outputHeight};
@@ -3050,42 +2637,6 @@ void ApplySHARFrontendMenuFineDetail()
     previousScissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
     previousStencilEnabled = glIsEnabled(GL_STENCIL_TEST);
 
-    // Snapshot the render target Scrooby left active at the point the contour
-    // pass is called. If this is not framebuffer 0, it helps explain whether
-    // the current implementation is capturing/drawing to a different target.
-    static GLint s_lastLoggedFramebuffer = -1;
-    static GLint s_lastLoggedViewportX = -1;
-    static GLint s_lastLoggedViewportY = -1;
-    static GLint s_lastLoggedViewportW = -1;
-    static GLint s_lastLoggedViewportH = -1;
-    static int s_lastLoggedOutputWidth = 0;
-    static int s_lastLoggedOutputHeight = 0;
-    if( previousFramebuffer != s_lastLoggedFramebuffer ||
-        previousViewport[0] != s_lastLoggedViewportX ||
-        previousViewport[1] != s_lastLoggedViewportY ||
-        previousViewport[2] != s_lastLoggedViewportW ||
-        previousViewport[3] != s_lastLoggedViewportH ||
-        outputWidth != s_lastLoggedOutputWidth ||
-        outputHeight != s_lastLoggedOutputHeight )
-    {
-        SDL_LogInfo(SDL_LOG_CATEGORY_RENDER,
-            "SHAR-FINE-DIAG: before-pass fbo=%d viewport=%d,%d %dx%d output=%dx%d program=%u texture=%u cel=%d frontend=%d",
-            (int)previousFramebuffer,
-            previousViewport[0], previousViewport[1],
-            previousViewport[2], previousViewport[3],
-            outputWidth, outputHeight,
-            (unsigned)gSHARFrontendFineDetailProgram,
-            (unsigned)gSHARFrontendFineDetailTexture,
-            celShadingEnabled ? 1 : 0,
-            frontEndPassActive ? 1 : 0);
-        s_lastLoggedFramebuffer = previousFramebuffer;
-        s_lastLoggedViewportX = previousViewport[0];
-        s_lastLoggedViewportY = previousViewport[1];
-        s_lastLoggedViewportW = previousViewport[2];
-        s_lastLoggedViewportH = previousViewport[3];
-        s_lastLoggedOutputWidth = outputWidth;
-        s_lastLoggedOutputHeight = outputHeight;
-    }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, outputWidth, outputHeight);
@@ -3363,7 +2914,6 @@ static void ApplyFrameSharpening(int width, int height)
 
     if (sharpenTextureReady)
     {
-        SHARPerfPassScope sharpenPerfScope(SHAR_PERF_SHARPEN, width, height);
         // Snapshot the fully rendered frame before drawing the filtered copy back.
         glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,width,height);
         glViewport(0,0,width,height);
@@ -3527,8 +3077,6 @@ static void ApplyCRTFilter(int width, int height, bool saturationOnly)
 
     if (crtTextureReady)
     {
-        SHARPerfPassScope crtPerfScope(
-            saturationOnly ? SHAR_PERF_SATURATION : SHAR_PERF_CRT, width, height);
         // Capture the frame after sharpening, then apply CRT processing to the whole image.
         glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,width,height);
         glViewport(0,0,width,height);
@@ -4272,8 +3820,6 @@ void pglDisplay::SetGamma(float r, float g, float b)
 void pglDisplay::SwapBuffers(void)
 {
 #ifdef RAD_ANDROID
-    PollSHARGpuTimerQueries();
-    RecordSHARSwapFrameInterval();
 
     // First apply the existing optional filters before the touch HUD if they
     // have not already run during rendering.
@@ -4378,32 +3924,6 @@ void pglDisplay::SwapBuffers(void)
     }
 #endif
 
-// Contador fps para logcat
-#if defined(RAD_ANDROID) && defined(RAD_DEBUG)
-    static int frames = 0;
-    static Uint32 lastTick = 0;
-
-    Uint32 t = SDL_GetTicks();
-
-    if (lastTick == 0)
-    {
-        lastTick = t;
-    }
-
-    frames++;
-
-    Uint32 elapsed = t - lastTick;
-
-    if (elapsed >= 1000)
-    {
-        double fps = (double)frames * 1000.0 / (double)elapsed;
-
-        SDL_Log("[FPS] %.2f", fps);
-
-        frames = 0;
-        lastTick = t;
-    }
-#endif
 }
 
     
