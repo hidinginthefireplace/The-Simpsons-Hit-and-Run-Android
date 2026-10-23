@@ -107,7 +107,11 @@ static bool ReadSHARGraphicsToggleFile(const char* filename, bool defaultValue)
     return result;
 }
 
-static void WriteSHARGraphicsToggleFile(const char* filename, bool enabled)
+static void WriteSHARGraphicsToggleFile(const char* filename,
+                                        const char* title,
+                                        const char* description,
+                                        const char* key,
+                                        bool enabled)
 {
     const char* basePath = SDL_AndroidGetApplicationExternalFilesPath();
     if( basePath == NULL || basePath[0] == '\0' )
@@ -146,14 +150,15 @@ static void WriteSHARGraphicsToggleFile(const char* filename, bool enabled)
         return;
     }
 
-    fprintf( file,
-        "# Simpsons Hit & Run Android graphics effect setting\n"
-        "# Saved by the in-game Graphics menu.\n"
-        "enabled=%s\n",
-        enabled ? "true" : "false" );
+    fprintf( file, "%s\n", title );
+    fprintf( file, "%s\n", description );
+    fprintf( file, "# Change with true/false or 1/0 values.\n" );
+    fprintf( file, "# You can also use the in-game settings toggle.\n" );
+    fprintf( file, "# Changes to this file will be reflected upon restart.\n" );
+    fprintf( file, "\n" );
+    fprintf( file, "%s=%s\n", key, enabled ? "true" : "false" );
     fclose( file );
 }
-
 static void EnsureSHARGraphicsEffectTogglesLoaded()
 {
     if( gSHARGraphicsEffectTogglesLoaded )
@@ -182,7 +187,12 @@ void SetSHARBloomEnabled(bool enabled)
         return;
     }
     gSHARBloomEnabled = enabled;
-    WriteSHARGraphicsToggleFile( "Simpsons_bloom.txt", enabled );
+    WriteSHARGraphicsToggleFile(
+        "Simpsons_bloom.txt",
+        "# Simpsons Hit & Run - Revamped! [Bloom Settings]",
+        "# Makes lights and special effects glow more intensely.",
+        "bloom",
+        enabled );
 }
 
 bool IsSHARCloudShadowsEnabled()
@@ -199,7 +209,12 @@ void SetSHARCloudShadowsEnabled(bool enabled)
         return;
     }
     gSHARCloudShadowsEnabled = enabled;
-    WriteSHARGraphicsToggleFile( "Simpsons_cloud_shadows.txt", enabled );
+    WriteSHARGraphicsToggleFile(
+        "Simpsons_cloud_shadows.txt",
+        "# Simpsons Hit & Run - Revamped! [Cloud Shadows Setting]",
+        "# Adds drifting cloud shadows (Only used on daytime levels)",
+        "cloud_shadows",
+        enabled );
 }
 
 void SetSHARIrisTransitionActive(bool active)
