@@ -50,6 +50,10 @@ static const float SMALL_TREE_TOON_SHADOW_FALLBACK_RADIUS_Z = 1.15f;
 namespace
 {
     const int SMALL_TREE_TOON_SHADOW_SLICES = 32;
+    // Reuse unit-circle coordinates instead of recalculating them for every
+    // small-tree shadow and every frame. Initialized on the render thread.
+    static float sSmallTreeShadowCircle[SMALL_TREE_TOON_SHADOW_SLICES + 1][2];
+    static bool sSmallTreeShadowCircleInitialized = false;
 
     bool IsSmallTreeShadowTarget(const char* objectName, const char* shadowName)
     {
@@ -106,13 +110,25 @@ namespace
         }
 
         const tColour shadowColour(116, 116, 116, 116);
-        const float angleStep = rmt::PI_2 / float(SMALL_TREE_TOON_SHADOW_SLICES);
+        if (!sSmallTreeShadowCircleInitialized)
+        {
+            const float angleStep = rmt::PI_2 / float(SMALL_TREE_TOON_SHADOW_SLICES);
+            for (int i = 0; i <= SMALL_TREE_TOON_SHADOW_SLICES; ++i)
+            {
+                float sine, cosine;
+                rmt::SinCos(angleStep * float(i), &sine, &cosine);
+                sSmallTreeShadowCircle[i][0] = cosine;
+                sSmallTreeShadowCircle[i][1] = sine;
+            }
+            sSmallTreeShadowCircleInitialized = true;
+        }
 
         for (int i = 0; i < SMALL_TREE_TOON_SHADOW_SLICES; ++i)
         {
-            float sin0, cos0, sin1, cos1;
-            rmt::SinCos(angleStep * float(i), &sin0, &cos0);
-            rmt::SinCos(angleStep * float(i + 1), &sin1, &cos1);
+            const float cos0 = sSmallTreeShadowCircle[i][0];
+            const float sin0 = sSmallTreeShadowCircle[i][1];
+            const float cos1 = sSmallTreeShadowCircle[i + 1][0];
+            const float sin1 = sSmallTreeShadowCircle[i + 1][1];
 
             stream->Colour(shadowColour);
             stream->Coord(centerX, 0.0f, centerZ);

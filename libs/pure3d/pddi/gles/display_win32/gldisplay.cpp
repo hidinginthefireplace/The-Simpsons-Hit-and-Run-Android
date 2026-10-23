@@ -499,6 +499,10 @@ int gCRTFailedHeight = 0;
 // allow a 128 MiB test budget while retaining per-target GL allocation checks.
 static const size_t SHAR_POSTPROCESS_BUDGET_BYTES =
     (size_t)128 * 1024 * 1024;
+// Driver limits are constant for the lifetime of a GL context. Cache them so
+// repeated target checks avoid redundant glGetIntegerv calls.
+static GLint gSHARCachedMaxTextureSize = 0;
+static GLint gSHARCachedMaxRenderbufferSize = 0;
 static int gSHARLastRejectedWidth = 0;
 static int gSHARLastRejectedHeight = 0;
 static int gSHARLastRejectedReason = 0;
@@ -606,9 +610,9 @@ static bool CheckSHARRenderTargetSize(
     if (width <= 0 || height <= 0)
         return false;
 
-    GLint maxTextureSize = 0;
-    GLint maxRenderbufferSize = 0;
-    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
+    if (gSHARCachedMaxTextureSize <= 0)
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &gSHARCachedMaxTextureSize);
+    const GLint maxTextureSize = gSHARCachedMaxTextureSize;
 
     if (maxTextureSize <= 0 ||
         width > maxTextureSize || height > maxTextureSize)
@@ -624,7 +628,9 @@ static bool CheckSHARRenderTargetSize(
 
     if (needsRenderbuffer)
     {
-        glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maxRenderbufferSize);
+        if (gSHARCachedMaxRenderbufferSize <= 0)
+            glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &gSHARCachedMaxRenderbufferSize);
+        const GLint maxRenderbufferSize = gSHARCachedMaxRenderbufferSize;
         if (maxRenderbufferSize <= 0 ||
             width > maxRenderbufferSize || height > maxRenderbufferSize)
         {
@@ -2035,6 +2041,8 @@ static void ResetAndroidPostProcess()
     gFrameSharpenFailedWidth = gFrameSharpenFailedHeight = 0;
     gCRTFailedWidth = gCRTFailedHeight = 0;
     gSHARLastRejectedWidth = gSHARLastRejectedHeight = gSHARLastRejectedReason = 0;
+    gSHARCachedMaxTextureSize = 0;
+    gSHARCachedMaxRenderbufferSize = 0;
     gCelWorldInFbo = false;
     gSHARPreviousMotionBlurCamera.valid = false;
     gSHARMotionBlurHistoryWidth = gSHARMotionBlurHistoryHeight = 0;
@@ -2886,13 +2894,13 @@ static void ApplyFrameSharpening(int width, int height)
     glBindFramebuffer(GL_FRAMEBUFFER,0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D,gFrameSharpenTexture);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
     bool sharpenTextureReady = true;
     if (gFrameSharpenWidth!=width || gFrameSharpenHeight!=height)
     {
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,width,height,0,GL_RGB,GL_UNSIGNED_BYTE,NULL);
         sharpenTextureReady = CheckSHARAllocationError(
             "sharpening texture", width, height);
@@ -3049,13 +3057,13 @@ static void ApplyCRTFilter(int width, int height, bool saturationOnly)
     glBindFramebuffer(GL_FRAMEBUFFER,0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D,gCRTTexture);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
     bool crtTextureReady = true;
     if (gCRTWidth!=width || gCRTHeight!=height)
     {
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,width,height,0,GL_RGB,GL_UNSIGNED_BYTE,NULL);
         crtTextureReady = CheckSHARAllocationError(
             "CRT filter texture", width, height);
