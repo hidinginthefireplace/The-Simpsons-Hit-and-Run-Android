@@ -391,7 +391,7 @@ GLint gCelPostBloomStrengthLocation = -1;
 GLint gCelPostDepthLocation = -1;
 GLint gCelPostDepthAvailableLocation = -1;
 GLint gCelPostDepthEdgeDetectionAvailableLocation = -1;
-// Experimental Option B: depth-aware, world-anchored moving cloud shadows.
+// Depth-aware, world-anchored moving cloud shadows.
 GLint gCelPostCloudShadowEnabledLocation = -1;
 GLint gCelPostCloudShadowTimeLocation = -1;
 GLint gCelPostCloudShadowStrengthLocation = -1;
@@ -809,11 +809,9 @@ static bool EnsureCelRenderTarget(int width, int height)
                gCelRenderbufferWidth == width &&
                gCelRenderbufferHeight == height);
 
-#if !defined(RAD_DEBUG) && !defined(SHAR_FORCE_CEL_RENDER_TARGET_REVALIDATION)
-    // Release fast path: reuse the known-good attachments rather than repeating
-    // GL setup, completeness checks, hardware-limit queries and error polling.
-    // Define SHAR_FORCE_CEL_RENDER_TARGET_REVALIDATION (or build RAD_DEBUG) to
-    // retain full validation every frame while diagnosing a rendering problem.
+#if !defined(RAD_DEBUG)
+    // Release fast path: reuse known-good attachments while the render target
+    // configuration remains unchanged. Debug builds retain full validation.
     if (width > 0 && height > 0 &&
         gCelRenderTargetValidationCached &&
         gCelRenderFboReady &&
