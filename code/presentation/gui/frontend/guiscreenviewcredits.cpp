@@ -36,12 +36,6 @@
 // ATG
 #include <raddebug.hpp>
 
-#if defined(RAD_ANDROID)
-#include <android/log.h>
-#define CREDITS_DIAG(...) __android_log_print(ANDROID_LOG_INFO, "SHR-CreditsDiag", __VA_ARGS__)
-#else
-#define CREDITS_DIAG(...) rDebugPrintf(__VA_ARGS__)
-#endif
 
 //===========================================================================
 // Global Data, Local Data, Local Classes
@@ -96,9 +90,6 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
     bool isFirstTime = ( s_totalTranslateY == 0.0f );
     float currentTranslateY = 0.0f;
 
-    CREDITS_DIAG("CreditsDiag: ctor screenId=%d screen=%p page=%p group=%p firstTime=%d cachedTotal=%.1f",
-                 (int)m_ID, (void*)m_pScroobyScreen, (void*)pPage, (void*)m_creditsGroup,
-                 isFirstTime ? 1 : 0, s_totalTranslateY);
 
     // get all credits (partitioned) text
     //
@@ -110,63 +101,16 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
 
         if( m_credits[ i ] != NULL )
         {
-            int bboxWidth = 0;
-            int bboxHeight = 0;
             int authoredX = 0;
             int authoredY = 0;
-            int authoredXMin = 0, authoredYMin = 0, authoredXMax = 0, authoredYMax = 0;
-            m_credits[ i ]->GetBoundingBoxSize( bboxWidth, bboxHeight );
             m_credits[ i ]->GetOriginPosition( authoredX, authoredY );
-            m_credits[ i ]->GetBoundingBox( authoredXMin, authoredYMin, authoredXMax, authoredYMax );
-            int authoredBreakCount = 0;
             P3D_UNICODE* rawText = static_cast<P3D_UNICODE*>( m_credits[ i ]->GetStringBuffer() );
-            if( rawText != NULL )
-            {
-                for( int textIndex = 0; rawText[ textIndex ] != '\0'; textIndex++ )
-                {
-                    if( rawText[ textIndex ] == '\\' )
-                    {
-                        authoredBreakCount++;
-                    }
-                }
-            }
-            CREDITS_DIAG("CreditsDiag: partition=%d present text=%p size=%dx%d origin=(%d,%d) bbox=(%d,%d)-(%d,%d) authoredBackslashes=%d",
-                         i, (void*)m_credits[ i ], bboxWidth, bboxHeight,
-                         authoredX, authoredY, authoredXMin, authoredYMin, authoredXMax, authoredYMax,
-                         authoredBreakCount);
-            // Expose the last four runtime strings to identify which partition
-            // actually contains the Logitech and final-thanks text. Backslashes
-            // become vertical bars so the authored line breaks are readable.
-            if( i >= 28 && rawText != NULL )
-            {
-                char preview[ 161 ];
-                int previewOut = 0;
-                for( int textIndex = 0; rawText[ textIndex ] != '\0' && previewOut < 150; textIndex++ )
-                {
-                    unsigned int character = static_cast<unsigned int>( rawText[ textIndex ] );
-                    if( character == '\\' )
-                    {
-                        preview[ previewOut++ ] = '|';
-                    }
-                    else if( character >= 32 && character <= 126 )
-                    {
-                        preview[ previewOut++ ] = static_cast<char>( character );
-                    }
-                    else
-                    {
-                        preview[ previewOut++ ] = '?';
-                    }
-                }
-                preview[ previewOut ] = '\0';
-                CREDITS_DIAG("CreditsDiag: partition=%d textPreview=[%s]", i, preview);
-            }
 #ifndef PAL
             // hide localization partition from credits for NTSC builds
             //
             if( i == CREDITS_PARTITION_FOR_LOCALIZATION )
             {
                 m_credits[ i ]->SetVisible( false );
-                CREDITS_DIAG("CreditsDiag: partition=%d hidden=localization", i);
 
                 continue;
             }
@@ -233,7 +177,6 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
                     {
                     }
 
-                    CREDITS_DIAG("CreditsDiag: partition=%d removed only Logitech line; remaining text preserved", i);
                 }
             }
     #endif // !RAD_PS2
@@ -247,10 +190,6 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
                 s_totalTranslateY += currentTranslateY;
             }
 
-            CREDITS_DIAG("CreditsDiag: partition=%d layout firstTime=%d offset=%.1f contribution=%.1f lineStep=%.2f cumulative=%.1f",
-                         i, isFirstTime ? 1 : 0, s_creditsOffsets[ i ],
-                         isFirstTime ? currentTranslateY : -1.0f,
-                         isFirstTime ? s_numPixelsPerLine : -1.0f, s_totalTranslateY);
 
             // offset current credits partition by total translation so far
             //
@@ -261,11 +200,6 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
             int layoutY = 0;
             m_credits[ i ]->GetOriginPosition( layoutX, layoutY );
             rmt::Matrix* partitionMatrix = m_credits[ i ]->GetTransform();
-            CREDITS_DIAG("CreditsDiag: partition=%d positionedAt=(%d,%d) offsetY=%.1f matrixTranslation=(%.6f,%.6f) visible=%d",
-                         i, layoutX, layoutY, s_creditsOffsets[ i ],
-                         partitionMatrix != NULL ? partitionMatrix->Row( 3 ).x : 0.0f,
-                         partitionMatrix != NULL ? partitionMatrix->Row( 3 ).y : 0.0f,
-                         m_credits[ i ]->IsVisible() ? 1 : 0);
 
             // disable any text outlining or drop shadow effects
             //
@@ -274,8 +208,6 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
         }
         else
         {
-            CREDITS_DIAG("CreditsDiag: partition=%d MISSING firstTime=%d cachedOffset=%.1f cumulative=%.1f; continuing to search later slots",
-                         i, isFirstTime ? 1 : 0, s_creditsOffsets[ i ], s_totalTranslateY);
             // Some platform-specific credits partitions may be absent while
             // later partitions still exist. Do not stop here: unprocessed
             // later partitions remain at their authored position and can
@@ -291,13 +223,9 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
     {
         float screenHeight = Scrooby::App::GetInstance()->GetScreenHeight();
         s_totalTranslateY += screenHeight;
-        CREDITS_DIAG("CreditsDiag: initial layout finished screenHeight=%.1f totalScrollRange=%.1f",
-                     screenHeight, s_totalTranslateY);
     }
     else
     {
-        CREDITS_DIAG("CreditsDiag: using cached totalScrollRange=%.1f lineStep=%.2f",
-                     s_totalTranslateY, s_numPixelsPerLine);
     }
 
 /*
@@ -307,28 +235,13 @@ CGuiScreenViewCredits::CGuiScreenViewCredits
     this->SetButtonVisible( BUTTON_ICON_ACCEPT, false );
 */
 
-    // Record which pages are actually attached to the runtime credits screen.
-    // Assets can exist on disk without being included in the active screen.
-    //
-    Scrooby::Page* creditsBgdPage = m_pScroobyScreen->GetPage( "CreditsBgd" );
-    Scrooby::Page* creditsKKPage = m_pScroobyScreen->GetPage( "CreditsKK" );
-    Scrooby::Page* feDividePage = m_pScroobyScreen->GetPage( "FeDivide" );
-    CREDITS_DIAG("CreditsDiag: page inventory count=%d ViewCredits=%p CreditsBgd=%p CreditsFgd=%p CreditsKK=%p FeDivide=%p",
-                 m_pScroobyScreen->GetNumberOfPages(),
-                 (void*)m_pScroobyScreen->GetPage( "ViewCredits" ),
-                 (void*)creditsBgdPage,
-                 (void*)m_pScroobyScreen->GetPage( "CreditsFgd" ),
-                 (void*)creditsKKPage,
-                 (void*)feDividePage);
 
     // apply correction scale to credits foreground overlay image (from CreditsFgd.pag)
     //
     pPage = m_pScroobyScreen->GetPage( "CreditsFgd" );
-    CREDITS_DIAG("CreditsDiag: foreground overlay page=%p", (void*)pPage);
     if( pPage != NULL )
     {
         Scrooby::Sprite* creditsFgd = pPage->GetSprite( "CreditsFgd" );
-        CREDITS_DIAG("CreditsDiag: foreground overlay sprite=%p", (void*)creditsFgd);
         if( creditsFgd != NULL )
         {
             creditsFgd->ResetTransformation();
@@ -548,18 +461,11 @@ CGuiScreenViewCredits::ResetScrolling()
     rAssert( m_creditsGroup != NULL );
     m_creditsGroup->ResetTransformation();
 
-    CREDITS_DIAG("CreditsDiag: ResetScrolling screenId=%d group=%p totalScrollRange=%.1f lineStep=%.2f",
-                 (int)m_ID, (void*)m_creditsGroup, s_totalTranslateY, s_numPixelsPerLine);
     for( int i = 0; i < MAX_NUM_CREDITS_PARTITIONS; i++ )
     {
         if( m_credits[ i ] != NULL && ( i < 2 || i >= 28 ) )
         {
             rmt::Matrix* partitionMatrix = m_credits[ i ]->GetTransform();
-            CREDITS_DIAG("CreditsDiag: reset-transform partition=%d matrixTranslation=(%.6f,%.6f) visible=%d",
-                         i,
-                         partitionMatrix != NULL ? partitionMatrix->Row( 3 ).x : 0.0f,
-                         partitionMatrix != NULL ? partitionMatrix->Row( 3 ).y : 0.0f,
-                         m_credits[ i ]->IsVisible() ? 1 : 0);
         }
     }
 

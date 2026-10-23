@@ -37,12 +37,6 @@
 
 #include <raddebug.hpp> // Foundation
 
-#if defined(RAD_ANDROID)
-#include <android/log.h>
-#define TVFRAME_DIAG(...) __android_log_print(ANDROID_LOG_INFO, "SHR-TVFrameDiag", __VA_ARGS__)
-#else
-#define TVFRAME_DIAG(...) rDebugPrintf(__VA_ARGS__)
-#endif
 #include <radmovie2.hpp>
 
 #include <sound/soundmanager.h>
@@ -86,19 +80,15 @@ CGuiScreenPlayMovie::CGuiScreenPlayMovie
     // page set. Retrieve Demo text only when that page actually exists.
     //
     Scrooby::Page* pDemoPage = m_pScroobyScreen->GetPage( "Demo" );
-    TVFRAME_DIAG("TVFrameDiag: ctor windowId=%d screen=%p DemoPage=%p",
-                 (int)windowID, (void*)m_pScroobyScreen, (void*)pDemoPage);
     if( pDemoPage != NULL )
     {
         m_demoText = pDemoPage->GetText( "Demo" );
-        TVFRAME_DIAG("TVFrameDiag: Demo text=%p", (void*)m_demoText);
     }
 
     // The Android frontend assets contain a dedicated TVFrame page. Prefer
     // its layer; fall back to legacy layer nesting for older asset layouts.
     //
     Scrooby::Page* pTVFramePage = m_pScroobyScreen->GetPage( "TVFrame" );
-    TVFRAME_DIAG("TVFrameDiag: TVFrame page=%p", (void*)pTVFramePage);
     if( pTVFramePage != NULL )
     {
         m_tvFrame = pTVFramePage->GetLayer( "TVFrame" );
@@ -106,8 +96,6 @@ CGuiScreenPlayMovie::CGuiScreenPlayMovie
         {
             m_tvFrame = pTVFramePage->GetLayerByIndex( 0 );
         }
-        TVFRAME_DIAG("TVFrameDiag: dedicated TVFrame page layers=%d selectedLayer=%p",
-                     pTVFramePage->GetNumberOfLayers(), (void*)m_tvFrame);
     }
 
     if( m_tvFrame == NULL )
@@ -116,29 +104,17 @@ CGuiScreenPlayMovie::CGuiScreenPlayMovie
         if( pPlayMoviePage != NULL )
         {
             m_tvFrame = pPlayMoviePage->GetLayer( "TVFrame" );
-            TVFRAME_DIAG("TVFrameDiag: PlayMovie page=%p TVFrame layer=%p",
-                         (void*)pPlayMoviePage, (void*)m_tvFrame);
         }
     }
 
     if( m_tvFrame == NULL && pDemoPage != NULL )
     {
         m_tvFrame = pDemoPage->GetLayer( "TVFrame" );
-        TVFRAME_DIAG("TVFrameDiag: Demo fallback TVFrame layer=%p", (void*)m_tvFrame);
     }
 
     if( m_tvFrame != NULL )
     {
-        int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
-        m_tvFrame->GetBoundingBox( xMin, yMin, xMax, yMax );
         m_tvFrame->SetVisible( true );
-        TVFRAME_DIAG("TVFrameDiag: selected frame=%p bbox=(%d,%d)-(%d,%d) visible=%d",
-                     (void*)m_tvFrame, xMin, yMin, xMax, yMax,
-                     m_tvFrame->IsVisible() ? 1 : 0);
-    }
-    else
-    {
-        TVFRAME_DIAG("TVFrameDiag: no TVFrame layer found for windowId=%d", (int)windowID);
     }
 
     if( windowID == GUI_SCREEN_ID_PLAY_MOVIE )
@@ -388,11 +364,6 @@ void CGuiScreenPlayMovie::OnPresentationEventEnd( PresentationEvent* pEvent )
 //===========================================================================
 void CGuiScreenPlayMovie::InitIntro()
 {
-    Scrooby::Page* diagPage = m_pScroobyScreen->GetPage( "Demo" );
-    Scrooby::Page* diagTVFramePage = m_pScroobyScreen->GetPage( "TVFrame" );
-    TVFRAME_DIAG("TVFrameDiag: InitIntro windowId=%d DemoPage=%p TVFramePage=%p selectedFrame=%p visible=%d",
-                 (int)m_ID, (void*)diagPage, (void*)diagTVFramePage,
-                 (void*)m_tvFrame, m_tvFrame != NULL && m_tvFrame->IsVisible() ? 1 : 0);
 
     rAssertMsg( !GetPresentationManager()->IsQueueEmpty(),
                 "ERROR: *** No movies were queued for playing!" );
@@ -431,11 +402,6 @@ void CGuiScreenPlayMovie::InitIntro()
 //===========================================================================
 void CGuiScreenPlayMovie::InitRunning()
 {
-    Scrooby::Page* diagPage = m_pScroobyScreen->GetPage( "Demo" );
-    Scrooby::Page* diagTVFramePage = m_pScroobyScreen->GetPage( "TVFrame" );
-    TVFRAME_DIAG("TVFrameDiag: InitRunning windowId=%d DemoPage=%p TVFramePage=%p selectedFrame=%p visible=%d",
-                 (int)m_ID, (void*)diagPage, (void*)diagTVFramePage,
-                 (void*)m_tvFrame, m_tvFrame != NULL && m_tvFrame->IsVisible() ? 1 : 0);
 
     if( m_ID == GUI_SCREEN_ID_PLAY_MOVIE_DEMO ||
         m_ID == GUI_SCREEN_ID_PLAY_MOVIE )
@@ -479,11 +445,6 @@ void CGuiScreenPlayMovie::InitRunning()
 //===========================================================================
 void CGuiScreenPlayMovie::InitOutro()
 {
-    Scrooby::Page* diagPage = m_pScroobyScreen->GetPage( "Demo" );
-    Scrooby::Page* diagTVFramePage = m_pScroobyScreen->GetPage( "TVFrame" );
-    TVFRAME_DIAG("TVFrameDiag: InitOutro windowId=%d DemoPage=%p TVFramePage=%p selectedFrame=%p visible=%d",
-                 (int)m_ID, (void*)diagPage, (void*)diagTVFramePage,
-                 (void*)m_tvFrame, m_tvFrame != NULL && m_tvFrame->IsVisible() ? 1 : 0);
 
     if( m_ID == GUI_SCREEN_ID_PLAY_MOVIE_DEMO ||
         m_ID == GUI_SCREEN_ID_PLAY_MOVIE )
