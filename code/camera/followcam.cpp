@@ -101,6 +101,8 @@ FollowCam::FollowCam( FollowType type ) :
 #if defined(RAD_ANDROID)
     mManualOrbitOffset( 0.0f ),
     mManualOrbitDelayLeft( 0 ),
+    mDrivingZoomMultiplier( 1.0f ),
+    mDrivingZoomDelayLeft( 0 ),
 #endif
     mFollowType( type ),
     mXAxis( 0.0f )
@@ -528,6 +530,8 @@ void FollowCam::SetTarget( ISuperCamTarget* target )
     // A newly entered vehicle starts with the normal rear-facing camera.
     mManualOrbitOffset = 0.0f;
     mManualOrbitDelayLeft = 0;
+    mDrivingZoomMultiplier = 1.0f;
+    mDrivingZoomDelayLeft = 0;
 #endif
 
     mActiveTarget = 0;//Set it to the first one.
@@ -1098,8 +1102,8 @@ void FollowCam::CalculateRod( rmt::Vector* rod,
 
             if ( orbitInput != 0.0f )
             {
-                // About 155 degrees per second at 60 FPS.
-                const float orbitSpeedPerFrame = 0.045f;
+                // About 178 degrees per second at 60 FPS (15% more responsive).
+                const float orbitSpeedPerFrame = 0.05175f;
                 mManualOrbitOffset += invertMod * orbitInput * orbitSpeedPerFrame * timeMod;
 
                 // Keep the offset bounded while preserving continuous rotation at
@@ -1144,6 +1148,64 @@ void FollowCam::CalculateRod( rmt::Vector* rod,
     }
 #endif
 
+
+#if defined(RAD_ANDROID)
+    // Positive Android right-stick Y is a backward/downward tilt. Use it to
+    // smoothly zoom the driving camera out, up to twice its normal distance.
+    // Once released, hold the current zoom for two seconds before easing back.
+    if ( !GetFlag( (Flag)CUT ) )
+    {
+        const float zoomDeadZone = 0.12f;
+        float zoomInput = mController->GetAxisValue( SuperCamController::stickY );
+
+        if ( zoomInput > zoomDeadZone )
+        {
+            zoomInput = ( zoomInput - zoomDeadZone ) / ( 1.0f - zoomDeadZone );
+        }
+        else
+        {
+            zoomInput = 0.0f;
+        }
+
+        if ( zoomInput > 0.0f )
+        {
+            mDrivingZoomDelayLeft = 2000;
+        }
+        else if ( mDrivingZoomDelayLeft > milliseconds )
+        {
+            mDrivingZoomDelayLeft -= milliseconds;
+        }
+        else
+        {
+            mDrivingZoomDelayLeft = 0;
+        }
+
+        float targetZoomMultiplier = 1.0f;
+        if ( zoomInput > 0.0f )
+        {
+            targetZoomMultiplier = 1.0f + zoomInput;
+        }
+        else if ( mDrivingZoomDelayLeft > 0 )
+        {
+            targetZoomMultiplier = mDrivingZoomMultiplier;
+        }
+
+        float zoomRate = ( zoomInput > 0.0f ? 0.05f : 0.02f ) * timeMod;
+        CLAMP_TO_ONE( zoomRate );
+        mDrivingZoomMultiplier +=
+            ( targetZoomMultiplier - mDrivingZoomMultiplier ) * zoomRate;
+
+        if ( targetZoomMultiplier == 1.0f &&
+             rmt::Fabs( mDrivingZoomMultiplier - 1.0f ) < 0.0025f )
+        {
+            mDrivingZoomMultiplier = 1.0f;
+        }
+    }
+
+    // Apply the multiplier to the normal follow distance. A value of 2.0 is
+    // the maximum requested zoom-out distance.
+    desiredMag *= mDrivingZoomMultiplier;
+#endif
 
     //---------  Setup the desired angle and the current angle.
 

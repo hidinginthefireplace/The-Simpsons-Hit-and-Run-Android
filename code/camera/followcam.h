@@ -170,6 +170,10 @@ private:
     // Horizontal camera orbit offset and release-to-recenter delay for driving.
     float mManualOrbitOffset;
     unsigned int mManualOrbitDelayLeft;
+
+    // Driving zoom-out multiplier (1x to 2x) and post-release delay.
+    float mDrivingZoomMultiplier;
+    unsigned int mDrivingZoomDelayLeft;
 #endif
 
     const rmt::Vector* mCollisionOffset;
