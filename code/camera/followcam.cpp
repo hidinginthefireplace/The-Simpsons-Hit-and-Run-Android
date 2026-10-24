@@ -98,6 +98,10 @@ FollowCam::FollowCam( FollowType type ) :
     mActiveTarget( 0 ),
     mUnstableDelayTimeLeft( 0 ),
     mQuickTurnTimeLeft( 0 ),
+#if defined(RAD_ANDROID)
+    mManualOrbitOffset( 0.0f ),
+    mManualOrbitDelayLeft( 0 ),
+#endif
     mFollowType( type ),
     mXAxis( 0.0f )
 {
@@ -519,6 +523,12 @@ void FollowCam::SetTarget( ISuperCamTarget* target )
 
     mTargets[ 0 ] = target;
     mNumTargets = 1;
+
+#if defined(RAD_ANDROID)
+    // A newly entered vehicle starts with the normal rear-facing camera.
+    mManualOrbitOffset = 0.0f;
+    mManualOrbitDelayLeft = 0;
+#endif
 
     mActiveTarget = 0;//Set it to the first one.
     
@@ -1064,7 +1074,73 @@ void FollowCam::CalculateRod( rmt::Vector* rod,
 
     if ( !GetFlag( (Flag)LOOK_BACK ) )
     {
+#if defined(RAD_ANDROID)
+        // Integrate horizontal stick input as an orbit speed. Unlike the old
+        // direct +/-90-degree offset, this allows repeated full circles around
+        // the vehicle while keeping the camera yaw relative to the car heading.
+        if ( !GetFlag( (Flag)CUT ) )
+        {
+            const float orbitDeadZone = 0.12f;
+            float orbitInput = leftRight;
+
+            if ( orbitInput > orbitDeadZone )
+            {
+                orbitInput = ( orbitInput - orbitDeadZone ) / ( 1.0f - orbitDeadZone );
+            }
+            else if ( orbitInput < -orbitDeadZone )
+            {
+                orbitInput = ( orbitInput + orbitDeadZone ) / ( 1.0f - orbitDeadZone );
+            }
+            else
+            {
+                orbitInput = 0.0f;
+            }
+
+            if ( orbitInput != 0.0f )
+            {
+                // About 155 degrees per second at 60 FPS.
+                const float orbitSpeedPerFrame = 0.045f;
+                mManualOrbitOffset += invertMod * orbitInput * orbitSpeedPerFrame * timeMod;
+
+                // Keep the offset bounded while preserving continuous rotation at
+                // the +/-180 degree seam. AdjustAngles below handles the seam.
+                if ( mManualOrbitOffset > rmt::PI )
+                {
+                    mManualOrbitOffset -= ( 2.0f * rmt::PI );
+                }
+                else if ( mManualOrbitOffset < -rmt::PI )
+                {
+                    mManualOrbitOffset += ( 2.0f * rmt::PI );
+                }
+
+                // Begin a fresh one-second grace period after the last input.
+                mManualOrbitDelayLeft = 1000;
+            }
+            else if ( mManualOrbitDelayLeft > milliseconds )
+            {
+                mManualOrbitDelayLeft -= milliseconds;
+            }
+            else
+            {
+                mManualOrbitDelayLeft = 0;
+
+                // Smoothly recenter to the normal behind-the-car angle only
+                // after the player has been idle for a full second.
+                float recenterRate = 0.025f * timeMod;
+                CLAMP_TO_ONE( recenterRate );
+                mManualOrbitOffset *= ( 1.0f - recenterRate );
+
+                if ( rmt::Fabs( mManualOrbitOffset ) < 0.0025f )
+                {
+                    mManualOrbitOffset = 0.0f;
+                }
+            }
+        }
+
+        desiredRotXZ += mManualOrbitOffset;
+#else
         desiredRotXZ += ( invertMod * leftRight * LOOK_ROT );
+#endif
     }
 #endif
 

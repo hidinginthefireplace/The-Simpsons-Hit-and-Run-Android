@@ -166,6 +166,12 @@ private:
     //Quick turn time counter
     int mQuickTurnTimeLeft;
 
+#if defined(RAD_ANDROID)
+    // Horizontal camera orbit offset and release-to-recenter delay for driving.
+    float mManualOrbitOffset;
+    unsigned int mManualOrbitDelayLeft;
+#endif
+
     const rmt::Vector* mCollisionOffset;
     unsigned int mNumCollisions;
     rmt::Vector mGroundOffset;
