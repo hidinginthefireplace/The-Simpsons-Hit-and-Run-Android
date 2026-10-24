@@ -14,10 +14,12 @@ public:
     bool IsInvertCameraEnabled() const;
     bool IsGamepadVibrationEnabled() const;
     bool IsPhoneVibrationEnabled() const;
+    bool IsModernCameraEnabled() const;
 
     void SetInvertCameraEnabled( bool enabled );
     void SetGamepadVibrationEnabled( bool enabled );
     void SetPhoneVibrationEnabled( bool enabled );
+    void SetModernCameraEnabled( bool enabled );
 
 private:
     AndroidConfigurationManager();
@@ -44,6 +46,7 @@ private:
     bool m_invertCamera;
     bool m_gamepadVibration;
     bool m_phoneVibration;
+    bool m_modernCamera;
     bool m_dirty;
     
 

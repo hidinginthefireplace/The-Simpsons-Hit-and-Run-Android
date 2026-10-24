@@ -730,6 +730,22 @@ MEMTRACK_PUSH_GROUP( "CGuiScreenPauseSettings" );
         if( i == MENU_ITEM_INVERT_CAM_CONTROL )
         {
             mHasInvertCamControl = added;
+            if( added )
+            {
+                const int guiIndex = GetGuiMenuIndexFromMenuItem( i );
+                if( guiIndex >= 0 )
+                {
+                    GuiMenuItem* modernCameraItem = m_pMenu->GetMenuItem( guiIndex );
+                    if( modernCameraItem != NULL )
+                    {
+                        Scrooby::Text* label = dynamic_cast<Scrooby::Text*>( modernCameraItem->GetItem() );
+                        if( label != NULL )
+                        {
+                            label->SetString( 0, "Modern Camera" );
+                        }
+                    }
+                }
+            }
         }
         else if( i == MENU_ITEM_VIBRATION )
         {
@@ -1730,7 +1746,7 @@ void CGuiScreenPauseSettings::RestoreAndroidSettingsMenu()
         "Jump Cameras",
         "Navigation System",
         "Radar",
-        "Invert Camera",
+        "Modern Camera",
         "Controller Vibration"
     };
 
@@ -2361,13 +2377,13 @@ void CGuiScreenPauseSettings::InitIntro()
 
         if( invertCamMenuIndex != -1 )
         {
-            const bool realInvertCamera =
-            GetAndroidConfigurationManager()->IsInvertCameraEnabled();
+            const bool modernCameraEnabled =
+            GetAndroidConfigurationManager()->IsModernCameraEnabled();
                 
             m_pMenu->SetSelectionValue
             (
                 invertCamMenuIndex,
-                realInvertCamera  ? 1 : 0
+                modernCameraEnabled ? 1 : 0
             );
         }
     }
@@ -2586,19 +2602,21 @@ void CGuiScreenPauseSettings::InitOutro()
 
 #if defined(RAD_ANDROID)
     {
-        const int invertCamMenuIndex =
+        const int modernCameraMenuIndex =
             GetGuiMenuIndexFromMenuItem( MENU_ITEM_INVERT_CAM_CONTROL );
 
-        if( invertCamMenuIndex != -1 )
+        if( modernCameraMenuIndex != -1 )
         {
-            const bool menuInvertCamera =( m_pMenu->GetSelectionValue( invertCamMenuIndex ) == 1 );
+            // Preserve the legacy invert-camera preference independently from
+            // the new mode selector. This row now controls Modern Camera only.
+            const bool legacyInvertCamera =
+                GetAndroidConfigurationManager()->IsInvertCameraEnabled();
+            GetSuperCamManager()->GetSCC( 0 )->EnableInvertedCamera( !legacyInvertCamera );
 
-            const bool runtimeInvertCamera = !menuInvertCamera;
-
-            GetSuperCamManager()->GetSCC( 0 )->EnableInvertedCamera( runtimeInvertCamera );
-
-            GetAndroidConfigurationManager()->SetInvertCameraEnabled( menuInvertCamera );
-         }
+            const bool modernCameraEnabled =
+                ( m_pMenu->GetSelectionValue( modernCameraMenuIndex ) == 1 );
+            GetAndroidConfigurationManager()->SetModernCameraEnabled( modernCameraEnabled );
+        }
     }
 #else
     isSettingOn =
@@ -3016,11 +3034,11 @@ bool CGuiScreenPauseSettings::AddGeneratedAndroidToggleMenuItem
     const int rowY = radarY + rowSpacing * rowNumber;
 
     const char* labelText =
-        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ? "Invert Camera" :
+        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ? "Modern Camera" :
         logicalMenuItem == MENU_ITEM_VIBRATION ? "Controller Vibration" :
         "Tutorial";
     const char* itemNamePart =
-        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ? "InvertCamera" :
+        logicalMenuItem == MENU_ITEM_INVERT_CAM_CONTROL ? "ModernCamera" :
         logicalMenuItem == MENU_ITEM_VIBRATION ? "ControllerVibration" :
         "Tutorial";
 

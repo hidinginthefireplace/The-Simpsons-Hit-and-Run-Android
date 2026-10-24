@@ -29,6 +29,9 @@
 #include <camera/supercamcentral.h>
 #include <camera/supercamcontroller.h>
 #include <camera/supercammanager.h>
+#if defined(RAD_ANDROID)
+#include <data/config/androidconfigurationmanager.h>
+#endif
 
 #include <memory/srrmemory.h>
 
@@ -610,6 +613,9 @@ void WalkerCam::OnDisplay() const
 //=============================================================================
 void WalkerCam::UpdatePositionNormal( unsigned int milliseconds, float timeMod )
 {
+#if defined(RAD_ANDROID)
+    const bool modernCameraEnabled = GetAndroidConfigurationManager()->IsModernCameraEnabled();
+#endif
     rmt::Vector targetPos, camPos;
     rmt::Vector desiredPosition;
     rmt::Vector desiredTargetPos;
@@ -907,6 +913,15 @@ void WalkerCam::UpdatePositionNormal( unsigned int milliseconds, float timeMod )
             elevation -= 0.2f;
         }
 
+#if defined(RAD_ANDROID)
+        // A smaller polar angle places the camera above the character. Smoothly
+        // adopt this angle during Modern Camera jumps instead of looking up from below.
+        if( mIsAirborn && modernCameraEnabled )
+        {
+            elevation = rmt::PI_BY2 - 0.45f;
+        }
+#endif
+
         float elevlag = SLIDE_INTERVAL * timeMod;
         CLAMP_TO_ONE(elevlag);
 
@@ -939,7 +954,11 @@ void WalkerCam::UpdatePositionNormal( unsigned int milliseconds, float timeMod )
 
             desiredPosition.Add( rod );
 
-            if ( mIsAirborn )
+            bool holdAirborneCameraHeight = mIsAirborn;
+#if defined(RAD_ANDROID)
+            holdAirborneCameraHeight = holdAirborneCameraHeight && !modernCameraEnabled;
+#endif
+            if ( holdAirborneCameraHeight )
             {
                 desiredPosition.y = mCameraHeight;
             }

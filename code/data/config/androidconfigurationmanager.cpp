@@ -12,7 +12,7 @@
 
 namespace
 {
-    const int CURRENT_CONFIGURATION_VERSION = 2;
+    const int CURRENT_CONFIGURATION_VERSION = 3;
 
 #if defined(RAD_ANDROID)
     const char* CONFIGURATION_FOLDER_NAME = "Controller";
@@ -93,6 +93,7 @@ AndroidConfigurationManager::AndroidConfigurationManager()
     m_invertCamera( false ),
     m_gamepadVibration( true ),
     m_phoneVibration( false ),
+    m_modernCamera( true ),
     m_dirty( false )
 {
 #if defined(RAD_ANDROID)
@@ -107,6 +108,7 @@ void AndroidConfigurationManager::SetDefaults()
     m_invertCamera = false;
     m_gamepadVibration = true;
     m_phoneVibration = false;
+    m_modernCamera = true;
     m_dirty = false;
 }
 
@@ -201,6 +203,11 @@ bool AndroidConfigurationManager::IsPhoneVibrationEnabled() const
     return m_phoneVibration;
 }
 
+bool AndroidConfigurationManager::IsModernCameraEnabled() const
+{
+    return m_modernCamera;
+}
+
 void AndroidConfigurationManager::SetInvertCameraEnabled( bool enabled )
 {
     if( m_invertCamera == enabled )
@@ -226,6 +233,17 @@ void AndroidConfigurationManager::SetGamepadVibrationEnabled( bool enabled )
 void AndroidConfigurationManager::SetPhoneVibrationEnabled( bool enabled )
 {
     m_phoneVibration = enabled;
+}
+
+void AndroidConfigurationManager::SetModernCameraEnabled( bool enabled )
+{
+    if( m_modernCamera == enabled )
+    {
+        return;
+    }
+
+    m_modernCamera = enabled;
+    m_dirty = true;
 }
 
 #if defined(RAD_ANDROID)
@@ -338,7 +356,7 @@ void AndroidConfigurationManager::WriteConfigurationFile()
     }
 
     fprintf( file, "# Simpsons Hit & Run - Revamped! [Controller Configuration]\n" );
-    fprintf( file, "# Inverted Camera and Controller Vibration toggles.\n" );
+    fprintf( file, "# Legacy Invert Camera compatibility, Modern Camera mode, and controller vibration.\n" );
     fprintf( file, "# Change with true/false or 1/0 values.\n" );
     fprintf( file, "# You can also use the in-game settings toggle.\n" );
     fprintf( file, "# Changes to this file will be reflected upon restart.\n" );
@@ -346,6 +364,7 @@ void AndroidConfigurationManager::WriteConfigurationFile()
 
     fprintf( file, "invert_camera=%s\n", m_invertCamera ? "true" : "false" );
     fprintf( file, "gamepad_vibration=%s\n", m_gamepadVibration ? "true" : "false" );
+    fprintf( file, "modern_camera=%s\n", m_modernCamera ? "true" : "false" );
 
     fclose( file );
 }
@@ -454,6 +473,10 @@ void AndroidConfigurationManager::ParseLine( const char* line )
     else if( strcmp( key, "phone_vibration" ) == 0 )
     {
         m_phoneVibration = this->ParseBool( value, m_phoneVibration );
+    }
+    else if( strcmp( key, "modern_camera" ) == 0 )
+    {
+        m_modernCamera = this->ParseBool( value, m_modernCamera );
     }
 }
 
