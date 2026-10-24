@@ -1150,13 +1150,15 @@ void FollowCam::CalculateRod( rmt::Vector* rod,
 
 
 #if defined(RAD_ANDROID)
-    // Positive Android right-stick Y is a backward/downward tilt. Use it to
-    // smoothly zoom the driving camera out, up to twice its normal distance.
+    // Only downward/backward right-stick tilt zooms the driving camera out.
+    // Upward tilt is ignored. Zoom remains capped at twice normal distance.
     // Once released, hold the current zoom for two seconds before easing back.
     if ( !GetFlag( (Flag)CUT ) )
     {
         const float zoomDeadZone = 0.12f;
-        float zoomInput = mController->GetAxisValue( SuperCamController::stickY );
+        // The stick's axis sign currently maps upward tilt to positive values;
+        // invert it so only downward tilt activates zoom-out.
+        float zoomInput = -mController->GetAxisValue( SuperCamController::stickY );
 
         if ( zoomInput > zoomDeadZone )
         {
